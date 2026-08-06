@@ -1,0 +1,139 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pandapal-buddy"
+version = "0.1.0"
+description = "PandaPal Buddy：让 Agent 的每一步都看得见、管得住"
+readme = "README.md"
+requires-python = ">=3.12"
+license = {text = "MIT"}
+dependencies = [
+    "httpx[socks]>=0.25.0",
+    "fastapi>=0.110.0",
+    "uvicorn>=0.29.0",
+    "websockets>=12.0",
+    "pyyaml>=6.0",
+    "python-dotenv>=1.0.0",
+    "cryptography>=41.0",
+    "aiosqlite>=0.19.0",
+    "PyJWT>=2.8.0",
+    "bcrypt>=4.0.0",
+    "croniter>=2.0.0",
+]
+
+[project.optional-dependencies]
+# PDF 读取（read_file 支持 .pdf 文本提取）
+pdf = [
+    "pdfplumber>=0.11.0",
+    "PyPDF2>=3.0.0",
+]
+
+# 图片尺寸读取（read_file 显示图片宽高）
+image = [
+    "Pillow>=10.0.0",
+]
+
+# 安全回收站删除（delete_file 跨平台回收站）
+trash = [
+    "send2trash>=1.8.0",
+]
+
+# JSON Schema 参数校验（工具调用参数严格校验）
+validation = [
+    "jsonschema>=4.20.0",
+]
+
+# 真实 BPE tokenizer 估算（pandaren.memory.estimators.TiktokenEstimator；
+# 压缩触发判据与实际 LLM token 同量纲的前提，SDK 保持零硬依赖故为可选）
+tokenizer = [
+    "tiktoken>=0.7.0",
+]
+
+# 开发和测试
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+    "ruff>=0.15",
+]
+
+# ── 桌面应用（pandapal_desktop）──────────────────────────────────
+# 前端依赖见 pandapal_desktop/package.json（pnpm）
+# Rust 插件见 pandapal_desktop/src-tauri/Cargo.toml（cargo）
+desktop = [
+    "fastapi>=0.110.0",
+    "uvicorn>=0.29.0",
+    "websockets>=12.0",
+]
+
+# 所有可选依赖（一键安装全功能）
+all = [
+    "pdfplumber>=0.11.0",
+    "PyPDF2>=3.0.0",
+    "Pillow>=10.0.0",
+    "send2trash>=1.8.0",
+    "jsonschema>=4.20.0",
+    "tiktoken>=0.7.0",
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+    "ruff>=0.15",
+]
+
+[tool.setuptools.packages.find]
+include = ["pandaren*"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = [
+    "venv",
+    "output",
+    "claude-code",
+    "monaco-inline-diff-review",
+    "pandapal_desktop/src-tauri",
+    # ESP-IDF 固件工程：绝大多数 .py 是 vendor 进来的工具链/managed_components，非本仓代码
+    "pandapal_hardware_xiaozhi",
+    # 运行时状态目录（sessions/budgets/skills 副本），由程序生成而非人写
+    ".pandapal",
+]
+
+[tool.ruff.lint]
+# 保守起步：只开 ruff 默认档 —— pyflakes(F) + pycodestyle 的 import/语句/语法子集。
+# 不开 I(import 排序)、UP(升级语法)、B(bugbear) 等会大面积改写既有代码的规则。
+select = ["E4", "E7", "E9", "F"]
+
+ignore = [
+    # Protocol/桩函数的 `def foo(...) -> None: ...` 是本仓通用写法（见 pandaren/hook/hooks.py），
+    # E701 会对每个桩报一次（51 处），全是噪音。
+    "E701",
+    # TODO(F841): 26 处未使用变量待人工 triage 后再启用门控。
+    # 不能自动修：部分是「调用只为触发校验/断言，返回值本就不用」的有意写法，
+    # 例如 pandapal/tools/agent_task_tools.py:448 的 _get_user_id(ctx)（靠 ValueError 校验）、
+    # pandapal/app.py:294 的 container.get("router")（靠 KeyError 断言子系统已启动）。
+    # 也确有死代码，例如 pandaren/tools/grep.py:511 的 line_prefix（重构残留）。
+    "F841",
+
+    # ── 以下为纯风格项，共 12 处，暂不门控（避免 CI 一上来就红）；清理后逐条移除 ──
+    # TODO(E741): 9 处用 `l` 作变量名（grep.py / write_file.py / aggregator.py 的推导式）
+    "E741",
+    # TODO(E712): 2 处 `== True` / `== False`（pandaren/llm/tests/test_cache_sdk.py）
+    "E712",
+    # TODO(E731): 1 处 lambda 赋值（pandaren/observability/hooks_adapter.py:281）
+    "E731",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# 测试里 import 了不直接引用的 fixture/符号属常见写法，不报未使用
+"**/tests/**" = ["F401"]
+# pandaren 的测试靠 sys.path.insert 后再 import（兼容直接运行），E402 在此为误报
+"pandaren/**/tests/**" = ["F401", "E402"]
+
+[tool.pytest.ini_options]
+# 根本解（2026-06-10）后默认 auto，省去每个 async 测试都加 @pytest.mark.asyncio
+asyncio_mode = "auto"
+# pandaren 于 2026-07-16 加入：此前 SDK 层的测试**默认不被收集**，写了等于没写。
+# 直接动因是编码质量门控——它靠「渲染零漂移」回归测试锁死 render_tool_result_for_llm
+# 与改造前逐字节相等（该函数是全仓唯一影响**所有工具输出**的地方），而那批测试正好在
+# pandaren/engine/tests/ 下，不收集则整个安全论证落空。
+testpaths = ["pandapal", "pandaren", "scripts"]

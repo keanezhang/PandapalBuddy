@@ -1,0 +1,147 @@
+/* ════════════════════════════════════════════
+   monaco-inline-diff-review — styles
+   All classes prefixed with "mid-" to avoid
+   conflicts with host application styles.
+   ════════════════════════════════════════════ */
+
+/* ── 新增行绿色背景 ─────────────────────────────── */
+.mid-add-line {
+  background: rgba(34, 197, 94, 0.12) !important;
+}
+
+/* ── 修改行黄色背景 ─────────────────────────────── */
+.mid-modify-line {
+  background: rgba(234, 179, 8, 0.10) !important;
+}
+
+/* ── 新增行左侧绿色边距标记 ────────────────────── */
+.mid-add-gutter {
+  background: rgba(34, 197, 94, 0.30) !important;
+  width: 4px !important;
+  margin-left: 3px;
+}
+
+/* ── 修改行左侧黄色边距标记 ────────────────────── */
+.mid-modify-gutter {
+  background: rgba(234, 179, 8, 0.35) !important;
+  width: 4px !important;
+  margin-left: 3px;
+}
+
+/* ── 删除行左侧红色竖线标记 ────────────────────── */
+.mid-del-marker {
+  width: 3px;
+  min-width: 3px;
+  height: 19px;
+  background: rgba(239, 68, 68, 0.60);
+  margin-right: 6px;
+  border-radius: 1px;
+}
+
+/* ── 删除标记左侧红色边距标记 ────────────────── */
+.mid-del-gutter {
+  background: rgba(239, 68, 68, 0.40) !important;
+  width: 4px !important;
+  margin-left: 3px;
+}
+
+/* ── 单个 hunk 的 Apply / Reject 按钮 ───────────── */
+.mid-btn {
+  cursor: pointer;
+  font-size: 10px;
+  padding: 3px 10px;
+  line-height: 1;
+  font-weight: 600;
+  font-family: inherit;
+  pointer-events: auto !important;
+  position: relative;
+  z-index: 10;
+  border: none;
+  border-radius: 3px;
+}
+
+.mid-btn-apply {
+  color: #fff;
+  background: #22c55e;
+}
+.mid-btn-apply:hover {
+  background: #16a34a;
+}
+
+.mid-btn-reject {
+  color: #fff;
+  background: #ef4444;
+}
+.mid-btn-reject:hover {
+  background: #dc2626;
+}
+
+/* ── 按钮容器 ────────────────────────────────────── */
+.mid-zone-btn-bar {
+  display: flex;
+  gap: 8px;
+  padding: 2px 8px;
+  justify-content: flex-end;
+  pointer-events: auto !important;
+  position: relative;
+  z-index: 10;
+}
+
+/* ── 底部浮动全局操作栏 ──────────────────────────── */
+.mid-float-bar {
+  position: absolute;
+  bottom: 40px;
+  left: 24px;
+  right: 24px;
+  display: flex;
+  align-items: center;
+  padding: 22px 24px;
+  border: none;
+  border-radius: 6px;
+  background: rgba(20, 20, 32, 0.94);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  pointer-events: auto;
+  z-index: 100;
+}
+
+.mid-float-label {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.50);
+}
+
+.mid-float-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.mid-btn-all {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 10px 22px;
+  border: none;
+  font-family: inherit;
+  letter-spacing: 0.02em;
+  transition: all 0.15s ease;
+  border-radius: 4px;
+}
+
+.mid-btn-apply-all {
+  color: #fff;
+  background: #22c55e;
+}
+.mid-btn-apply-all:hover {
+  background: #16a34a;
+}
+
+.mid-btn-reject-all {
+  color: #fff;
+  background: #ef4444;
+}
+.mid-btn-reject-all:hover {
+  background: #dc2626;
+}

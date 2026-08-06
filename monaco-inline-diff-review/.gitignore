@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Test artifacts
+test-results/
+playwright-report/
+tests/e2e/screenshots/
+
+# Logs & OS
+*.log
+.DS_Store
+Thumbs.db

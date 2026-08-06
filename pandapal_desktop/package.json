@@ -1,0 +1,39 @@
+{
+  "name": "pandapal-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "monaco:copy": "node scripts/copy-monaco.cjs",
+    "dev": "pnpm monaco:copy && vite",
+    "sidecar:build": "node -e \"const p=process.platform;const s=p==='win32'?'build_sidecar_windows.py':'build_sidecar_macos.py';require('child_process').execSync('python '+s,{stdio:'inherit'})\"",
+    "typecheck": "tsc --noEmit",
+    "build": "pnpm monaco:copy && tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "tauri:dev": "pnpm sidecar:build && pnpm tauri dev"
+  },
+  "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
+    "monaco-inline-diff-review": "file:../monaco-inline-diff-review",
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-dialog": "^2.7.1",
+    "@tauri-apps/plugin-fs": "^2.5.1",
+    "@tauri-apps/plugin-store": "^2",
+    "dompurify": "^3.2.7",
+    "marked": "^18.0.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.23.1",
+    "zustand": "^4.5.2"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "monaco-editor": "^0.55.1",
+    "typescript": "^5.5.3",
+    "vite": "^5.3.4"
+  }
+}

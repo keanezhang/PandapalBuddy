@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+
+# Rust/Tauri build artifacts
+src-tauri/target/
+
+# Sidecar 二进制产物（由 build_sidecar_*.py 构建生成，不提交）
+src-tauri/bin/
+
+# PyInstaller 生成的 spec 文件（构建脚本自动生成，不需要提交）
+*.spec
+
+# npm lock（项目使用 pnpm）
+package-lock.json
+
+# AI 生成的图片（调试用）
+generated-images/
+
+# Monaco Editor 本地文件（从 node_modules 复制，构建时自动生成）
+public/monaco-editor/
+
+# OS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/

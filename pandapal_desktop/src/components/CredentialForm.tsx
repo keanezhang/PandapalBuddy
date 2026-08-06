@@ -1,0 +1,1008 @@
+/**
+ * src/components/CredentialForm.tsx
+ *
+ * 可复用的单组 Provider 凭据表单。
+ * 同时用于「首次配置向导」和「设置页·模型服务」。
+ *
+ * 提供：provider 选择、API Key 输入（已保存者脱敏只读 + 「更换密钥」）、
+ * model_id combobox（推荐清单 + **任意手填**）、单价填写（CNY / 1k token）、
+ * Base URL（占位提示默认值）、默认组标记、删除按钮。
+ */
+
+import { useState, useCallback, useMemo } from "react";
+import {
+  useCredentialStore,
+  getProviderMeta,
+  emptyCredential,
+  findSystemPrice,
+  recommendedForProvider,
+  isMaskedKey,
+  type ProviderCredential,
+  type LLMProvider,
+} from "../store/credentialStore";
+import type { ModelPriceEntry, ProviderMeta } from "../types/api";
+import type { VerifyResult } from "../store/credentialStore";
+
+// ── Props ─────────────────────────────────────────────────────────────────
+
+interface CredentialFormProps {
+  /** 当前凭据数据 */
+  credential: ProviderCredential;
+  /** 凭据变更回调 */
+  onChange: (cred: ProviderCredential) => void;
+  /** 删除该组凭据（undefined = 不显示删除按钮） */
+  onDelete?: () => void;
+  /** 该校验结果（undefined = 未校验 / idle） */
+  verifyResult?: VerifyResult;
+  /** 是否正在整组校验中（禁用控件） */
+  verifying?: boolean;
+  /** 是否为默认组 */
+  isDefault: boolean;
+  /** 设置该组为默认 */
+  onSetDefault?: () => void;
+  /**
+   * 其他卡片已占用的 `(provider, model_id)` 组合，用于即时标红重复。
+   *
+   * ⚠️ 不再是「已用 provider 列表」：主键已改为 `(provider, model_id)`，
+   *    同一 provider 可配 N 个模型（PRD G1），provider 本身不构成冲突。
+   */
+  usedKeys?: string[];
+  /** 是否显示 provider 下拉（向导首组隐藏，仅展示） */
+  showProviderSelect?: boolean;
+  /** 表单索引（用于显示序号） */
+  index?: number;
+  /**
+   * 系统预置 provider 元信息（从后端 catalog 拉取）。
+   * 未传时从 useCredentialStore 读；空数组 = catalog 未拉到，控件 disabled。
+   */
+  providerCatalog?: ProviderMeta[];
+  /**
+   * 该卡片是否为「已保存」态。
+   * 已保存 → api_key 走脱敏只读 + 「更换密钥」流程（PRD §4.3.1-3）。
+   */
+  isSaved?: boolean;
+  /**
+   * 用户是否已点「更换密钥」并在重填。
+   * 由父组件持有：它决定提交体带不带 api_key（R3），是保存语义的一部分，
+   * 不能只活在卡片内部 state 里。
+   */
+  keyChanged?: boolean;
+  /** 切换「更换密钥」态 */
+  onKeyChangedToggle?: (changed: boolean) => void;
+}
+
+// ── 样式 ─────────────────────────────────────────────────────────────────
+
+const S = {
+  card: {
+    background: "var(--bg-elevated)",
+    border: "1px solid var(--border-default)",
+    borderRadius: "var(--radius-md)",
+    padding: "var(--space-4) var(--space-5)",
+    marginBottom: "var(--space-3)",
+    transition: "border-color var(--duration-fast)",
+    position: "relative" as const,
+  } as React.CSSProperties,
+
+  // ⚠️ 覆盖态一律用 border 简写：基础样式（card/select/input）用的是 border 简写，
+  //    这里若只写 borderColor，条件展开时 React 会在"移除 borderColor 但保留 border"
+  //    之间来回 diff → 控制台 shorthand 冲突告警 + 边框颜色可能不还原。
+  cardError: {
+    border: "1px solid var(--danger)",
+  } as React.CSSProperties,
+
+  cardDefault: {
+    border: "1px solid var(--accent)",
+  } as React.CSSProperties,
+
+  cardHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: "var(--space-3)",
+  } as React.CSSProperties,
+
+  providerLabel: {
+    fontSize: "var(--text-sm)",
+    fontWeight: 600,
+    color: "var(--text-primary)",
+    display: "flex",
+    alignItems: "center",
+    gap: "var(--space-2)",
+  } as React.CSSProperties,
+
+  providerBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "2px 8px",
+    borderRadius: "var(--radius-xs)",
+    fontSize: "var(--text-2xs)",
+    fontWeight: 600,
+    background: "rgba(124,58,237,0.12)",
+    color: "var(--accent-soft)",
+  } as React.CSSProperties,
+
+  defaultBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "2px 8px",
+    borderRadius: "var(--radius-xs)",
+    fontSize: "var(--text-2xs)",
+    fontWeight: 600,
+    background: "rgba(34,197,94,0.12)",
+    color: "var(--success)",
+  } as React.CSSProperties,
+
+  fieldGroup: {
+    marginBottom: "var(--space-3)",
+  } as React.CSSProperties,
+
+  label: {
+    display: "block",
+    fontSize: "var(--text-xs)",
+    fontWeight: 500,
+    color: "var(--text-secondary)",
+    marginBottom: "var(--space-1)",
+  } as React.CSSProperties,
+
+  select: {
+    width: "100%",
+    padding: "8px 12px",
+    fontSize: "var(--text-base)",
+    fontFamily: "inherit",
+    background: "var(--bg-panel)",
+    border: "1px solid var(--border-default)",
+    borderRadius: "var(--radius-sm)",
+    color: "var(--text-primary)",
+    outline: "none",
+    cursor: "pointer",
+    transition: "border-color var(--duration-fast)",
+    appearance: "none" as const,
+    WebkitAppearance: "none" as const,
+  } as React.CSSProperties,
+
+  selectFocus: {
+    border: "1px solid var(--border-focus)",
+    boxShadow: "0 0 0 3px rgba(124,58,237,0.10)",
+  } as React.CSSProperties,
+
+  inputWrap: {
+    position: "relative" as const,
+  } as React.CSSProperties,
+
+  input: {
+    width: "100%",
+    padding: "8px 12px",
+    fontSize: "var(--text-base)",
+    fontFamily: "inherit",
+    background: "var(--bg-panel)",
+    border: "1px solid var(--border-default)",
+    borderRadius: "var(--radius-sm)",
+    color: "var(--text-primary)",
+    outline: "none",
+    transition: "border-color var(--duration-fast)",
+  } as React.CSSProperties,
+
+  inputError: {
+    border: "1px solid var(--danger)",
+  } as React.CSSProperties,
+
+  inputRight: {
+    position: "absolute" as const,
+    right: 4,
+    top: "50%",
+    transform: "translateY(-50%)",
+    display: "flex",
+    alignItems: "center",
+    gap: 4,
+  } as React.CSSProperties,
+
+  toggleBtn: {
+    padding: "3px 8px",
+    fontSize: "var(--text-2xs)",
+    color: "var(--text-tertiary)",
+    background: "transparent",
+    border: "1px solid var(--border-default)",
+    borderRadius: "var(--radius-xs)",
+    cursor: "pointer",
+    fontFamily: "inherit",
+    transition: "color var(--duration-fast), border-color var(--duration-fast)",
+  } as React.CSSProperties,
+
+  placeholder: {
+    fontSize: "var(--text-2xs)",
+    color: "var(--text-muted)",
+    marginTop: "var(--space-1)",
+  } as React.CSSProperties,
+
+  errorText: {
+    fontSize: "var(--text-xs)",
+    color: "var(--danger)",
+    marginTop: "var(--space-1)",
+    display: "flex",
+    alignItems: "center",
+    gap: 4,
+  } as React.CSSProperties,
+
+  verifyingText: {
+    fontSize: "var(--text-xs)",
+    color: "var(--accent-soft)",
+    marginTop: "var(--space-1)",
+  } as React.CSSProperties,
+
+  footer: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: "var(--space-4)",
+    paddingTop: "var(--space-3)",
+    borderTop: "1px solid var(--border-subtle)",
+  } as React.CSSProperties,
+
+  footerActions: {
+    display: "flex",
+    alignItems: "center",
+    gap: "var(--space-2)",
+  } as React.CSSProperties,
+
+  actionBtn: {
+    padding: "4px 12px",
+    fontSize: "var(--text-xs)",
+    fontFamily: "inherit",
+    borderRadius: "var(--radius-sm)",
+    border: "1px solid var(--border-default)",
+    background: "transparent",
+    color: "var(--text-secondary)",
+    cursor: "pointer",
+    transition: "all var(--duration-fast)",
+  } as React.CSSProperties,
+
+  defaultBtn: {
+    padding: "4px 12px",
+    fontSize: "var(--text-xs)",
+    fontFamily: "inherit",
+    borderRadius: "var(--radius-sm)",
+    border: "1px solid var(--success)",
+    background: "rgba(34,197,94,0.08)",
+    color: "var(--success)",
+    cursor: "pointer",
+    fontWeight: 500,
+    transition: "all var(--duration-fast)",
+  } as React.CSSProperties,
+
+  deleteBtn: {
+    padding: "4px 12px",
+    fontSize: "var(--text-xs)",
+    fontFamily: "inherit",
+    borderRadius: "var(--radius-sm)",
+    border: "1px solid rgba(239,68,68,0.25)",
+    background: "transparent",
+    color: "var(--danger)",
+    cursor: "pointer",
+    transition: "all var(--duration-fast)",
+  } as React.CSSProperties,
+
+  guideLink: {
+    fontSize: "var(--text-2xs)",
+    color: "var(--accent)",
+    textDecoration: "none",
+    cursor: "pointer",
+    marginLeft: "auto",
+  } as React.CSSProperties,
+
+  // ── model_id combobox ──
+  comboWrap: {
+    position: "relative" as const,
+  } as React.CSSProperties,
+
+  comboList: {
+    position: "absolute" as const,
+    top: "calc(100% + 2px)",
+    left: 0,
+    right: 0,
+    zIndex: 20,
+    maxHeight: 220,
+    overflowY: "auto" as const,
+    background: "var(--bg-elevated)",
+    border: "1px solid var(--border-default)",
+    borderRadius: "var(--radius-sm)",
+    boxShadow: "0 8px 24px rgba(0,0,0,0.28)",
+    padding: "4px 0",
+  } as React.CSSProperties,
+
+  comboItem: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "var(--space-2)",
+    padding: "6px 12px",
+    fontSize: "var(--text-xs)",
+    color: "var(--text-primary)",
+    cursor: "pointer",
+  } as React.CSSProperties,
+
+  comboItemPrice: {
+    fontSize: "var(--text-2xs)",
+    color: "var(--text-muted)",
+    whiteSpace: "nowrap" as const,
+  } as React.CSSProperties,
+
+  comboHint: {
+    padding: "6px 12px",
+    fontSize: "var(--text-2xs)",
+    color: "var(--text-muted)",
+    borderTop: "1px solid var(--border-subtle)",
+  } as React.CSSProperties,
+
+  // ── 计费设置区 ──
+  priceSection: {
+    marginBottom: "var(--space-3)",
+    padding: "var(--space-3)",
+    borderRadius: "var(--radius-sm)",
+    background: "var(--bg-panel)",
+    border: "1px solid var(--border-subtle)",
+  } as React.CSSProperties,
+
+  priceHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "var(--space-2)",
+    marginBottom: "var(--space-2)",
+  } as React.CSSProperties,
+
+  priceRow: {
+    display: "flex",
+    gap: "var(--space-2)",
+  } as React.CSSProperties,
+
+  priceCell: {
+    flex: 1,
+    minWidth: 0,
+  } as React.CSSProperties,
+
+  sourceBadgeSystem: {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "2px 8px",
+    borderRadius: "var(--radius-xs)",
+    fontSize: "var(--text-2xs)",
+    fontWeight: 600,
+    background: "rgba(127,127,127,0.14)",
+    color: "var(--text-tertiary)",
+  } as React.CSSProperties,
+
+  sourceBadgeUser: {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "2px 8px",
+    borderRadius: "var(--radius-xs)",
+    fontSize: "var(--text-2xs)",
+    fontWeight: 600,
+    background: "rgba(124,58,237,0.12)",
+    color: "var(--accent-soft)",
+  } as React.CSSProperties,
+
+  sourceBadgeMissing: {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "2px 8px",
+    borderRadius: "var(--radius-xs)",
+    fontSize: "var(--text-2xs)",
+    fontWeight: 600,
+    background: "rgba(245,158,11,0.14)",
+    color: "var(--warning)",
+  } as React.CSSProperties,
+
+  linkBtn: {
+    padding: 0,
+    fontSize: "var(--text-2xs)",
+    fontFamily: "inherit",
+    color: "var(--accent)",
+    background: "transparent",
+    border: "none",
+    cursor: "pointer",
+  } as React.CSSProperties,
+
+  maskedKey: {
+    flex: 1,
+    padding: "8px 12px",
+    fontSize: "var(--text-base)",
+    fontFamily: "var(--font-mono, monospace)",
+    background: "rgba(127,127,127,0.08)",
+    border: "1px dashed var(--border-default)",
+    borderRadius: "var(--radius-sm)",
+    color: "var(--text-tertiary)",
+    letterSpacing: "0.04em",
+  } as React.CSSProperties,
+};
+
+// ── 组件 ─────────────────────────────────────────────────────────────────
+
+export function CredentialForm({
+  credential,
+  onChange,
+  onDelete,
+  verifyResult,
+  verifying,
+  isDefault,
+  onSetDefault,
+  usedKeys = [],
+  showProviderSelect = true,
+  index,
+  providerCatalog,
+  isSaved = false,
+  keyChanged = false,
+  onKeyChangedToggle,
+}: CredentialFormProps) {
+  const [showKey, setShowKey] = useState(false);
+  const [selectFocused, setSelectFocused] = useState(false);
+  const [comboOpen, setComboOpen] = useState(false);
+
+  // ⚠️ Hook 必须无条件调用（Rules of Hooks）。
+  // 旧写法 `providerCatalog ?? useCredentialStore(...)` 是**条件调用 Hook**：
+  // props 传了就跳过 useStore，React 的 hook 序号会在两次渲染间错位。
+  // 正确做法是永远订阅，再在值层面二选一。
+  const storeCatalog = useCredentialStore((s) => s.providerCatalog);
+  const catalog = providerCatalog ?? storeCatalog;
+  const catalogReady = catalog.length > 0;
+
+  // 推荐清单 = 系统默认单价表（同一份 model_prices.toml，PRD §4.3.1-2）。
+  const recommendedModels = useCredentialStore((s) => s.recommendedModels);
+  const pricesError = useCredentialStore((s) => s.pricesError);
+
+  const meta = getProviderMeta(credential.provider, catalog);
+  const error = verifyResult?.status === "failed" ? verifyResult.error : null;
+  const isVerifying = verifying || verifyResult?.status === "verifying";
+  // catalog 未拉到时整体禁用（provider 下拉无选项，用户无法操作）
+  const disabled = isVerifying || !catalogReady;
+
+  // provider 候选 = catalog 全量。
+  // ⚠️ 刻意不排除「已用过的 provider」：主键是 (provider, model_id)，
+  //    同一 provider 下配多个模型是本次重构的核心目标（PRD G1 / Story 1）。
+  const availableProviders = catalog;
+
+  // ── model_id 冲突检测（主键 = provider + model_id，R4）──
+  const selfKey = `${credential.provider}::${credential.model_id.trim()}`;
+  const duplicateKey =
+    credential.model_id.trim().length > 0 && usedKeys.includes(selfKey);
+
+  // ── 单价解析（三级回落 R5 的前两级；第三级「拒绝保存」由保存按钮门禁承担）──
+  const systemPrice = useMemo(
+    () => findSystemPrice(credential.model_id, recommendedModels),
+    [credential.model_id, recommendedModels],
+  );
+  const hasUserPrice =
+    credential.input_price_per_1k != null || credential.output_price_per_1k != null;
+  // 展示态：用户填了 → 「我填的价」；否则命中系统表 → 「系统默认价」；都没有 → 「待补价」
+  const priceSource: "user" | "system" | "missing" = hasUserPrice
+    ? "user"
+    : systemPrice
+      ? "system"
+      : "missing";
+  // 需要展开可编辑的单价输入框：用户主动覆盖，或压根没有系统默认价可用
+  const priceEditable = hasUserPrice || !systemPrice;
+
+  // ── combobox 候选：该 provider 下的推荐模型，按已输入内容过滤 ──
+  // ⚠️ 这只是**过滤展示**，绝不过滤「可提交值」——见下方输入框注释（R11）。
+  const comboCandidates = useMemo<ModelPriceEntry[]>(() => {
+    const forProvider = recommendedForProvider(credential.provider, recommendedModels);
+    const q = credential.model_id.trim().toLowerCase();
+    if (!q) return forProvider;
+    return forProvider.filter((m) => m.model_id.toLowerCase().includes(q));
+  }, [credential.provider, credential.model_id, recommendedModels]);
+  // 该 provider 完全没有推荐模型时，combobox 退化为纯文本框（不显示空列表）
+  const hasRecommendations =
+    recommendedForProvider(credential.provider, recommendedModels).length > 0;
+
+  const updateField = useCallback(
+    <K extends keyof ProviderCredential>(field: K, value: ProviderCredential[K]) => {
+      onChange({ ...credential, [field]: value });
+    },
+    [credential, onChange],
+  );
+
+  const handleProviderChange = useCallback(
+    (newProvider: LLMProvider) => {
+      onChange({
+        ...emptyCredential(newProvider),
+        is_default: credential.is_default,
+      });
+    },
+    [credential, onChange],
+  );
+
+  /** 选中推荐项：带出 model_id。单价保持留空 = 走系统默认价（R5 第②级）。 */
+  const handlePickRecommended = useCallback(
+    (entry: ModelPriceEntry) => {
+      onChange({
+        ...credential,
+        model_id: entry.model_id,
+        // 清空用户覆盖价：既然是从推荐清单选的，默认就用系统默认价。
+        // 用户想覆盖，点「我要自己填」即可（不静默沿用上一个模型的价）。
+        input_price_per_1k: undefined,
+        output_price_per_1k: undefined,
+        cache_read_price_per_1k: undefined,
+      });
+      setComboOpen(false);
+    },
+    [credential, onChange],
+  );
+
+  /**
+   * 单价输入。空串 → undefined（表示「留空」），**不是 0**。
+   * §九：金额类字段缺失绝不默认 0——0 会被当成「这个模型免费」，静默吃掉全部费用。
+   */
+  const handlePriceInput = useCallback(
+    (field: "input_price_per_1k" | "output_price_per_1k" | "cache_read_price_per_1k",
+     raw: string) => {
+      const t = raw.trim();
+      if (t === "") {
+        onChange({ ...credential, [field]: undefined });
+        return;
+      }
+      const n = Number(t);
+      onChange({ ...credential, [field]: Number.isFinite(n) ? n : undefined });
+    },
+    [credential, onChange],
+  );
+
+  /** 「我要自己填」：把系统默认价复制进输入框作为起点，标签转「我填的价」 */
+  const handleOverridePrice = useCallback(() => {
+    onChange({
+      ...credential,
+      input_price_per_1k: systemPrice?.input_price_per_1k,
+      output_price_per_1k: systemPrice?.output_price_per_1k,
+      cache_read_price_per_1k: systemPrice?.cache_read_price_per_1k,
+    });
+  }, [credential, onChange, systemPrice]);
+
+  /** 「恢复默认价」：清空用户值，回落系统默认表（仅在系统表命中时可见） */
+  const handleRestoreDefaultPrice = useCallback(() => {
+    onChange({
+      ...credential,
+      input_price_per_1k: undefined,
+      output_price_per_1k: undefined,
+      cache_read_price_per_1k: undefined,
+    });
+  }, [credential, onChange]);
+
+  // ── 单价校验：输入价与输出价必须同填同空（PRD §4.3.2-2）──
+  const priceHalfFilled =
+    (credential.input_price_per_1k == null) !==
+    (credential.output_price_per_1k == null);
+  const priceNegative = [
+    credential.input_price_per_1k,
+    credential.output_price_per_1k,
+    credential.cache_read_price_per_1k,
+  ].some((v) => v != null && v < 0);
+
+  // 确定卡片的视觉状态
+  const cardStyle: React.CSSProperties = {
+    ...S.card,
+    ...(error ? S.cardError : {}),
+    ...(isDefault && !error ? S.cardDefault : {}),
+  };
+
+  // base_url placeholder：catalog 拉到时显示对应 provider 的 default_base_url
+  const defaultBaseUrl = meta?.default_base_url ?? "";
+  // guide_url：catalog 拉到时显示对应 provider 的获取密钥链接
+  const guideUrl = meta?.guide_url ?? "";
+  // provider 展示名：catalog 拉到时用 display_name，否则用 id 兜底
+  const providerDisplayName = meta?.display_name ?? credential.provider;
+
+  return (
+    <div style={cardStyle}>
+      {/* ── 卡片头部：provider 标签 + 状态徽章 ── */}
+      <div style={S.cardHeader}>
+        <div style={S.providerLabel}>
+          {index !== undefined && (
+            <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>
+              #{index + 1}
+            </span>
+          )}
+          {showProviderSelect ? (
+            <select
+              value={credential.provider}
+              onChange={(e) => handleProviderChange(e.target.value as LLMProvider)}
+              disabled={disabled}
+              style={{
+                ...S.select,
+                ...(selectFocused ? S.selectFocus : {}),
+                width: "auto",
+                minWidth: 180,
+                paddingRight: 28,
+                backgroundImage:
+                  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='rgba(255,255,255,0.35)'/%3E%3C/svg%3E\")",
+                backgroundRepeat: "no-repeat",
+                backgroundPosition: "right 10px center",
+                backgroundSize: "8px 5px",
+              }}
+              onFocus={() => setSelectFocused(true)}
+              onBlur={() => setSelectFocused(false)}
+            >
+              {availableProviders.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.display_name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <>
+              <span>{providerDisplayName}</span>
+              <span style={S.providerBadge}>{credential.provider}</span>
+            </>
+          )}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+          {isDefault && <span style={S.defaultBadge}>默认</span>}
+          {guideUrl && (
+            <a
+              href={guideUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={S.guideLink}
+              onClick={(e) => e.stopPropagation()}
+            >
+              获取密钥 →
+            </a>
+          )}
+        </div>
+      </div>
+
+      {/* ── API Key ──
+          已保存且未点「更换密钥」→ 脱敏只读展示。
+          这不只是 UI 偏好：可编辑就意味着脱敏值可能被当成用户输入回写，
+          从而把真 key 永久覆盖掉（PRD R2/R3 · AC-07 的事故原型）。
+          真正的保证在提交侧——toSubmittable() 此时**整个省略** api_key 字段。 */}
+      <div style={S.fieldGroup}>
+        <label style={S.label}>API Key *</label>
+        {isSaved && !keyChanged ? (
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+            <div style={S.maskedKey}>{credential.api_key || "••••••••"}</div>
+            <button
+              type="button"
+              style={S.actionBtn}
+              disabled={disabled}
+              onClick={() => {
+                // 进入「更换密钥」态：清空输入框，要求重新填完整 key。
+                // 不能拿脱敏值当初值继续编辑——那等于把脱敏值送进提交体。
+                onChange({ ...credential, api_key: "" });
+                onKeyChangedToggle?.(true);
+                setShowKey(false);
+              }}
+              title="替换为新的 API Key"
+            >
+              更换密钥
+            </button>
+          </div>
+        ) : (
+          <>
+            <div style={S.inputWrap}>
+              <input
+                type={showKey ? "text" : "password"}
+                value={credential.api_key ?? ""}
+                onChange={(e) => updateField("api_key", e.target.value)}
+                placeholder="sk-..."
+                disabled={disabled}
+                style={{
+                  ...S.input,
+                  ...(error && !(credential.api_key ?? "").trim() ? S.inputError : {}),
+                  paddingRight: 56,
+                }}
+              />
+              <div style={S.inputRight}>
+                <button
+                  type="button"
+                  style={S.toggleBtn}
+                  onClick={() => setShowKey((v) => !v)}
+                  tabIndex={-1}
+                >
+                  {showKey ? "隐藏" : "显示"}
+                </button>
+              </div>
+            </div>
+            {isSaved && keyChanged && (
+              <div style={S.placeholder}>
+                请填写完整的新密钥；
+                <button
+                  type="button"
+                  style={S.linkBtn}
+                  onClick={() => {
+                    // 取消更换：恢复「不提交 api_key」语义，旧 key 保持不动
+                    onKeyChangedToggle?.(false);
+                    onChange({ ...credential, api_key: "" });
+                  }}
+                >
+                  取消更换
+                </button>
+              </div>
+            )}
+            {isMaskedKey(credential.api_key) && (
+              <div style={S.errorText}>
+                ⚠ 这看起来是脱敏值，不能作为密钥保存，请填写完整的真实密钥
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* ── 模型 ID（combobox：推荐清单 + 任意手填）──
+          ╔══════════════════════════════════════════════════════════════════╗
+          ║ ⚠️ 推荐清单**绝不限制**可填值（PRD R11 / AC-06）。                 ║
+          ║   下面是一个 <input> 加一层建议浮层，不是 <select>：用户可以键入   ║
+          ║   任意字符串（私有部署名、volcengine endpoint id、刚发布的新模型）║
+          ║   并正常保存、装配、路由。清单只用来省去常见模型的输入。          ║
+          ║   任何「不在推荐清单内就不让填 / 不让存」的改动，都是已删除的      ║
+          ║   _DECLARED_MODELS 白名单换马甲复活，明令禁止。                   ║
+          ╚══════════════════════════════════════════════════════════════════╝ */}
+      <div style={S.fieldGroup}>
+        <label style={S.label}>模型 ID *</label>
+        <div style={S.comboWrap}>
+          <input
+            type="text"
+            value={credential.model_id}
+            onChange={(e) => {
+              updateField("model_id", e.target.value);
+              setComboOpen(true);
+            }}
+            onFocus={() => setComboOpen(true)}
+            // 延迟收起：否则 mousedown 尚未触发 onClick，列表就先被 blur 关掉了
+            onBlur={() => setTimeout(() => setComboOpen(false), 120)}
+            // 占位文案不举具体 model_id 例子：代码内不留任何模型字面量（PRD G2 上线检查清单）
+            placeholder="输入或从下拉推荐中选择模型 ID"
+            disabled={disabled}
+            style={{
+              ...S.input,
+              ...(duplicateKey ? S.inputError : {}),
+            }}
+            role="combobox"
+            aria-expanded={comboOpen}
+            aria-autocomplete="list"
+          />
+          {comboOpen && hasRecommendations && (
+            <div style={S.comboList}>
+              {comboCandidates.map((m) => (
+                <div
+                  key={m.model_id}
+                  style={S.comboItem}
+                  // 用 mouseDown：input 的 blur 会先于 click 触发
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    handlePickRecommended(m);
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "rgba(124,58,237,0.10)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "transparent";
+                  }}
+                >
+                  <span>{m.model_id}</span>
+                  <span style={S.comboItemPrice}>
+                    ¥{m.input_price_per_1k} / ¥{m.output_price_per_1k}
+                  </span>
+                </div>
+              ))}
+              {/* 无匹配项也**不阻塞输入**：明确告诉用户手填是受支持的路径 */}
+              <div style={S.comboHint}>
+                {comboCandidates.length === 0
+                  ? "无匹配的推荐模型 —— 可直接手填任意模型 ID，填写单价后即可保存"
+                  : "以上仅为推荐，可直接手填任意模型 ID"}
+              </div>
+            </div>
+          )}
+        </div>
+        {duplicateKey && (
+          <div style={S.errorText}>⚠ 该模型已配置，请勿重复添加</div>
+        )}
+        <div style={S.placeholder}>
+          可手填服务商支持的任意模型 ID；下拉仅为常见模型的推荐，不构成限制
+        </div>
+      </div>
+
+      {/* ── 计费设置（单价三级回落 R5：用户填写值 > 系统默认表 > 拒绝保存）── */}
+      <div style={S.priceSection}>
+        <div style={S.priceHeader}>
+          <span style={S.label as React.CSSProperties}>
+            计费设置{" "}
+            <span style={{ fontWeight: 400, color: "var(--text-muted)" }}>
+              CNY / 1k token
+            </span>
+          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+            {priceSource === "system" && (
+              <span style={S.sourceBadgeSystem}>系统默认价</span>
+            )}
+            {priceSource === "user" && (
+              <span style={S.sourceBadgeUser}>我填的价</span>
+            )}
+            {priceSource === "missing" && (
+              <span style={S.sourceBadgeMissing}>待补价</span>
+            )}
+            {/* 「我要自己填」：仅在正用系统默认价时有意义 */}
+            {priceSource === "system" && (
+              <button
+                type="button"
+                style={S.linkBtn}
+                onClick={handleOverridePrice}
+                disabled={disabled}
+              >
+                我要自己填
+              </button>
+            )}
+            {/* 「恢复默认价」：仅在系统表命中且用户已覆盖时可见 */}
+            {priceSource === "user" && systemPrice && (
+              <button
+                type="button"
+                style={S.linkBtn}
+                onClick={handleRestoreDefaultPrice}
+                disabled={disabled}
+              >
+                恢复默认价
+              </button>
+            )}
+          </div>
+        </div>
+
+        {!priceEditable && systemPrice ? (
+          // 命中系统默认表且用户未覆盖：只读展示，用户零输入（PRD Story 2）
+          <div style={S.placeholder}>
+            输入 ¥{systemPrice.input_price_per_1k} · 输出 ¥
+            {systemPrice.output_price_per_1k}
+            {systemPrice.cache_read_price_per_1k != null && (
+              <> · 缓存命中 ¥{systemPrice.cache_read_price_per_1k}</>
+            )}
+            <br />
+            系统默认价为代表性估算，若你有采购折扣请点「我要自己填」。
+          </div>
+        ) : (
+          <>
+            <div style={S.priceRow}>
+              <div style={S.priceCell}>
+                <label style={S.label}>输入价 *</label>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.00001"
+                  value={credential.input_price_per_1k ?? ""}
+                  onChange={(e) => handlePriceInput("input_price_per_1k", e.target.value)}
+                  placeholder="0.0112"
+                  disabled={disabled}
+                  style={{
+                    ...S.input,
+                    ...(priceHalfFilled || priceNegative ? S.inputError : {}),
+                  }}
+                />
+              </div>
+              <div style={S.priceCell}>
+                <label style={S.label}>输出价 *</label>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.00001"
+                  value={credential.output_price_per_1k ?? ""}
+                  onChange={(e) => handlePriceInput("output_price_per_1k", e.target.value)}
+                  placeholder="0.0448"
+                  disabled={disabled}
+                  style={{
+                    ...S.input,
+                    ...(priceHalfFilled || priceNegative ? S.inputError : {}),
+                  }}
+                />
+              </div>
+              <div style={S.priceCell}>
+                <label style={S.label}>
+                  缓存命中价{" "}
+                  <span style={{ fontWeight: 400, color: "var(--text-muted)" }}>
+                    （可选）
+                  </span>
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.00001"
+                  value={credential.cache_read_price_per_1k ?? ""}
+                  onChange={(e) =>
+                    handlePriceInput("cache_read_price_per_1k", e.target.value)
+                  }
+                  placeholder="留空 = 按输入价计"
+                  disabled={disabled}
+                  style={{
+                    ...S.input,
+                    ...(priceNegative ? S.inputError : {}),
+                  }}
+                />
+              </div>
+            </div>
+            {priceSource === "missing" && (
+              <div style={S.placeholder}>
+                该模型无系统默认价，请填写你的实际单价后再保存
+              </div>
+            )}
+            {priceHalfFilled && (
+              <div style={S.errorText}>⚠ 输入价与输出价需同时填写</div>
+            )}
+            {priceNegative && (
+              <div style={S.errorText}>⚠ 单价必须是不小于 0 的数字</div>
+            )}
+            <div style={S.placeholder}>
+              缓存命中价留空时按**生效的输入价**计（保守估高，绝不低估费用）
+            </div>
+          </>
+        )}
+
+        {/* 默认价表拉取失败必须让用户看见：否则用户会误以为「这模型本来就没默认价」 */}
+        {pricesError && <div style={S.errorText}>⚠ {pricesError}</div>}
+      </div>
+
+      {/* ── Base URL ── */}
+      <div style={S.fieldGroup}>
+        <label style={S.label}>
+          API 地址{" "}
+          <span style={{ fontWeight: 400, color: "var(--text-muted)" }}>
+            （可选）
+          </span>
+        </label>
+        <input
+          type="text"
+          value={credential.base_url ?? ""}
+          onChange={(e) => updateField("base_url", e.target.value || undefined)}
+          placeholder={defaultBaseUrl || "留空使用官方默认地址"}
+          disabled={disabled}
+          style={S.input}
+        />
+        {defaultBaseUrl && (
+          <div style={S.placeholder}>
+            留空使用官方默认地址：{defaultBaseUrl}
+          </div>
+        )}
+      </div>
+
+      {/* ── 校验状态 ── */}
+      {isVerifying && (
+        <div style={S.verifyingText}>⏳ 正在验证 {providerDisplayName}…</div>
+      )}
+      {error && (
+        <div style={S.errorText}>
+          ⚠ {error}
+        </div>
+      )}
+
+      {/* ── 底部操作栏 ── */}
+      <div style={S.footer}>
+        <div style={S.footerActions}>
+          {onSetDefault && !isDefault && (
+            <button
+              type="button"
+              style={S.actionBtn}
+              onClick={onSetDefault}
+              disabled={disabled}
+              title="设为默认模型（对应 toml 的 default_model_id）"
+            >
+              设为默认
+            </button>
+          )}
+          {isDefault && (
+            <span style={{ fontSize: "var(--text-xs)", color: "var(--success)", fontWeight: 500 }}>
+              ✓ 当前默认
+            </span>
+          )}
+        </div>
+        <div style={S.footerActions}>
+          {onDelete && (
+            <button
+              type="button"
+              style={S.deleteBtn}
+              onClick={onDelete}
+              disabled={disabled}
+              title="删除此服务商凭据"
+            >
+              删除
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

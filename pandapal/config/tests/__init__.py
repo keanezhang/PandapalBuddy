@@ -1,0 +1,1 @@
+"""pandapal.config.tests"""

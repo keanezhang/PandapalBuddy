@@ -1,0 +1,50 @@
+[package]
+name = "pandapal-desktop"
+version = "0.1.0"
+description = "Pandapal Desktop Client"
+authors = ["pandapal"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib_name` and `crate_type` configuration is required for mobile targets.
+name = "pandapal_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-ico", "image-png"] }
+tauri-plugin-store = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+uuid = { version = "1", features = ["v4"] }
+bcrypt = "0.15"
+ctrlc = { version = "3", features = ["termination"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+# Job Object：把 sidecar 子进程绑定到父进程生命周期（KILL_ON_JOB_CLOSE），
+# 父进程无论优雅退出/崩溃/被强杀，子进程都随之终止，杜绝孤儿 sidecar。
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+    "Win32_Security",
+] }
+
+[profile.release]
+# Reduce binary size
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

@@ -1,0 +1,49 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  ruff:
+    name: ruff check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # 规则与忽略项全部来自 pyproject.toml 的 [tool.ruff.lint]，
+      # 此处不加 --select/--ignore：CLI 参数会覆盖配置里的 ignore，导致本地与 CI 结果不一致。
+      - name: Install ruff
+        run: pip install "ruff>=0.15"
+
+      - name: Run ruff
+        run: ruff check --output-format=github .
+
+  robustness:
+    name: robustness hard-constraints
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # 健壮性硬约束（《健壮性与降级工程原则》§7）。标准 ruff 表达不了「白名单感知的
+      # broad except」「ID 类零默认」，故用自建 AST 检查器 scripts/lint_robustness.py。
+      #
+      # 棘轮策略：存量 77 处 ERROR 多在 §3.2 观测 Fail-Safe 边界，无法一夜清零 →
+      # 快照进 scripts/robustness_baseline.json，本步只对「净新增」ROB001/002 红灯。
+      # 存量还债后运行 `python scripts/lint_robustness.py --update-baseline` 收紧棘轮。
+      - name: Block net-new ROB001/ROB002 (baseline ratchet)
+        run: python scripts/lint_robustness.py --errors-only --baseline --format github
+
+      # ROB003（可疑静默 broad except）/ ROB004（ID 类零默认）为咨询级：只报不拦。
+      - name: Robustness advisories (ROB003/ROB004, non-blocking)
+        if: always()
+        run: python scripts/lint_robustness.py --baseline

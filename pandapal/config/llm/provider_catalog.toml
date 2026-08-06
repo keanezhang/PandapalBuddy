@@ -1,0 +1,72 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# provider_catalog.toml — 系统预置 provider 元信息（单一真相源，只读）
+#
+# 本文件定义「系统能支持哪些 provider」。超出本列表的 provider 一律拒绝。
+#
+# 读取方（均为**运行时**读取本文件，禁止编译期嵌入）：
+#   - Python : pandapal/config/llm/provider_catalog.py
+#   - Rust   : src-tauri/src/lib.rs（配置 owner，负责写入前的白名单校验）
+#
+# ⚠️ 禁止使用 include_str! 一类编译期嵌入方式。编译期拷贝会让「旧二进制 + 新
+#    配置」产生两份不一致的白名单，且无运行时检测手段。单一真相源指的是
+#    「这一个文件」，不是「某个进程」——两方读同一路径才成立。
+#
+# 设计约束（对应 PRD·模型管理 五条规则）：
+#   1. provider 固定：只支持本文件 [[providers]] 内的 provider，前端下拉选取，
+#      不能手填；超出范围即拒绝（规则 1、2）。
+#   2. 本文件**不含任何模型数据**。模型由用户在凭据中自填（规则 3）。
+#      模型的**默认单价**在同目录 model_prices.toml，与本文件职责分离。
+#   3. 本文件为系统配置（只读，随软件发布）；用户配置在
+#      {workspace}/.pandapal/users/{user_id}/llm_credentials.toml（可读写），
+#      两者内容不重合（规则 4）。
+#
+# 修改后需同步：
+#   - Python / Rust：均为运行时读取，无需重新编译
+#   - 测试：pandapal/config/tests/test_provider_catalog.py 校验完整性
+#   - ⚠️ 移除某个 provider 时，已配置该 provider 的用户凭据将转为「不可用」
+#     （保留数据、不装配、下拉置灰），而非被静默删除
+# ─────────────────────────────────────────────────────────────────────────────
+
+# 每个 [[providers]] 条目定义一个 SDK 已实现 capability 的 provider。
+# 底层 SDK（pandaren/llm/client.py _PROVIDER_FACTORIES）必须为每个 provider
+# 实现 for_*() 工厂方法 + EndpointCapabilities 常量，否则 for_provider() 会抛错。
+#
+# 字段说明（全部必填，缺任一字段则加载失败）：
+# - id               : 唯一标识，与用户凭据 toml 的 provider 字段一致
+# - display_name     : **全应用唯一**的展示名来源（前端不得另建映射表）
+# - guide_url        : 用户获取 API Key 的官方指引链接
+# - default_base_url : 官方默认 API 地址（用户未填 base_url 时回落此值）
+# - env_prefix       : 环境变量前缀（如 DASHSCOPE → DASHSCOPE_API_KEY）
+# - verify_url       : 连通性校验端点（探测 API Key 是否有效，不得以本地长度检查代替）
+
+[[providers]]
+id = "dashscope"
+display_name = "通义千问 (DashScope)"
+guide_url = "https://bailian.console.aliyun.com/?apiKey=1"
+default_base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+env_prefix = "DASHSCOPE"
+verify_url = "https://dashscope.aliyuncs.com/compatible-mode/v1/models"
+
+[[providers]]
+id = "volcengine"
+display_name = "豆包 (Volcengine)"
+guide_url = "https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey"
+default_base_url = "https://ark.cn-beijing.volces.com/api/v3"
+env_prefix = "VOLCENGINE"
+verify_url = "https://ark.cn-beijing.volces.com/api/v3/models"
+
+[[providers]]
+id = "openai"
+display_name = "OpenAI"
+guide_url = "https://platform.openai.com/api-keys"
+default_base_url = "https://api.openai.com/v1"
+env_prefix = "OPENAI"
+verify_url = "https://api.openai.com/v1/models"
+
+[[providers]]
+id = "deepseek"
+display_name = "DeepSeek"
+guide_url = "https://platform.deepseek.com/api_keys"
+default_base_url = "https://api.deepseek.com"
+env_prefix = "DEEPSEEK"
+verify_url = "https://api.deepseek.com/v1/models"

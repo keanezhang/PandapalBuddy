@@ -1,0 +1,151 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# model_prices.toml — 系统预置模型默认单价（只读，随软件发布）
+#
+# ╔═══════════════════════════════════════════════════════════════════════════╗
+# ║  ⚠️ 本表**不是**可用性白名单。                                              ║
+# ║                                                                           ║
+# ║  表中没有的 model_id 照样可以配置、装配、路由、使用——只是保存时必须由       ║
+# ║  用户自己填写单价。任何「不在本表内就不装配 / 不展示 / 不允许保存」的        ║
+# ║  逻辑，都是已被删除的 _DECLARED_MODELS 白名单换马甲复活，明令禁止。         ║
+# ║                                                                           ║
+# ║  本表唯一的作用：决定「用户要不要自己填价」。                               ║
+# ╚═══════════════════════════════════════════════════════════════════════════╝
+#
+# 单价三级回落（PRD·R5）：
+#   ① 用户在凭据中填了单价      → 用用户的
+#   ② 用户没填，但本表命中      → 用本表默认价
+#   ③ 两者皆无                  → **拒绝保存**，要求用户填写
+#
+# 因此「已保存的模型必然有确定单价」是系统不变量。未定价兜底桶正常应恒为 0，
+# 非 0 即缺陷信号（P0 告警），而非常规路径。
+#
+# ⚠️ 绝不允许在查不到单价时回落 0（§九：金额类字段缺失绝不默认 0）。
+#    这正是本次重构要修掉的原始缺陷。
+#
+# 匹配语义：对 model_id **精确匹配**，不做前缀/模糊匹配。
+#   原因：模糊匹配会让 qwen3-max 悄悄套用 qwen-max 的价，属金额类静默降级。
+#
+# 与 provider_catalog.toml 分为两个文件的原因：
+#   provider 元信息极少变动，而模型定价随厂商调价频繁更新，
+#   二者变更频率与职责均不同。
+#
+# 读取方（运行时读取，禁止编译期嵌入）：
+#   - Python : pandapal/config/llm/（费用核算取价）
+#   - Rust   : src-tauri/src/lib.rs（保存时判断「该模型是否必须用户填价」）
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── 汇率 ─────────────────────────────────────────────────────────────────────
+# 1 USD = N CNY。单价以 CNY 填写与展示，核算后按此汇率归一为 USD 存入
+# BudgetRow.spent_usd；预算额度以 CNY 记于 BudgetRow.limit_native（currency="CNY"）。
+#
+# ⚠️ 这是**静态汇率**，不接实时汇率源——有意为之。实时汇率会让「同一笔消费在
+#    不同时刻算出不同金额」，破坏账目可复现性。汇率变动由发布者随版本调整。
+# ⚠️ 缺失、为 0 或为负 → **拒绝启动并报错**，绝不默认回落 7.0（§九：金额类字段）。
+exchange_rate_usd = 7.0
+
+
+# ── 默认单价表（CNY / 每 1k token）───────────────────────────────────────────
+#
+# 字段说明：
+# - model_id                 : 精确匹配用户填写的 model_id，全表唯一
+# - provider                 : 归属 provider（须在 provider_catalog.toml 内），
+#                              用于 model_id combobox 按 provider 归类推荐
+# - input_price_per_1k       : 输入单价（CNY/1k token），必填
+# - output_price_per_1k      : 输出单价（CNY/1k token），必填
+# - cache_read_price_per_1k  : 命中 prefix cache 的输入单价，可选；
+#                              缺省时取 input_price_per_1k（保守估高，绝不低估费用）
+#
+# ⚠️ 数值为代表性公开估算（由原 APP_PRICE_TABLE 的 USD 值按 7.0 折算而来），
+#    **上线前必须由运营按各厂商官方计价页 + 实际采购折扣校准一遍**。
+#    用户若有采购折扣，可在凭据中填写自己的单价覆盖本表。
+
+# ── DashScope · 通义千问 Qwen ────────────────────────────────────────────────
+[[prices]]
+model_id = "qwen-max"
+provider = "dashscope"
+input_price_per_1k = 0.0112
+output_price_per_1k = 0.0448
+cache_read_price_per_1k = 0.00448
+
+# qwen3.7-max：暂比照 qwen-max 旗舰档估算（缺官方计价页），上线前按实际采购价校准。
+[[prices]]
+model_id = "qwen3.7-max"
+provider = "dashscope"
+input_price_per_1k = 0.0112
+output_price_per_1k = 0.0448
+cache_read_price_per_1k = 0.00448
+
+[[prices]]
+model_id = "qwen-plus"
+provider = "dashscope"
+input_price_per_1k = 0.0028
+output_price_per_1k = 0.0084
+cache_read_price_per_1k = 0.00112
+
+[[prices]]
+model_id = "qwen-turbo"
+provider = "dashscope"
+input_price_per_1k = 0.00042
+output_price_per_1k = 0.0014
+cache_read_price_per_1k = 0.00014
+
+[[prices]]
+model_id = "qwen-long"
+provider = "dashscope"
+input_price_per_1k = 0.00049
+output_price_per_1k = 0.0021
+cache_read_price_per_1k = 0.00021
+
+# ── DeepSeek（命中缓存约 0.1× 输入价）────────────────────────────────────────
+[[prices]]
+model_id = "deepseek-chat"
+provider = "deepseek"
+input_price_per_1k = 0.00189
+output_price_per_1k = 0.0077
+cache_read_price_per_1k = 0.00021
+
+[[prices]]
+model_id = "deepseek-reasoner"
+provider = "deepseek"
+input_price_per_1k = 0.00385
+output_price_per_1k = 0.01533
+cache_read_price_per_1k = 0.00042
+
+[[prices]]
+model_id = "deepseek-v4-pro"
+provider = "deepseek"
+input_price_per_1k = 0.0077
+output_price_per_1k = 0.0308
+cache_read_price_per_1k = 0.00077
+
+# ── Volcengine · 豆包 Doubao ────────────────────────────────────────────────
+# 注：线上常以 endpoint id 作为 model_name。用户若填的是 endpoint id，
+#     本表不会命中，届时由用户自行填写单价（符合三级回落第③级）。
+[[prices]]
+model_id = "doubao-pro-32k"
+provider = "volcengine"
+input_price_per_1k = 0.00077
+output_price_per_1k = 0.00196
+cache_read_price_per_1k = 0.00021
+
+[[prices]]
+model_id = "doubao-lite-32k"
+provider = "volcengine"
+input_price_per_1k = 0.00028
+output_price_per_1k = 0.00056
+cache_read_price_per_1k = 0.00007
+
+# ── OpenAI（命中缓存 0.5× 输入价）───────────────────────────────────────────
+[[prices]]
+model_id = "gpt-4o"
+provider = "openai"
+input_price_per_1k = 0.035
+output_price_per_1k = 0.105
+cache_read_price_per_1k = 0.0175
+
+[[prices]]
+model_id = "gpt-4o-mini"
+provider = "openai"
+input_price_per_1k = 0.00105
+output_price_per_1k = 0.0042
+cache_read_price_per_1k = 0.000525

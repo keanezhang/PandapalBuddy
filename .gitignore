@@ -1,0 +1,72 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+*.whl
+
+# Virtual environment
+venv/
+# env/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+
+# .pandapal 数据目录（忽略运行时数据，保留配置）
+.pandapal/*.db
+.pandapal/*.db-shm
+.pandapal/*.db-wal
+
+# 环境变量文件（含 API Key，绝不提交；仅保留 .env.example 模板）
+.env
+.env.*
+*.env
+*.env.*
+!.env.example
+# 硬件固件编译产物
+pandapal_hardware_xiaozhi/build/
+pandapal_hardware_xiaozhi/managed_components/
+
+# Claude Code
+claude-code/
+node_modules
+pandapal_buddy.egg-info
+
+# 内部开发文档（Claude Code 使用说明，含个人路径，不入仓）
+CLAUDE.md
+
+
+# 个人 Claude Code 配置（如需公开 skills，单独提炼到 skills/ 目录）
+.claude/
+
+# OpenAI tiktoken 词表（版权受限，由 scripts/fetch_tiktoken_vocab.py 运行时获取）
+*.tiktoken
+
+# 测试产物
+**/test-results/
+
+# AI 生成调试图
+**/generated-images/
+
+# 历史开发文档（已出仓，保留在本地工作区，不入仓）
+docs/
+pandapal_desktop/docs/
+
+# 版权来源待确认的素材（PRD 文档与 demo 保留）
+docs/prd/pets/*.webp
