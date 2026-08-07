@@ -19,6 +19,9 @@ export default defineConfig({
   },
   webServer: {
     command: "npx vite --config tests/vite.demo.config.ts",
+    // Playwright 默认在配置文件所在目录（tests/）执行 command；
+    // 必须回到项目根，否则 vite config 路径与 root 会错位
+    cwd: "..",
     port: 5199,
     reuseExistingServer: true,
     timeout: 60_000,

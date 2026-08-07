@@ -32,7 +32,7 @@ test("CR-1 readOnly + original → suggestion 模式渲染 InlineDiffEditor", as
   await expect(page.locator("#mode")).toHaveText("suggestion");
   await expect(floatBar(page)).toBeVisible();
   await expect(page.locator(".mid-del-line")).toHaveCount(1);
-  await expect(page.locator(".mid-add-line")).toHaveCount(1);
+  await expect(page.locator(".mid-modify-line")).toHaveCount(1);
 });
 
 test("CR-2 readOnly=false → edit 模式：无 diff UI，onChange 生效", async ({ page }) => {

@@ -21,6 +21,7 @@ import {
   expectCleanUI,
   getModelValue,
   getResolvedEvents,
+  modifyAddLines,
   openScenario,
   setProps,
   waitRebuild,

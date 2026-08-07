@@ -23,6 +23,7 @@ import {
   getModelValue,
   getPartialSaves,
   getResolvedEvents,
+  modifyAddLines,
   openScenario,
   rejectBtns,
 } from "./helpers";
@@ -63,7 +64,7 @@ async function editorText(page: Page) {
 }
 
 const btnBars = (page: Page) => page.locator(".mid-zone-btn-bar");
-const gutters = (page: Page) => page.locator(".mid-add-gutter");
+const gutters = (page: Page) => page.locator(".mid-modify-gutter");
 
 async function shot(page: Page, name: string) {
   await page.screenshot({ path: resolve(SHOT_DIR, `${name}.png`) });
@@ -95,7 +96,7 @@ test("CMP-1 初始渲染：3 个 hunk 的按钮条/删除线/绿行/浮动栏全
   await expect(delLines(page).nth(2)).toContainText("return 3");
 
   // 每个 modify hunk 各 1 条绿行 decoration + gutter
-  await expect(addLines(page)).toHaveCount(3);
+  await expect(modifyAddLines(page)).toHaveCount(3);
   await expect(gutters(page)).toHaveCount(3);
 
   // 编辑器文本是 current 内容
@@ -152,8 +153,9 @@ test("CMP-8 Reject modify hunk：建议行被原始行替换，partialSave('')",
   // Reject 第 2 个 hunk（beta: return 2 → return 200）
   await rejectBtns(page).nth(1).click();
 
-  // model 回退：原始行恢复，建议行消失
-  await expect.poll(async () => editorText(page)).toContain("return 2");
+  // 等待 view 层渲染收敛（Monaco 渲染异步：model 同步回退，DOM 需 ~1 帧更新；
+  // 点击前 DOM 含 "return 200"，poll 会等 DOM 真正更新后才通过）
+  await expect.poll(async () => editorText(page)).not.toContain("return 200");
   const text = await editorText(page);
   expect(text).not.toContain("return 200");
   // H1/H3 的建议行仍在
@@ -178,6 +180,8 @@ test("CMP-16 Reject All：model 整体回滚 original，allResolved(original)", 
 
   // 编辑器内容完全回滚
   await expect.poll(async () => getModelValue(page)).toBe(ORIGINAL);
+  // Monaco view 渲染异步：等 DOM 同步收敛后再断言可见文本
+  await expect.poll(async () => editorText(page)).not.toContain("return 100");
   const text = await editorText(page);
   expect(text).toContain("return 1");
   expect(text).not.toContain("return 100");

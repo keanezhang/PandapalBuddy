@@ -323,7 +323,11 @@ export function BackendProvider({ children }: { children: React.ReactNode }) {
         // edit_file：读修改后的文件 → 触发 Accept/Reject Diff
         if (!isError && msg.tool_name === "edit_file" && msg.tool_args?.file_path) {
           const fp = String(msg.tool_args.file_path);
-          const original = editFileOriginals.get(fp);
+          // 连续多次 edit_file 同一文件时，必须沿用当前 suggestion 的 original 基线
+          // （= 第一次编辑前的真实内容）；否则每次 TOOL_START 重新捕获的都是
+          // 「上一次编辑后」的中间态，早期修改会被吞进 original 导致 diff 消失。
+          const existingSuggestion = useFileStore.getState().suggestions[fp];
+          const original = existingSuggestion?.original ?? editFileOriginals.get(fp);
           const origLen = original?.length ?? -1;
           console.debug("[ipc] edit_file END", { fp, origFromCache: editFileOriginals.has(fp), origLen });
           // 如果 original 尚未捕获（TOOL_START 时缓存+读盘都失败），TOOL_END 再兜底一次

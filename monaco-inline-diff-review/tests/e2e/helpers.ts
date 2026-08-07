@@ -30,7 +30,10 @@ export async function openScenario(page: Page, opts: OpenOptions = {}) {
 export const applyBtns = (page: Page) => page.locator(".mid-btn-apply");
 export const rejectBtns = (page: Page) => page.locator(".mid-btn-reject");
 export const delLines = (page: Page) => page.locator(".mid-del-line");
+/** 纯 add hunk 的新增行（绿色 mid-add-line） */
 export const addLines = (page: Page) => page.locator(".mid-add-line");
+/** modify hunk 的新增行（黄色 mid-modify-line）——与 addLines 同属「新增行」语义，颜色不同 */
+export const modifyAddLines = (page: Page) => page.locator(".mid-modify-line");
 export const floatBar = (page: Page) => page.locator(".mid-float-bar");
 export const applyAllBtn = (page: Page) => page.locator(".mid-btn-apply-all");
 export const rejectAllBtn = (page: Page) => page.locator(".mid-btn-reject-all");
@@ -135,12 +138,16 @@ export async function setRenderer(
 
 /* ── 复合断言 ── */
 
-/** 断言 UI 已清空：无 hunk 按钮、无删除线、无绿行（浮层条按设计保留） */
+/** 断言 UI 已清空：无 hunk 按钮、无删除线、无新增行（浮层条按设计保留）。
+ *  注意：全部用 expect().toHaveCount()（自动重试）而非 count()+toBe(0)——
+ *  allResolved 事件与 Monaco 清理 decoration/viewZone 的 DOM 更新不同步，
+ *  立即断言会偶发读到残留 DOM（并行跑尤甚）。 */
 export async function expectCleanUI(page: Page) {
   await expect(applyBtns(page)).toHaveCount(0);
   await expect(rejectBtns(page)).toHaveCount(0);
-  expect(await delLines(page).count()).toBe(0);
-  expect(await addLines(page).count()).toBe(0);
+  await expect(delLines(page)).toHaveCount(0);
+  await expect(addLines(page)).toHaveCount(0);
+  await expect(modifyAddLines(page)).toHaveCount(0);
 }
 
 /** 收集页面 JS 异常（在测试开头调用，结尾断言为空） */

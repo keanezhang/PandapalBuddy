@@ -25,6 +25,7 @@ import {
   expectCleanUI,
   getModelValue,
   getResolvedEvents,
+  modifyAddLines,
   openScenario,
   rejectBtns,
   waitRebuild,
@@ -73,8 +74,9 @@ test.describe("Mount 与初始化", () => {
     await expect(applyBtns(page)).toHaveCount(2);
     await expect(rejectBtns(page)).toHaveCount(2);
     // .mid-add-line 是 Monaco 整行背景 decoration，不含文本；
-    // 数量 2 = 绿行 highlight 行数（x + c），具体内容由 model 断言覆盖
-    await expect(addLines(page)).toHaveCount(2);
+    // 数量：x 纯 add（绿）1 行，c 为 modify 新增行（黄）1 行
+    await expect(addLines(page)).toHaveCount(1);
+    await expect(modifyAddLines(page)).toHaveCount(1);
     // 删除线：仅 modify hunk 的 b
     expect(await delLines(page).allTextContents()).toEqual(["b"]);
     expect(await getModelValue(page)).toBe("x\na\nc");
@@ -133,7 +135,7 @@ test.describe("边界条件", () => {
 
     await expect(applyBtns(page)).toHaveCount(1);
     expect((await delLines(page).allTextContents()).join()).toContain("🎉");
-    await expect(addLines(page)).toHaveCount(1);
+    await expect(modifyAddLines(page)).toHaveCount(1);
     expect(await getModelValue(page)).toBe("名前\n🚀");
 
     // Reject → 恢复 emoji 原文
@@ -148,7 +150,7 @@ test.describe("边界条件", () => {
 
     await expect(applyBtns(page)).toHaveCount(1);
     expect(await delLines(page).allTextContents()).toEqual(["b"]);
-    await expect(addLines(page)).toHaveCount(1);
+    await expect(modifyAddLines(page)).toHaveCount(1);
   });
 
   test("CMP-35 单行修改（E5）", async ({ page }) => {
@@ -157,7 +159,7 @@ test.describe("边界条件", () => {
 
     await expect(applyBtns(page)).toHaveCount(1);
     expect(await delLines(page).allTextContents()).toEqual(["single line"]);
-    await expect(addLines(page)).toHaveCount(1);
+    await expect(modifyAddLines(page)).toHaveCount(1);
 
     await clickApplyAt(page, 0);
     await waitResolved(page);
@@ -171,7 +173,7 @@ test.describe("边界条件", () => {
     // 2 个独立 modify hunk，各有独立按钮
     await expect(applyBtns(page)).toHaveCount(2);
     expect(await delLines(page).allTextContents()).toEqual(["line2", "line4"]);
-    await expect(addLines(page)).toHaveCount(2);
+    await expect(modifyAddLines(page)).toHaveCount(2);
 
     // Apply 第一个 → 第二个不受影响
     await clickApplyAt(page, 0);
@@ -188,7 +190,7 @@ test.describe("边界条件", () => {
     // b→x 单个 modify，空行是 ctx
     await expect(applyBtns(page)).toHaveCount(1);
     expect(await delLines(page).allTextContents()).toEqual(["b"]);
-    await expect(addLines(page)).toHaveCount(1);
+    await expect(modifyAddLines(page)).toHaveCount(1);
 
     await clickApplyAt(page, 0);
     await waitResolved(page);

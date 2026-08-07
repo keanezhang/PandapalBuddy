@@ -351,6 +351,12 @@ export function InlineDiffEditor({
       editorRef.current = editor;
       monacoRef.current = mi;
       decoColRef.current = editor.createDecorationsCollection();
+      // 统一 model EOL 为 LF：空 model（如 current=""）的默认 EOL 可能是 CRLF，
+      // Reject 恢复多行文本时 \n 会被 Monaco 按 model EOL 转成 \r\n，
+      // 导致 model 与 original（LF 语义）不一致（diff normalizeEol 会掩盖 UI 差异，
+      // 但 onAllResolved/保存内容会被 EOL 污染）。
+      const m0 = editor.getModel();
+      if (m0 && m0.getEOL() !== "\n") m0.setEOL(mi.editor.EndOfLineSequence.LF);
       L("mount", {
         modelLines: editor.getModel()?.getLineCount(),
         orig: originalRef.current.length,

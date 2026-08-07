@@ -31,6 +31,7 @@ import {
   clickApplyAt,
   clickRejectAt,
   delLines,
+  modifyAddLines,
   expectCleanUI,
   getModelValue,
   openScenario,
@@ -124,8 +125,9 @@ test("CMP-55 add + del + modify 三种类型混合渲染与操作（H2）", asyn
   // 3 个独立 hunk：add(x)、del(c)、modify(e→y)
   await expect(applyBtns(page)).toHaveCount(3);
   // 注意：.mid-add-line 是 Monaco 整行背景 decoration，不含文本；
-  // 用 count 验证 highlight 行数（文本本身由 model 断言覆盖）
-  await expect(addLines(page)).toHaveCount(2);
+  // 用 count 验证 highlight 行数：x 纯 add（绿），y 为 modify 新增行（黄）
+  await expect(addLines(page)).toHaveCount(1);
+  await expect(modifyAddLines(page)).toHaveCount(1);
   expect(await delLines(page).allTextContents()).toEqual(["c", "e"]);
 
   // Apply add → 只剩 del/modify
@@ -254,7 +256,7 @@ test("CMP-63 相邻 modify 合并为 1 个 hunk，Reject 后整体还原（X5 �
   await openScenario(page, { case: "adjacent_modify" }); // a b c d → a x y d
   await expect(applyBtns(page)).toHaveCount(1);
   expect(await delLines(page).allTextContents()).toEqual(["b", "c"]);
-  await expect(addLines(page)).toHaveCount(2);
+  await expect(modifyAddLines(page)).toHaveCount(2);
 
   await clickRejectAt(page, 0);
   await waitResolved(page);

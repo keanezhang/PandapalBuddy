@@ -28,6 +28,12 @@ import { groupHunks } from "../../src/engine/hunk";
 // 真实文件复现场景：pandapal_desktop/src/components/CredentialForm.tsx
 // （git HEAD 旧版 vs 工作区新版，由 scripts/gen-fixture.mjs 生成）
 import credentialFormData from "./fixtures/credential_form_data.json";
+// 真实用户 bug 复现：code-design/SKILL.md（1067 行 CRLF）
+// 首个 hunk 是「文件第 6 行新增行」（add），历史版本在 suggestion 模式下
+// 不显示 diff 交互提示（由 scripts/gen-skill-fixture.py 生成）
+import skillMdData from "./fixtures/skill_md_data.json";
+// ⚠️ 临时验证：用户真实场景（5 处修改 SKILL.md，original/current 均 CRLF）
+import skillMdRealData from "./fixtures/skill_md_real.json";
 
 /* ── 场景目录（数据与 tests/docs/test-design.md 对齐）── */
 
@@ -289,6 +295,23 @@ const SCENARIOS: Record<string, Scenario> = {
     original: credentialFormData.original,
     current: credentialFormData.current,
   },
+  /* ── ★ 真实用户 bug 复现：code-design/SKILL.md（1067 行 CRLF）──────── */
+  // 场景：AI 修改 skill 文件后，suggestion 模式渲染
+  //  · hunk[0] = add（第 6 行新增 description 续行）——历史版本此 hunk 不显示交互提示
+  //  · hunk[1] = modify（第 30 行去掉「有据可查的」）
+  //  · hunk[2] = modify（第 100 行标点规范化）
+  // current 保留磁盘 CRLF 原样，original 为 LF 归一化版本（与后端一致）
+  skill_md: {
+    language: skillMdData.language,
+    original: skillMdData.original,
+    current: skillMdData.current,
+  },
+  /* ── ⚠️ 临时验证：用户真实场景（5 处修改，双 CRLF）────────────── */
+  skill_md_real: {
+    language: skillMdRealData.language,
+    original: skillMdRealData.original,
+    current: skillMdRealData.current,
+  },
 };
 
 /* ── 全局事件桥 ── */
@@ -409,11 +432,13 @@ function RendererApp({
   initialOriginal,
   initialReadOnly = true,
   loadBtn,
+  language = "python",
 }: {
   initialContent?: string;
   initialOriginal?: string | null;
   initialReadOnly?: boolean;
   loadBtn?: { label: string; content: string };
+  language?: string;
 }) {
   const [content, setContent] = useState(initialContent ?? "a\nx\nc");
   const [original, setOriginal] = useState<string | null>(
@@ -459,7 +484,7 @@ function RendererApp({
       <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
         <CodeRenderer
           content={content}
-          language="python"
+          language={language}
           original={original ?? undefined}
           readOnly={readOnly}
           fileId={fileId}
@@ -493,6 +518,23 @@ createRoot(rootEl).render(
       loadBtn={{
         label: "模拟加载新版（CredentialForm 编辑后）",
         content: credentialFormData.current,
+      }}
+    />
+  ) : caseName === "skill_md_edit" ? (
+    // 编辑模式复现 SKILL.md（真实时序）：
+    //   1) 先挂载旧版（LF）→ CodeRenderer edit 模式快照 = 旧版（originalRef）
+    //   2) 点按钮模拟「AI 修改完成」→ content 更新为 CRLF 新版
+    //   3) content ≠ 快照 → 300ms 防抖 → computeDiff(旧版LF, 新版CRLF) → 顶部 add 标记
+    // 注：edit 模式下 CodeRenderer 忽略 original prop（基线来自挂载快照），
+    //     这正是真实调用方（MarkdownRenderer 非建议模式）的行为。
+    <RendererApp
+      initialContent={skillMdData.original}
+      initialOriginal={null}
+      initialReadOnly={false}
+      language="markdown"
+      loadBtn={{
+        label: "模拟 AI 修改完成（加载 CRLF 新版）",
+        content: skillMdData.current,
       }}
     />
   ) : (
