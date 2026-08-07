@@ -343,6 +343,41 @@ describe("CodeRenderer change tracking (edit mode)", () => {
       expect(range.startLineNumber).toBe(2);
     });
 
+    // CT-4b / inv-6 多行修改块（d2a2）→ 整块黄色，不得出现误标绿色
+    it("CT-4b: multi-line modify block → ALL add lines yellow, none green", async () => {
+      // original="a\nb\nc\nd" → content="a\nx\ny\nd"
+      // diff: [ctx a, del b, del c, add x, add y, ctx d] → 一个 d2a2 modify 块。
+      // 早期实现用单行 prevIsDel 判断：add x 的 prev 是 del → 黄，但 add y 的
+      // prev 是 add → 被误标成纯新增（绿）。修复后整块都必须黄。
+      const { rerender } = await mountEditMode("a\nb\nc\nd");
+      await changeAndFlush(rerender, "a\nx\ny\nd");
+
+      const decos = capturedDecoCol?._lastDecos as Record<string, unknown>[];
+      // del b（非紧邻 add）渲染红色 gutter；add x / add y 渲染黄色 → 共 3 条。
+      expect(decos?.length).toBe(3);
+
+      // deco[0]: del "b" → 红色 gutter（原有 del 逻辑不变）
+      expect(
+        (decoAt(0).options as Record<string, unknown>).glyphMarginClassName,
+      ).toBe("mid-del-gutter");
+
+      // deco[1] / deco[2]: 两个 add 行都必须标成 modify（黄），而不是 add（绿）。
+      for (let i = 1; i < 3; i++) {
+        const opts = decoAt(i).options as Record<string, unknown>;
+        expect(opts.className).toBe("mid-modify-line");
+        expect(opts.glyphMarginClassName).toBe("mid-modify-gutter");
+        expect(
+          (opts.overviewRuler as Record<string, unknown>).color,
+        ).toBe("rgba(234,179,8,0.7)");
+      }
+      expect(
+        (decoAt(1).range as Record<string, number>).startLineNumber,
+      ).toBe(2);
+      expect(
+        (decoAt(2).range as Record<string, number>).startLineNumber,
+      ).toBe(3);
+    });
+
     // CT-8 / inv-4 >3000 行跳过 / Risk-4 阈值误判
     it("CT-8: large file (>3000 lines) skips diff without crashing", async () => {
       const bigContent = Array.from({ length: 3001 }, (_, i) => `line${i}`).join(

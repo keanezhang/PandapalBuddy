@@ -100,6 +100,25 @@ export function CodeRenderer({
       if (totalLines > 3000) return;
 
       const entries = computeDiff(original, content);
+      // 预识别 modify 块（del 块 + 紧邻 add 块）内的所有 add 行。
+      // ⚠️ 早期实现用「单行 prevIsDel」判断：一个 d3a3 的修改块（del,del,del,add,add,add）
+      //    只有第 1 行 add 的前一个条目是 del → 标黄；后 2 行前一个条目是 add → 误标成
+      //    纯新增（绿）。于是「3 行改名」这种修改块会显示成 1 黄 + 2 绿，整片看上去全绿。
+      const modifyAddIdx = new Set<number>();
+      for (let k = 0; k < entries.length; ) {
+        if (entries[k].kind !== "del") {
+          k++;
+          continue;
+        }
+        while (k < entries.length && entries[k].kind === "del") k++;
+        if (k < entries.length && entries[k].kind === "add") {
+          while (k < entries.length && entries[k].kind === "add") {
+            modifyAddIdx.add(k);
+            k++;
+          }
+        }
+      }
+
       const decos: monaco.editor.IModelDeltaDecoration[] = [];
       let lineNum = 1;
       let i = 0;
@@ -110,16 +129,16 @@ export function CodeRenderer({
           lineNum++;
           i++;
         } else if (entry.kind === "add") {
-          const prevIsDel = i > 0 && entries[i - 1].kind === "del";
+          const isModify = modifyAddIdx.has(i);
           if (lineNum <= totalLines) {
             decos.push({
               range: new m.Range(lineNum, 1, lineNum, 1),
               options: {
                 isWholeLine: true,
-                className: prevIsDel ? "mid-modify-line" : "mid-add-line",
-                glyphMarginClassName: prevIsDel ? "mid-modify-gutter" : "mid-add-gutter",
+                className: isModify ? "mid-modify-line" : "mid-add-line",
+                glyphMarginClassName: isModify ? "mid-modify-gutter" : "mid-add-gutter",
                 overviewRuler: {
-                  color: prevIsDel ? "rgba(234,179,8,0.7)" : "rgba(34,197,94,0.7)",
+                  color: isModify ? "rgba(234,179,8,0.7)" : "rgba(34,197,94,0.7)",
                   position: m.editor.OverviewRulerLane.Right,
                 },
               },

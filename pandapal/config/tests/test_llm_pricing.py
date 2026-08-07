@@ -129,11 +129,11 @@ def test_cost_of_call_forward_formula():
 
 
 def test_ac03_system_default_price_arithmetic():
-    """AC-03：qwen-max 系统默认价，1k 输入 + 1k 输出 → 0.0080 USD。"""
+    """AC-03：qwen-max 系统默认价，1k 输入 + 1k 输出 → 0.0017143 USD。"""
     install_price_book({"qwen-max": _price("qwen-max")})
     c = cost_of_call("qwen-max", 1000, 1000, 0)
-    # 0.0112 + 0.0448 = 0.0560 CNY；0.0560 / 7.0 = 0.0080 USD
-    assert abs(c.net_usd - 0.008) < 1e-9
+    # 官方价：0.0024 + 0.0096 = 0.0120 CNY；0.0120 / 7.0 → round8 = 0.00171429 USD
+    assert abs(c.net_usd - round(0.012 / 7.0, 8)) < 1e-9
 
 
 def test_ac04_user_price_overrides_system():
@@ -162,7 +162,8 @@ def test_historical_model_falls_back_to_system_table():
     with patch("pandapal.config.budget.pricing.report_degradation") as mock_report:
         c = cost_of_call("qwen-max", 1000, 1000, 0)
 
-    assert abs(c.net_usd - 0.008) < 1e-9, "历史已知模型的费用被错误归零"
+    # qwen-max 官方价 0.0024+0.0096=0.012 CNY → /7.0 → round8 = 0.00171429 USD
+    assert abs(c.net_usd - round(0.012 / 7.0, 8)) < 1e-9, "历史已知模型的费用被错误归零"
     mock_report.assert_not_called()  # 有系统默认价，不属于降级
 
 

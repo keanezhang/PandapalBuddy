@@ -1271,14 +1271,25 @@ export function BackendProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const requestSkillDetail = useCallback((skillName: string) => {
+    const fire = () => {
+      // 清空旧详情 + 置加载态，避免响应到达前渲染旧 skill 内容或误报"未找到技能"
+      useSkillStore.getState().setDetailSkill(null);
+      useSkillStore.getState().setDetailLoading(true);
+      invoke("request_skill_detail", {
+        msgId: crypto.randomUUID(),
+        skillName,
+      }).catch((e) => {
+        console.error("[ipc] skill_get failed:", e);
+        useSkillStore.getState().setDetailLoading(false);
+      });
+    };
     if (!readyRef.current) {
-      console.warn("[ipc] not ready, cannot request skill detail");
+      // 对齐 requestSkillList：IPC 未就绪时排队，ready 后自动补发（此前直接丢弃导致首次详情永久丢失）
+      console.warn("[ipc] not ready, cannot request skill detail - queued for retry");
+      pendingCallbacksRef.current.push(fire);
       return;
     }
-    invoke("request_skill_detail", {
-      msgId: crypto.randomUUID(),
-      skillName,
-    }).catch((e) => console.error("[ipc] skill_get failed:", e));
+    fire();
   }, []);
 
   const saveSkill = useCallback((skillName: string, description: string, whenToUse: string, content: string, tags?: string[]) => {

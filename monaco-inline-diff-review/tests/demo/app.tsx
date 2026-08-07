@@ -25,6 +25,9 @@ import { InlineDiffEditor } from "../../src/editor/InlineDiffEditor";
 import { CodeRenderer } from "../../src/CodeRenderer";
 import { computeDiff } from "../../src/engine/diff";
 import { groupHunks } from "../../src/engine/hunk";
+// 真实文件复现场景：pandapal_desktop/src/components/CredentialForm.tsx
+// （git HEAD 旧版 vs 工作区新版，由 scripts/gen-fixture.mjs 生成）
+import credentialFormData from "./fixtures/credential_form_data.json";
 
 /* ── 场景目录（数据与 tests/docs/test-design.md 对齐）── */
 
@@ -278,6 +281,14 @@ const SCENARIOS: Record<string, Scenario> = {
       return lines.join("\n");
     })(),
   },
+  /* ── ★ 真实文件复现：CredentialForm.tsx（git HEAD vs 工作区，29 增/29 删）── */
+  // 字段重命名 input_price_per_1k → _1m。suggestion 模式（InlineDiffEditor）下
+  // 应显示为 15 个独立 modify hunk（黄），而非整篇全绿。
+  credential_form: {
+    language: credentialFormData.language,
+    original: credentialFormData.original,
+    current: credentialFormData.current,
+  },
 };
 
 /* ── 全局事件桥 ── */
@@ -310,6 +321,18 @@ window.__clearEvents = () => {
 /** 计算一组 original/current 的所有 hunk contentKey（CMP-23 预备数据） */
 (window as any).__computeKeys = (o: string, c: string) =>
   groupHunks(computeDiff(o, c)).map((h) => h.contentKey);
+/**
+ * 读取当前 model 上所有 decoration 的 className（黑盒断言编辑模式颜色用）。
+ * 返回如 ["mid-modify-line", "mid-add-line", ...]；model 未就绪返回空数组。
+ */
+(window as any).__getDecoClasses = () => {
+  const m = window.monaco?.editor.getModels()[0];
+  if (!m) return [] as string[];
+  return m
+    .getAllDecorations()
+    .map((d) => d.options.className)
+    .filter((c): c is string => !!c);
+};
 
 function pushEvent(e: Omit<DiffEvent, "at">) {
   window.__diffEvents.push({ ...e, at: Date.now() });
@@ -379,11 +402,24 @@ function DiffApp({ caseName, noCallbacks, appliedKeys }: { caseName: string; noC
 }
 
 /* ── CodeRenderer 台架（CR-1~4）── */
-
-function RendererApp() {
-  const [content, setContent] = useState("a\nx\nc");
-  const [original, setOriginal] = useState<string | null>("a\nb\nc");
-  const [readOnly, setReadOnly] = useState(true);
+// loadBtn：编辑模式复现真实文件 diff——初始以 original 为挂载基线（旧版），
+// 点按钮把 content 切到新版，触发 CodeRenderer 的 diff(基线, 新版) 颜色渲染。
+function RendererApp({
+  initialContent,
+  initialOriginal,
+  initialReadOnly = true,
+  loadBtn,
+}: {
+  initialContent?: string;
+  initialOriginal?: string | null;
+  initialReadOnly?: boolean;
+  loadBtn?: { label: string; content: string };
+}) {
+  const [content, setContent] = useState(initialContent ?? "a\nx\nc");
+  const [original, setOriginal] = useState<string | null>(
+    initialOriginal ?? "a\nb\nc",
+  );
+  const [readOnly, setReadOnly] = useState(initialReadOnly);
   const [fileId, setFileId] = useState("f1");
 
   useEffect(() => {
@@ -410,6 +446,15 @@ function RendererApp() {
         <span>
           events: <b id="evt-count">0</b>
         </span>
+        {loadBtn && (
+          <button
+            id="load-target"
+            onClick={() => setContent(loadBtn.content)}
+            style={{ fontSize: 11, cursor: "pointer", marginLeft: "auto" }}
+          >
+            {loadBtn.label}
+          </button>
+        )}
       </div>
       <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
         <CodeRenderer
@@ -439,6 +484,17 @@ const rootEl = document.getElementById("root")!;
 createRoot(rootEl).render(
   caseName === "renderer" ? (
     <RendererApp />
+  ) : caseName === "credential_form_edit" ? (
+    // 编辑模式复现：基线 = 旧版文件，点按钮加载新版 → diff(旧, 新) 渲染颜色
+    <RendererApp
+      initialContent={credentialFormData.original}
+      initialOriginal={null}
+      initialReadOnly={false}
+      loadBtn={{
+        label: "模拟加载新版（CredentialForm 编辑后）",
+        content: credentialFormData.current,
+      }}
+    />
   ) : (
     <DiffApp caseName={caseName} noCallbacks={noCallbacks} appliedKeys={appliedKeys} />
   ),

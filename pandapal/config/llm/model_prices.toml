@@ -55,93 +55,124 @@ exchange_rate_usd = 7.0
 # - cache_read_price_per_1k  : 命中 prefix cache 的输入单价，可选；
 #                              缺省时取 input_price_per_1k（保守估高，绝不低估费用）
 #
-# ⚠️ 数值为代表性公开估算（由原 APP_PRICE_TABLE 的 USD 值按 7.0 折算而来），
-#    **上线前必须由运营按各厂商官方计价页 + 实际采购折扣校准一遍**。
+# ⚠️ 数值为各厂商官方公开价（CNY/百万 token 折算为 CNY/1k token，÷1000），
+#    核证日期 2026-07，来源见各段注释。厂商调价后需随版本同步更新。
+#    - 阿里云百炼：输入/输出为官方价，缓存命中按官方规则 = 输入价 × 10%
+#    - DeepSeek  ：官方 api-docs pricing（缓存命中价单独公布）
+#    - 火山方舟  ：官方计价页，缓存命中按官方规则 = 输入价 × 20%
+#    - OpenAI    ：官方 pricing（USD → CNY 按 exchange_rate_usd 折算）
 #    用户若有采购折扣，可在凭据中填写自己的单价覆盖本表。
 
-# ── DashScope · 通义千问 Qwen ────────────────────────────────────────────────
+# ── DashScope · 通义千问 Qwen（阿里云百炼官方价，华北2·北京，元/百万 token）──
+# 来源：https://help.aliyun.com/zh/model-studio/model-pricing
+# 缓存命中按百炼上下文缓存规则 = 输入价 × 10%；输出取非思考模式价。
 [[prices]]
 model_id = "qwen-max"
 provider = "dashscope"
-input_price_per_1k = 0.0112
-output_price_per_1k = 0.0448
-cache_read_price_per_1k = 0.00448
+input_price_per_1k = 0.0024
+output_price_per_1k = 0.0096
+cache_read_price_per_1k = 0.00024
 
-# qwen3.7-max：暂比照 qwen-max 旗舰档估算（缺官方计价页），上线前按实际采购价校准。
+# qwen3.7-max：官方原价 12/36 元/百万（当前限时 5 折，促销价 6/18，促销结束恢复原价，
+#   故按原价收录——保守估高）。思考模式常开。
 [[prices]]
 model_id = "qwen3.7-max"
 provider = "dashscope"
-input_price_per_1k = 0.0112
-output_price_per_1k = 0.0448
-cache_read_price_per_1k = 0.00448
+input_price_per_1k = 0.012
+output_price_per_1k = 0.036
+cache_read_price_per_1k = 0.0012
 
 [[prices]]
 model_id = "qwen-plus"
 provider = "dashscope"
-input_price_per_1k = 0.0028
-output_price_per_1k = 0.0084
-cache_read_price_per_1k = 0.00112
+input_price_per_1k = 0.0008
+output_price_per_1k = 0.002
+cache_read_price_per_1k = 0.00008
 
 [[prices]]
 model_id = "qwen-turbo"
 provider = "dashscope"
-input_price_per_1k = 0.00042
-output_price_per_1k = 0.0014
-cache_read_price_per_1k = 0.00014
+input_price_per_1k = 0.0003
+output_price_per_1k = 0.0006
+cache_read_price_per_1k = 0.00003
 
 [[prices]]
 model_id = "qwen-long"
 provider = "dashscope"
-input_price_per_1k = 0.00049
-output_price_per_1k = 0.0021
-cache_read_price_per_1k = 0.00021
+input_price_per_1k = 0.0005
+output_price_per_1k = 0.002
+cache_read_price_per_1k = 0.00005
 
-# ── DeepSeek（命中缓存约 0.1× 输入价）────────────────────────────────────────
+# ── DashScope · Kimi（阿里云百炼官方价，元/百万 token）───────────────────────
+# kimi/kimi-k3：输入未命中 20 元/百万（= 0.02 元/1k）、输出 100 元/百万（= 0.1 元/1k）、
+#   输入缓存命中 2 元/百万（= 0.002 元/1k，官方单独公布）。
+# 来源：https://help.aliyun.com/zh/model-studio/kimi-k3
+[[prices]]
+model_id = "kimi/kimi-k3"
+provider = "dashscope"
+input_price_per_1k = 0.02
+output_price_per_1k = 0.1
+cache_read_price_per_1k = 0.002
+
+# ── DeepSeek（官方 api-docs pricing，元/百万 token）──────────────────────────
+# 来源：https://api-docs.deepseek.com/zh-cn/quick_start/pricing
+# 官方当前在售 v4 系列；deepseek-chat / deepseek-reasoner 为历史模型
+# （已由 v4 取代，价格按最后官方公告：chat 2/8/0.5、reasoner 4/16/1）。
 [[prices]]
 model_id = "deepseek-chat"
 provider = "deepseek"
-input_price_per_1k = 0.00189
-output_price_per_1k = 0.0077
-cache_read_price_per_1k = 0.00021
+input_price_per_1k = 0.002
+output_price_per_1k = 0.008
+cache_read_price_per_1k = 0.0005
 
 [[prices]]
 model_id = "deepseek-reasoner"
 provider = "deepseek"
-input_price_per_1k = 0.00385
-output_price_per_1k = 0.01533
-cache_read_price_per_1k = 0.00042
+input_price_per_1k = 0.004
+output_price_per_1k = 0.016
+cache_read_price_per_1k = 0.001
 
 [[prices]]
 model_id = "deepseek-v4-pro"
 provider = "deepseek"
-input_price_per_1k = 0.0077
-output_price_per_1k = 0.0308
-cache_read_price_per_1k = 0.00077
+input_price_per_1k = 0.003
+output_price_per_1k = 0.006
+cache_read_price_per_1k = 0.000025
 
-# ── Volcengine · 豆包 Doubao ────────────────────────────────────────────────
-# 注：线上常以 endpoint id 作为 model_name。用户若填的是 endpoint id，
-#     本表不会命中，届时由用户自行填写单价（符合三级回落第③级）。
+# deepseek-v4-flash：官方 1/2/0.02 元/百万（= 0.001/0.002/0.00002 元/1k）。
+[[prices]]
+model_id = "deepseek-v4-flash"
+provider = "deepseek"
+input_price_per_1k = 0.001
+output_price_per_1k = 0.002
+cache_read_price_per_1k = 0.00002
+
+# ── Volcengine · 豆包 Doubao（火山方舟官方计价页，元/百万 token）─────────────
+# 来源：https://www.volcengine.com/docs/82379/1099320
+# 缓存命中按火山方舟规则 = 输入价 × 20%。
 [[prices]]
 model_id = "doubao-pro-32k"
 provider = "volcengine"
-input_price_per_1k = 0.00077
-output_price_per_1k = 0.00196
-cache_read_price_per_1k = 0.00021
+input_price_per_1k = 0.0008
+output_price_per_1k = 0.002
+cache_read_price_per_1k = 0.00016
 
 [[prices]]
 model_id = "doubao-lite-32k"
 provider = "volcengine"
-input_price_per_1k = 0.00028
-output_price_per_1k = 0.00056
-cache_read_price_per_1k = 0.00007
+input_price_per_1k = 0.0003
+output_price_per_1k = 0.0006
+cache_read_price_per_1k = 0.00006
 
-# ── OpenAI（命中缓存 0.5× 输入价）───────────────────────────────────────────
+# ── OpenAI（官方 pricing，USD/百万 → CNY/1k × 汇率）─────────────────────────
+# 来源：https://developers.openai.com/api/docs/pricing
+# gpt-4o：$2.50 / $1.25(缓存) / $10.00 每百万；gpt-4o-mini：$0.15 / $0.075 / $0.60。
 [[prices]]
 model_id = "gpt-4o"
 provider = "openai"
-input_price_per_1k = 0.035
-output_price_per_1k = 0.105
-cache_read_price_per_1k = 0.0175
+input_price_per_1k = 0.0175
+output_price_per_1k = 0.07
+cache_read_price_per_1k = 0.00875
 
 [[prices]]
 model_id = "gpt-4o-mini"

@@ -30,7 +30,7 @@ importers:
         specifier: ^18.0.5
         version: 18.0.5
       monaco-inline-diff-review:
-        specifier: file:../monaco-inline-diff-review
+        specifier: file:..\monaco-inline-diff-review
         version: file:../monaco-inline-diff-review(@monaco-editor/react@4.7.0(monaco-editor@0.55.1)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(monaco-editor@0.55.1)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       react:
         specifier: ^18.3.1

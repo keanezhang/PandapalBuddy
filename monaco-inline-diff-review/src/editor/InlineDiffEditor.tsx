@@ -67,6 +67,8 @@ export function InlineDiffEditor({
   );
   const rebuildPendingRef = useRef(false);
   const resolvedRef = useRef<string | null>(null);
+  /** 是否已做过「首 hunk 滚入视口」的兜底（每次 original/current 变化后重置） */
+  const initialRevealDoneRef = useRef(false);
   const [hasPending, setHasPending] = useState(false);
   const onPartialSaveRef = useRef(onPartialSave);
   onPartialSaveRef.current = onPartialSave;
@@ -83,6 +85,7 @@ export function InlineDiffEditor({
     if (changed) {
       appliedIdsRef.current = new Set();
       resolvedRef.current = null;
+      initialRevealDoneRef.current = false;
     }
     const ed = editorRef.current;
     if (ed) {
@@ -109,6 +112,7 @@ export function InlineDiffEditor({
     }
     model.setValue(current);
     resolvedRef.current = null;
+    initialRevealDoneRef.current = false;
     scheduleRebuild();
   }, [current]);
 
@@ -230,6 +234,33 @@ export function InlineDiffEditor({
     // 4. 批量应用装饰器
     if (decoColRef.current) {
       decoColRef.current.set(addDecos);
+    }
+
+    // 4b. 首 hunk 兜底可见性：Monaco 对「初始视口外」的 viewZone 不做布局
+    //     （DOM 节点已创建但 top:0 / 0×0，等于没渲染）。CRLF 长文件打开时
+    //     首 hunk 往往落在初始视口外，于是第一处改动看不到 Apply/Reject
+    //     按钮与删除线，看起来「和未改过一样」。首次（或 original/current
+    //     变化后）把首 hunk 滚进视口，强制 Monaco 完成该 zone 的布局。
+    //     注意：必须等两帧 —— changeViewZones 后 zone 布局是异步的，立即
+    //     reveal 时 Monaco 尚未更新滚动高度，会算出错误的滚动目标。
+    if (!initialRevealDoneRef.current && pending.length > 0) {
+      const first = pending[0];
+      let firstAfterLine = 0;
+      for (let p = 0; p < first.startIdx; p++)
+        if (entries[p].kind !== "del") firstAfterLine++;
+      // 仅真实 Monaco 具备该方法；FakeMonaco（单测）直接跳过整个块，
+      // 避免在 fake-timer 环境下调度 rAF 干扰测试。
+      if (typeof ed.revealLineInCenterIfOutsideViewport === "function") {
+        const targetLine = firstAfterLine + 1;
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            const ed2 = editorRef.current;
+            if (typeof ed2?.revealLineInCenterIfOutsideViewport === "function")
+              ed2.revealLineInCenterIfOutsideViewport(targetLine);
+          });
+        });
+        initialRevealDoneRef.current = true;
+      }
     }
 
     // 5. 无 diff 或全部处理完毕 → 回调（此刻旧 zone / 装饰已清空，UI 无残留）

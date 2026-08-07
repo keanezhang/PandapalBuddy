@@ -74,7 +74,7 @@ def main() -> int:
     ranks = load_tiktoken_bpe(str(TARGET), expected_hash=expected_hash)
 
     size_kb = TARGET.stat().st_size / 1024
-    print(f"✅ vendored: {TARGET}")
+    print(f"[OK] vendored: {TARGET}")
     print(f"   size={size_kb:.1f}KB ranks={len(ranks)} sha256={expected_hash[:16]}...")
     return 0
 
