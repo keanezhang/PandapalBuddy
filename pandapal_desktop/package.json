@@ -8,6 +8,7 @@
     "dev": "pnpm monaco:copy && vite",
     "sidecar:build": "node -e \"const p=process.platform;const s=p==='win32'?'build_sidecar_windows.py':'build_sidecar_macos.py';require('child_process').execSync('python '+s,{stdio:'inherit'})\"",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "build": "pnpm monaco:copy && tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
@@ -33,6 +34,7 @@
     "@vitejs/plugin-react": "^4.3.1",
     "monaco-editor": "^0.55.1",
     "typescript": "^5.5.3",
-    "vite": "^5.3.4"
+    "vite": "^5.3.4",
+    "vitest": "^2.1.9"
   }
 }

@@ -37,6 +37,8 @@ import { useSkillStore } from "../store/skillStore";
 import { useSearchStore } from "../store/searchStore";
 import { useSessionConcurrencyStore } from "../store/sessionConcurrencyStore";
 import { useFileStore } from "../store/fileStore";
+import { pickOriginalCandidate } from "./editFileOriginalPicker";
+import { reconstructOriginalFromResult } from "./editDiffReconstructor";
 import { useModelStore } from "../store/modelStore";
 import { useSessionStore } from "../store/sessionStore";
 import { usePetStore } from "../store/petStore";
@@ -323,58 +325,76 @@ export function BackendProvider({ children }: { children: React.ReactNode }) {
         // edit_file：读修改后的文件 → 触发 Accept/Reject Diff
         if (!isError && msg.tool_name === "edit_file" && msg.tool_args?.file_path) {
           const fp = String(msg.tool_args.file_path);
-          // 连续多次 edit_file 同一文件时，必须沿用当前 suggestion 的 original 基线
-          // （= 第一次编辑前的真实内容）；否则每次 TOOL_START 重新捕获的都是
-          // 「上一次编辑后」的中间态，早期修改会被吞进 original 导致 diff 消失。
-          const existingSuggestion = useFileStore.getState().suggestions[fp];
-          const original = existingSuggestion?.original ?? editFileOriginals.get(fp);
-          const origLen = original?.length ?? -1;
-          console.debug("[ipc] edit_file END", { fp, origFromCache: editFileOriginals.has(fp), origLen });
-          // 如果 original 尚未捕获（TOOL_START 时缓存+读盘都失败），TOOL_END 再兜底一次
-          const ensureOriginal: Promise<string | null> =
-            original != null
-              ? Promise.resolve(original)
-              : readTextFile(fp)
-                  .then((diskContent) => {
-                    console.debug("[ipc] edit_file END: read disk fallback", { fp, diskLen: diskContent.length });
-                    return diskContent;
-                  })
-                  .catch((e) => {
-                    console.warn("[ipc] edit_file END: cannot read original from disk", { fp, err: String(e) });
-                    return null;
-                  });
-          ensureOriginal.then((orig) => {
-            if (orig == null) {
-              // 两次都拿不到原文 → 放弃 diff，避免空 original 导致全文件绿色误报
-              console.warn("[ipc] edit_file END: no original available, skip diff", { fp });
-              editFileOriginals.delete(fp);
-              return;
-            }
-            // 空 original + 非空 suggested → 数据异常（文件不可能从空变为大段内容），放弃 diff
-            if (orig.length === 0) {
-              console.warn("[ipc] edit_file END: original is empty string (anomaly), skip diff", { fp });
-              editFileOriginals.delete(fp);
-              return;
-            }
-            readTextFile(fp)
-              .then((suggested) => {
-                const changed = suggested !== orig;
-                console.debug("[ipc] edit_file DONE", { fp, changed, sugLen: suggested.length });
-                if (changed) {
-                  // 行尾归一化 original（防御）：磁盘 CRLF 文本的 \r 会污染 diff 比较；
-                  // suggested 保持磁盘原样（不归一化），避免 Monaco model 行尾变为 LF
-                  // 导致 Accept/保存时文件行尾漂移（CRLF → LF）。
-                  const normalizeEol = (s: string): string =>
-                    s.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-                  useFileStore.getState().showSuggestion(fp, normalizeEol(orig), suggested);
-                }
-                editFileOriginals.delete(fp);
-              })
-              .catch((e) => {
-                console.debug("[ipc] edit_file FAIL", { fp, err: String(e) });
-                editFileOriginals.delete(fp);
+          readTextFile(fp)
+            .then((suggested) => {
+              // 连续多次 edit_file 同一文件时，必须沿用当前 suggestion 的 original 基线
+              // （= 第一次编辑前的真实内容）；否则每次 TOOL_START 重新捕获的都是
+              // 「上一次编辑后」的中间态，早期修改会被吞进 original 导致 diff 消失。
+              const existingSuggestion = useFileStore.getState().suggestions[fp];
+              // original 候选（按优先级）：
+              //   1) existingSuggestion.original —— 连续编辑同一文件时的基线（最可靠，
+              //      显示「初版 → 终版」累计 diff，不吞早期修改）
+              //   2) reconstructOriginalFromResult —— 根治：用 TOOL_END 事件自带的
+              //      unified diff + 磁盘 suggested 反推原文（零竞态：diff 由后端
+              //      算好随事件下发，不依赖前端读盘时机）
+              //   3) editFileOriginals.get(fp) / fileContents[fp] —— 读盘兜底
+              //      （TOOL_START 读盘与后端写盘存在必然性竞态：后端 emit 后同步
+              //      写盘 ≈1-3ms，事件到前端再读盘 ≈5-20ms，对未打开过的文件几乎
+              //      总是晚于写盘，只能救「文件已打开/缓存命中」场景）
+              const openedContent = useFileStore.getState().fileContents[fp];
+              const sugOrig = existingSuggestion?.original;
+              const reconstructed = reconstructOriginalFromResult(suggested, msg.result_full);
+              const orig =
+                (sugOrig && sugOrig !== suggested ? sugOrig : null) ??
+                reconstructed ??
+                pickOriginalCandidate(
+                  [editFileOriginals.get(fp), openedContent],
+                  suggested,
+                );
+              console.debug("[ipc] edit_file END", {
+                fp,
+                sugLen: suggested.length,
+                hasSuggestion: existingSuggestion != null,
+                hasDiff: msg.result_full != null,
+                origFrom:
+                  orig === sugOrig ? "suggestion" :
+                  orig === reconstructed ? "diff-reconstruct" :
+                  orig === editFileOriginals.get(fp) ? "start-fallback" :
+                  orig === openedContent ? "opened-content" :
+                  orig != null ? "fallback-first" : "none",
               });
-          });
+              if (orig == null) {
+                // 所有候选都拿不到原文 → 放弃 diff，避免空 original 导致全文件绿色误报
+                console.warn("[ipc] edit_file END: no original available, skip diff", { fp });
+                editFileOriginals.delete(fp);
+                return;
+              }
+              // 空 original + 非空 suggested → 数据异常（文件不可能从空变为大段内容），放弃 diff
+              if (orig.length === 0) {
+                console.warn("[ipc] edit_file END: original is empty string (anomaly), skip diff", { fp });
+                editFileOriginals.delete(fp);
+                return;
+              }
+              const changed = suggested !== orig;
+              console.debug("[ipc] edit_file DONE", { fp, changed, sugLen: suggested.length, origLen: orig.length });
+              if (changed) {
+                // 行尾归一化 original（防御）：磁盘 CRLF 文本的 \r 会污染 diff 比较；
+                // suggested 保持磁盘原样（不归一化），避免 Monaco model 行尾变为 LF
+                // 导致 Accept/保存时文件行尾漂移（CRLF → LF）。
+                const normalizeEol = (s: string): string =>
+                  s.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+                useFileStore.getState().showSuggestion(fp, normalizeEol(orig), suggested);
+              } else {
+                // original 与 suggested 相同（竞态失败：候选都拿到修改后内容）→ 显式留痕，
+                // 不再静默——后续若频繁出现可考虑让后端事件携带编辑前原文根治。
+                console.warn("[ipc] edit_file SKIP: candidates all match suggested (race likely), no diff", { fp });
+              }
+              editFileOriginals.delete(fp);
+            })
+            .catch((e) => {
+              console.debug("[ipc] edit_file FAIL", { fp, err: String(e) });
+              editFileOriginals.delete(fp);
+            });
         }
         break;
       }
@@ -816,11 +836,11 @@ export function BackendProvider({ children }: { children: React.ReactNode }) {
           // else：陈旧分组响应，丢弃
           break;
         }
-        useSessionStore.getState().setSessions(
-          listMsg.sessions ?? [],
-          !!listMsg.has_more,
+          useSessionStore.getState().setSessions(
+            listMsg.sessions ?? [],
+            !!listMsg.has_more,
           listMsg.page ?? 1,
-        );
+          );
         // group_filter 只在前端主动 REQUEST 时才切；这里不覆盖
         break;
       }
