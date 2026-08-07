@@ -62,9 +62,9 @@ tags: "skill, 技能创建, 流程捕获, 自动化"
 
 - **问题 1**：展示你识别的步骤列表（编号列表），询问：步骤拆解是否准确？有没有遗漏或多余的？
 - **问题 2**：如果需要输入参数，建议参数列表（如 `$target_branch`、`$pr_number`），询问是否需要增减。
-- **问题 3**：保存位置。**默认且几乎总是** `.pandapal/skills/user/<name>/SKILL.md`
-  —— 即 `data_dir/skills/user/`，Agent 装配时以 `SkillSource.USER` 加载
-  （见 `pandapal/local/run_local.py` 的 `skills_from_dir(data_dir / "skills" / "user", ...)`）。
+- **问题 3**：保存位置。**默认且几乎总是** `.pandapal/skills/<name>/SKILL.md`
+  —— 即 `data_dir/skills/`，Agent 装配时以 `SkillSource.USER` 加载
+  （见 `pandapal/local/run_local.py` 的 `skills_from_dir(data_dir / "skills", ...)`）。
   这是**持久化数据目录**：不受 rebuild/upgrade 影响，且项目打包成软件后它就是**用户级目录**，
   用户自建的 skill 天然落在正确位置，无需迁移。
 
@@ -155,7 +155,7 @@ tags: "<逗号分隔的标签>"
 1. 在回复中输出完整的 SKILL.md 内容（markdown 代码块），让用户预览
 2. 通过 `ask_user` 确认："这个 SKILL.md 可以保存吗？"
 3. 用户确认后，使用 `bash` 创建目标目录（如需要），使用 `write_file` 写入
-   `.pandapal/skills/user/<name>/SKILL.md`
+   `.pandapal/skills/<name>/SKILL.md`
 4. **写完必须验证落盘结果**，不要拿"写入成功"当完成：
    - frontmatter 能被解析，且 `name` **与目录名一致**（不一致则 `/` 命令调不到）
    - `description` ≤250 字符、`when_to_use` ≤200 字符

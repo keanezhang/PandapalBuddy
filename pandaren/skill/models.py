@@ -26,7 +26,8 @@ class SkillSource(IntEnum):
     # 注：本枚举只表达「来源与优先级」，**不规定目录** —— 目录由应用层在
     # `skills_from_dir(dir, source=...)` 时决定。
     # 参考：pandapal 装配为 PROJECT={resources}/skills/system（随 sidecar 打包）、
-    #      USER={data_dir}/skills/user（data_dir 默认 .pandapal，打包后即用户级目录）。
+    #      USER={data_dir}/skills（data_dir 默认 .pandapal，打包后即用户级目录；
+    #      直接子目录即 skill，如 {data_dir}/skills/<name>/SKILL.md）。
     # 此处曾硬编码 `.pandaren/skills/` / `~/.pandaren/skills/`，是错的：那两个路径
     # 从未存在过，SDK 也无权规定应用把 skill 放哪。skillify 照抄了这条注释，
     # 于是把错误传播到了 skill 生成流程里。

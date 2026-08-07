@@ -303,9 +303,9 @@ class SkillManager:
         """构建单个 Skill 详情事件（不存在时返回 ERROR 事件）。"""
         skill = self.get_skill(name)
         if skill is None:
-            return NormalizedEvent(
-                event_type=EventType.ERROR,
-                payload={"error_message": f"Skill 不存在: {name!r}"},
+            return NormalizedEvent.global_error(
+                error_code="skill_not_found",
+                error_message=f"Skill 不存在: {name!r}",
             )
         # 计算文件大小和修改时间
         skill_dir = self._user_dir if skill.source == "user" else self._system_dir
@@ -373,9 +373,9 @@ class SkillManager:
             return event
         except Exception as e:
             logger.exception("保存 Skill 失败: %s", name)
-            return NormalizedEvent(
-                event_type=EventType.ERROR,
-                payload={"error_message": str(e)},
+            return NormalizedEvent.global_error(
+                error_code="skill_save_failed",
+                error_message=str(e),
             )
 
     async def delete_and_build_event(self, name: str) -> NormalizedEvent:
@@ -388,14 +388,14 @@ class SkillManager:
                     payload={"skill_name": name},
                 )
             else:
-                return NormalizedEvent(
-                    event_type=EventType.ERROR,
-                    payload={"error_message": f"Skill 不存在: {name!r}"},
+                return NormalizedEvent.global_error(
+                    error_code="skill_not_found",
+                    error_message=f"Skill 不存在: {name!r}",
                 )
         except ValueError as e:
-            return NormalizedEvent(
-                event_type=EventType.ERROR,
-                payload={"error_message": str(e)},
+            return NormalizedEvent.global_error(
+                error_code="skill_delete_failed",
+                error_message=str(e),
             )
 
     # 导入时仅允许的文件后缀（.md 技能定义 + .py 脚本）
@@ -710,7 +710,7 @@ class SkillManager:
 
         except Exception as e:
             logger.exception("导出 Skill 失败: %s", skill_name)
-            return NormalizedEvent(
-                event_type=EventType.ERROR,
-                payload={"error_message": str(e)},
+            return NormalizedEvent.global_error(
+                error_code="skill_export_failed",
+                error_message=str(e),
             )

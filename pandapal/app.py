@@ -512,7 +512,7 @@ class PandaPalApp:
 
         # system/: 随 sidecar 打包，只读，用 __file__ 定位
         resources_dir = Path(__file__).resolve().parent / "resources"
-        # user/:  用 user_resources_dir（~/.pandapal），持久化、不受升级影响
+        # user/:  用 user_resources_dir（{workdir}/.pandapal），持久化、不受升级影响
         user_dir = Path(self._config.get("user_resources_dir", "")) / "skills"
         user_dir.mkdir(parents=True, exist_ok=True)
         skill_manager = SkillManager(
