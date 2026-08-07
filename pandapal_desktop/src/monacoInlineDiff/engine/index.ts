@@ -3,7 +3,7 @@
  *
  * @example
  * ```ts
- * import { computeDiff, groupHunks, hashStr } from "monaco-inline-diff-review/engine";
+ * import { computeDiff, groupHunks, hashStr } from "../../monacoInlineDiff/engine";
  * ```
  */
 export { computeDiff } from "./diff";

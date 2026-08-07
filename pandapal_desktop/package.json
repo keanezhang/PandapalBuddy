@@ -21,7 +21,6 @@
     "@tauri-apps/plugin-store": "^2",
     "dompurify": "^3.2.7",
     "marked": "^18.0.5",
-    "monaco-inline-diff-review": "file:..\\monaco-inline-diff-review",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.23.1",

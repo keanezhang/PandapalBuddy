@@ -11,7 +11,7 @@
 export type { ViewerMode } from "./fileTypes";
 export { resolveViewerMode, toMonacoLang, fileIcon, VIEWER_MAP, MONACO_LANG } from "./fileTypes";
 
-export { CodeRenderer } from "monaco-inline-diff-review";
+export { CodeRenderer } from "../../monacoInlineDiff";
 export { MarkdownRenderer } from "./MarkdownRenderer";
 export { HtmlRenderer } from "./HtmlRenderer";
 export { LogRenderer } from "./LogRenderer";
@@ -22,7 +22,7 @@ export { ErrorRenderer } from "./ErrorRenderer";
 
 import type { FC } from "react";
 import type { ViewerMode } from "./fileTypes";
-import { CodeRenderer } from "monaco-inline-diff-review";
+import { CodeRenderer } from "../../monacoInlineDiff";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import { HtmlRenderer } from "./HtmlRenderer";
 import { LogRenderer } from "./LogRenderer";

@@ -29,7 +29,7 @@
 └──────────────────────────┘  └────────────────────────────────┘
 ```
 
-> 根目录另有 `monaco-inline-diff-review/`（Monaco 内联 diff 审查组件，独立子工程）与 `docs/`（设计文档，本地保留）。`CLAUDE.md` 是本文件的同步副本。
+> Monaco 内联 diff 审查组件已内联至 `pandapal_desktop/src/monacoInlineDiff/`（原独立子工程 `monaco-inline-diff-review/` 已删除）。另有 `docs/`（设计文档，本地保留）。`CLAUDE.md` 是本文件的同步副本。
 
 ---
 

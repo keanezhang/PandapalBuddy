@@ -10,7 +10,7 @@
  */
 import { useMemo, useState } from "react";
 import { marked } from "marked";
-import { CodeRenderer } from "monaco-inline-diff-review";
+import { CodeRenderer } from "../../monacoInlineDiff";
 
 interface MarkdownRendererProps {
   content: string;

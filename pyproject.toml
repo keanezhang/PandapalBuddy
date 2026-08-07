@@ -90,7 +90,6 @@ extend-exclude = [
     "venv",
     "output",
     "claude-code",
-    "monaco-inline-diff-review",
     "pandapal_desktop/src-tauri",
     # ESP-IDF 固件工程：绝大多数 .py 是 vendor 进来的工具链/managed_components，非本仓代码
     "pandapal_hardware_xiaozhi",

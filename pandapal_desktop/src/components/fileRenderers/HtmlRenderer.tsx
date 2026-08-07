@@ -11,7 +11,7 @@
  *       对内联自包含的 HTML（本项目 PPT skill 产物即是）完全适用。
  */
 import { useState } from "react";
-import { CodeRenderer } from "monaco-inline-diff-review";
+import { CodeRenderer } from "../../monacoInlineDiff";
 
 interface HtmlRendererProps {
   content: string;

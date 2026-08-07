@@ -29,9 +29,6 @@ importers:
       marked:
         specifier: ^18.0.5
         version: 18.0.5
-      monaco-inline-diff-review:
-        specifier: file:..\monaco-inline-diff-review
-        version: file:../monaco-inline-diff-review(@monaco-editor/react@4.7.0(monaco-editor@0.55.1)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(monaco-editor@0.55.1)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       react:
         specifier: ^18.3.1
         version: 18.3.1
@@ -669,14 +666,6 @@ packages:
   monaco-editor@0.55.1:
     resolution: {integrity: sha512-jz4x+TJNFHwHtwuV9vA9rMujcZRb0CEilTEwG2rRSpe/A7Jdkuj8xPKttCgOh+v/lkHy7HsZ64oj+q3xoAFl9A==}
 
-  monaco-inline-diff-review@file:../monaco-inline-diff-review:
-    resolution: {directory: ../monaco-inline-diff-review, type: directory}
-    peerDependencies:
-      '@monaco-editor/react': ^4.7.0
-      monaco-editor: ^0.52.0
-      react: ^18.0.0
-      react-dom: ^18.0.0
-
   ms@2.1.3:
     resolution: {integrity: sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==}
 
@@ -1289,13 +1278,6 @@ snapshots:
     dependencies:
       dompurify: 3.2.7
       marked: 14.0.0
-
-  monaco-inline-diff-review@file:../monaco-inline-diff-review(@monaco-editor/react@4.7.0(monaco-editor@0.55.1)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(monaco-editor@0.55.1)(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
-    dependencies:
-      '@monaco-editor/react': 4.7.0(monaco-editor@0.55.1)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      monaco-editor: 0.55.1
-      react: 18.3.1
-      react-dom: 18.3.1(react@18.3.1)
 
   ms@2.1.3: {}
 

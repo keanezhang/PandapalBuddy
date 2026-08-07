@@ -7,7 +7,7 @@
  * AI 建议模式（readOnly + original）委托 CodeRenderer 走 inline diff。
  */
 import { useEffect, useMemo, useRef } from "react";
-import { CodeRenderer } from "monaco-inline-diff-review";
+import { CodeRenderer } from "../../monacoInlineDiff";
 
 interface LogRendererProps {
   content: string;

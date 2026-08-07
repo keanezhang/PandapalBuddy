@@ -6,7 +6,7 @@
 >
 > 任何代码改动任务，收尾前必须过一遍本清单。缺项要么补齐、要么在收尾说明中写明豁免理由。
 > 测试执行由两个系统子 Agent 承担：**test-designer（用例设计）→ test-coder（测试代码）**，
-> 方法论同源于 `monaco-inline-diff-review/tests/docs/` 的风险驱动测试设计。
+> 方法论同源于风险驱动测试设计（参考已内联至 `pandapal_desktop/src/monacoInlineDiff/` 的组件测试思路）。
 
 ## 触发与豁免
 

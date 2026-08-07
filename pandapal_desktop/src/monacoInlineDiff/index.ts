@@ -1,5 +1,5 @@
 /**
- * monaco-inline-diff-review
+ * pandapal_desktop 内联的 Monaco inline diff 审阅模块（原独立包 monaco-inline-diff-review）。
  *
  * Inline code diff review for Monaco Editor —
  * per-hunk accept/reject, just like VS Code's built-in diff review.
@@ -7,13 +7,13 @@
  * @example
  * ```tsx
  * // 完整方案：组件 + 状态管理
- * import { CodeRenderer, useDiffSuggestions } from "monaco-inline-diff-review";
+ * import { CodeRenderer, useDiffSuggestions } from "../monacoInlineDiff";
  *
  * // 只用 diff 组件
- * import { InlineDiffEditor } from "monaco-inline-diff-review";
+ * import { InlineDiffEditor } from "../monacoInlineDiff";
  *
  * // 纯算法（Node.js / 浏览器通用）
- * import { computeDiff, groupHunks } from "monaco-inline-diff-review/engine";
+ * import { computeDiff, groupHunks } from "../monacoInlineDiff/engine";
  * ```
  */
 

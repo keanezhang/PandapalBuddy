@@ -318,7 +318,7 @@ def test_hash_str_deterministic(s):
 
 ### T2. 组件测试：Fake 语义件优先，不逐方法打 mock
 
-对编辑器/渲染引擎/复杂协议这类重型外部依赖，**实现「有真实语义的内存 Fake」而非 stub**（参考 `monaco-inline-diff-review/tests/fixtures/fake-monaco.ts`）：
+对编辑器/渲染引擎/复杂协议这类重型外部依赖，**实现「有真实语义的内存 Fake」而非 stub**（参考 Monaco inline diff 组件内联实现 `pandapal_desktop/src/monacoInlineDiff/` 的测试设计）：
 
 - Fake 的操作要**真实改变内部状态**（如 `pushEditOperations` 真的按 Range 增删行），使组件测试能断言端到端不变式（「全部 Reject 后 model 内容 === original」这类）
 - Fake 放 `tests/fixtures/` 共享；另提供 `createSpied*` 变体（方法用 `vi.fn` 包裹）供调用次数/参数断言

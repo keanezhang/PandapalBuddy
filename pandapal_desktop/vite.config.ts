@@ -14,7 +14,7 @@ export default defineConfig(({ mode }) => {
 
     resolve: {
       alias: {
-        // monaco-inline-diff-review is now consumed as a formal workspace package (dist/)
+        // monaco-inline-diff-review 已内联为 src/monacoInlineDiff 子模块（相对路径引用）
       },
     },
 

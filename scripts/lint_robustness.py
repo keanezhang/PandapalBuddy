@@ -52,7 +52,7 @@ DEFAULT_ROOTS = ("pandaren", "pandapal", "pandapal_relay")
 #    （vendor 代码、程序生成状态、前端/固件工程），外加 tests —— 测试里的 except: pass
 #    常是有意写法，§7 规则针对生产代码。
 EXCLUDE_DIR_NAMES = frozenset({
-    "venv", ".venv", "output", "claude-code", "monaco-inline-diff-review",
+    "venv", ".venv", "output", "claude-code",
     "pandapal_hardware_xiaozhi", ".pandapal", "__pycache__", ".git",
     "node_modules", "src-tauri", "tests",
 })
