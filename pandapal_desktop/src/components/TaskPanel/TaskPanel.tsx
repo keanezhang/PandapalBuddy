@@ -10,6 +10,7 @@
  * 数据源：useAgentTaskStore（由 AGENT_TASK_EVENT 透传的完整 task 填充）。
  */
 import React, { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { AgentTaskData, AgentTaskStatus } from "../../types/api";
 import { useSessionStore } from "../../store/sessionStore";
 import {
@@ -18,12 +19,12 @@ import {
   computeProgress,
 } from "../../store/agentTaskStore";
 
-const STATUS_META: Record<AgentTaskStatus, { icon: string; color: string; label: string }> = {
-  pending:     { icon: "○", color: "var(--text-muted)",   label: "待处理" },
-  in_progress: { icon: "◔", color: "var(--info)",          label: "进行中" },
-  completed:   { icon: "●", color: "var(--success)",      label: "已完成" },
-  failed:      { icon: "✕", color: "var(--danger)",       label: "失败" },
-  cancelled:   { icon: "⊘", color: "var(--text-muted)",   label: "已取消" },
+const STATUS_META: Record<AgentTaskStatus, { icon: string; color: string }> = {
+  pending:     { icon: "○", color: "var(--text-muted)" },
+  in_progress: { icon: "◔", color: "var(--info)" },
+  completed:   { icon: "●", color: "var(--success)" },
+  failed:      { icon: "✕", color: "var(--danger)" },
+  cancelled:   { icon: "⊘", color: "var(--text-muted)" },
 };
 
 /**
@@ -77,6 +78,7 @@ export function InlineTaskPanel() {
  * 由 TaskPanel（锚定）与 InlineTaskPanel（时间线内嵌）共用。
  */
 function TaskListCard({ tasks }: { tasks: AgentTaskData[] }) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const progress = useMemo(() => computeProgress(tasks), [tasks]);
 
@@ -85,11 +87,11 @@ function TaskListCard({ tasks }: { tasks: AgentTaskData[] }) {
   // 摘要行文案：全部结束 → 汇总；否则显示当前进行中步骤。
   const summary = progress.allDone
     ? progress.failed > 0
-      ? `完成 ${progress.completed}/${progress.total}，${progress.failed} 失败`
-      : `全部完成 ${progress.completed}/${progress.total}`
+      ? t("tasks.summaryPartial", { completed: progress.completed, total: progress.total, failed: progress.failed })
+      : t("tasks.summaryAllDone", { completed: progress.completed, total: progress.total })
     : progress.inProgress
       ? (progress.inProgress.active_form || progress.inProgress.subject)
-      : "等待开始…";
+      : t("tasks.summaryWaiting");
 
   return (
     <div
@@ -111,7 +113,7 @@ function TaskListCard({ tasks }: { tasks: AgentTaskData[] }) {
       >
         <span style={{ flexShrink: 0 }}>📋</span>
         <span style={{ fontWeight: 600, color: "var(--text-primary)", flexShrink: 0 }}>
-          任务 {progress.done}/{progress.total}
+          {t("tasks.summaryLabel", { done: progress.done, total: progress.total })}
         </span>
         <ProgressBar progress={progress} />
         <span style={{
@@ -153,8 +155,10 @@ function ProgressBar({ progress }: { progress: ReturnType<typeof computeProgress
 }
 
 function TaskRow({ task }: { task: AgentTaskData }) {
+  const { t } = useTranslation();
   // 后端下发表外 status 时兜底展示原始值，避免 meta 为 undefined 导致整树渲染崩溃
-  const meta = STATUS_META[task.status] ?? { icon: "?", color: "var(--text-muted)", label: String(task.status) };
+  const meta = STATUS_META[task.status] ?? { icon: "?", color: "var(--text-muted)" };
+  const label = t(`tasks.status.${task.status}`, { defaultValue: String(task.status) });
   const running = task.status === "in_progress";
   const text = running && task.active_form ? task.active_form : task.subject;
   const dim = task.status === "cancelled";
@@ -177,7 +181,7 @@ function TaskRow({ task }: { task: AgentTaskData }) {
         {text}
       </span>
       <span style={{ color: meta.color, fontSize: "var(--text-2xs)", flexShrink: 0 }}>
-        {meta.label}
+        {label}
       </span>
     </div>
   );

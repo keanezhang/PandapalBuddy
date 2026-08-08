@@ -9,6 +9,7 @@
  * 并隐藏切换按钮，保证与 CodeRenderer 的 InlineDiffEditor 行为一致。
  */
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { marked } from "marked";
 import { CodeRenderer } from "../../monacoInlineDiff";
 
@@ -25,6 +26,7 @@ interface MarkdownRendererProps {
 }
 
 export function MarkdownRenderer(props: MarkdownRendererProps) {
+  const { t } = useTranslation();
   // AI 建议模式：readOnly 且带 original → 交给 CodeRenderer 走 diff
   const isSuggestion = !!props.readOnly && props.original != null;
   const [view, setView] = useState<"preview" | "source">("preview");
@@ -36,9 +38,9 @@ export function MarkdownRenderer(props: MarkdownRendererProps) {
     try {
       return marked.parse(props.content, { async: false }) as string;
     } catch {
-      return "<p style='color:var(--danger)'>Markdown 解析错误</p>";
+      return `<p style='color:var(--danger)'>${t("fileRenderers.markdownError")}</p>`;
     }
-  }, [showPreview, props.content]);
+  }, [showPreview, props.content, t]);
 
   const tabBtn = (mode: "preview" | "source", label: string) => (
     <button
@@ -63,8 +65,8 @@ export function MarkdownRenderer(props: MarkdownRendererProps) {
           background: "var(--bg-panel)", borderBottom: "1px solid var(--border-subtle)",
           flexShrink: 0,
         }}>
-          {tabBtn("preview", "预览")}
-          {tabBtn("source", "源码")}
+          {tabBtn("preview", t("fileRenderers.preview"))}
+          {tabBtn("source", t("fileRenderers.source"))}
         </div>
       )}
       {showPreview ? (

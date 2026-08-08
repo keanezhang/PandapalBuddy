@@ -7,6 +7,7 @@
  * 大小闸门（≤50MB）已在 fileStore.loadAndOpenFile 完成；此处仅负责渲染。
  */
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { readFile } from "@tauri-apps/plugin-fs";
 
 interface PdfRendererProps {
@@ -14,6 +15,7 @@ interface PdfRendererProps {
 }
 
 export function PdfRenderer({ path }: PdfRendererProps) {
+  const { t } = useTranslation();
   const [url, setUrl] = useState("");
   const [error, setError] = useState(false);
 
@@ -43,7 +45,7 @@ export function PdfRenderer({ path }: PdfRendererProps) {
         flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
         color: "var(--danger)", fontSize: "var(--text-base)",
       }}>
-        PDF 加载失败
+        {t("fileRenderers.pdfLoadFailed")}
       </div>
     );
   }
@@ -54,7 +56,7 @@ export function PdfRenderer({ path }: PdfRendererProps) {
         flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
         color: "var(--text-muted)", fontSize: "var(--text-base)",
       }}>
-        加载中...
+        {t("common.loading")}...
       </div>
     );
   }

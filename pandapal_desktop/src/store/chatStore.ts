@@ -15,6 +15,7 @@
 import { create } from "zustand";
 import type { ToolStartMsg, QuestionItem, HistoryMessage, ReplyUsage, ToolFeedback } from "../types/api";
 import { useSessionStore } from "./sessionStore";
+import i18n from "../i18n";
 
 // ── 工具分类 ────────────────────────────────────────────────────────────────
 
@@ -435,7 +436,7 @@ export const useChatStore = create<ChatState>((set) => ({
         // 封掉仍打开的思考段（结算耗时）
         let timeline = closeOpenReasoning(m.timeline, now);
         const derivedText = timelineText(timeline);
-        const text = derivedText || output || (keepEmpty ? "（您已中止任务）" : "");
+        const text = derivedText || output || (keepEmpty ? i18n.t("chat.youAborted") : "");
         const hasVisible = m.toolCalls.some(
           (tc) => tc.category !== "infra" && tc.category !== "task_update",
         );

@@ -25,6 +25,7 @@ import React, {
   useEffect,
   useRef,
 } from "react";
+import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { readTextFile } from "@tauri-apps/plugin-fs";
@@ -167,6 +168,7 @@ export function useBackend(): BackendContextValue {
 // ── Provider ───────────────────────────────────────────────────────────────
 
 export function BackendProvider({ children }: { children: React.ReactNode }) {
+  const { t } = useTranslation();
   const [pendingTaskNotification, setPendingTaskNotification] = React.useState<TaskNotificationMsg | null>(null);
   const readyRef = useRef(false);
   const pendingCallbacksRef = useRef<Array<() => void>>([]);
@@ -512,7 +514,7 @@ export function BackendProvider({ children }: { children: React.ReactNode }) {
             const icon = HALT_KIND_ICON[halted.halt_kind ?? ""] ?? "⏹";
             chat.addSystemMessage(
               sid,
-              `${icon} ${halted.reason || "Agent 已停止"}`
+              `${icon} ${halted.reason || t("chat.agentHalted")}`
             );
           }
         }
@@ -585,7 +587,7 @@ export function BackendProvider({ children }: { children: React.ReactNode }) {
         // status=unauthenticated 驱动路由守卫自动跳登录页，
         // error 横幅在登录页展示「登录已过期，请重新登录」。
         console.warn("[ipc] AUTH_EXPIRED received, logging out");
-        useAuthStore.setState({ error: "登录已过期，请重新登录" });
+        useAuthStore.setState({ error: t("auth.sessionExpired") });
         void useAuthStore.getState().logout();
         break;
       }
@@ -750,7 +752,7 @@ export function BackendProvider({ children }: { children: React.ReactNode }) {
         invoke("request_skill_list", {
           msgId: crypto.randomUUID(),
         }).catch((e) => console.error("[ipc] auto-refresh skill list failed:", e));
-        toast.success("已删除", skillName);
+        toast.success(t("skills.deleted"), skillName);
         break;
       }
 
@@ -775,16 +777,16 @@ export function BackendProvider({ children }: { children: React.ReactNode }) {
           invoke("request_skill_list", {
             msgId: crypto.randomUUID(),
           }).catch((e) => console.error("[ipc] auto-refresh after import failed:", e));
-          toast.success("导入成功", importedMsg.skill_name);
+          toast.success(t("skills.imported"), importedMsg.skill_name);
         } else {
-          toast.error(`导入失败: ${importedMsg.error ?? "未知错误"}`);
+          toast.error(t("skills.importFailed", { error: importedMsg.error ?? t("skills.unknownError") }));
         }
         break;
       }
 
       case "SKILL_EXPORTED": {
         const exportedMsg = msg as SkillExportedMsg;
-        toast.success("导出成功", exportedMsg.file_path);
+        toast.success(t("skills.exported"), exportedMsg.file_path);
         break;
       }
 
@@ -1026,7 +1028,7 @@ export function BackendProvider({ children }: { children: React.ReactNode }) {
 
         const unlistenCrash = await listen<string>("backend-crashed", (event) => {
           console.error("[ipc] backend-crashed:", event.payload);
-          setError(`后端进程崩溃：${event.payload}`);
+          setError(t("backend.crashed", { detail: event.payload }));
           setStatus("closed");
           readyRef.current = false;
           // 释放 credLoading：避免 CredentialGate 在 sidecrashed 后仍卡在 loading
@@ -1061,7 +1063,7 @@ export function BackendProvider({ children }: { children: React.ReactNode }) {
         }
       } catch (err) {
         console.error("[ipc] setup failed:", err);
-        setError(`IPC 初始化失败：${err}`);
+        setError(t("backend.ipcInitFailed", { detail: String(err) }));
         setStatus("closed");
       }
     };

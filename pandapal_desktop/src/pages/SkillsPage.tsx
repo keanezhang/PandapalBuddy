@@ -7,6 +7,7 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useSkillStore, useFilteredSkills } from "../store/skillStore";
 import { useBackend } from "../providers/BackendProvider";
 import type { SkillItem } from "../types/api";
@@ -34,6 +35,7 @@ function truncateDesc(text: string, max = 48): string {
 }
 
 export function SkillsPage() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { skillName } = useParams<{ skillName?: string }>();
   const decodedName = skillName ? decodeURIComponent(skillName) : undefined;
@@ -70,7 +72,7 @@ export function SkillsPage() {
     return () => { unlisten?.(); };
   }, []);
 
-  const handleDrop = useCallback(async (paths: string[]) => {
+  const handleDrop = useCallback((paths: string[]) => {
     for (const p of paths) {
       const lower = p.toLowerCase();
       if (lower.endsWith(".zip")) importSkillRef.current("", "zip", false, p);
@@ -84,13 +86,13 @@ export function SkillsPage() {
   }, [decodedName, requestSkillDetail]);
 
   const handleImportFolder = async () => {
-    const folderPath = await open({ directory: true, title: "选择技能文件夹" });
+    const folderPath = await open({ directory: true, title: t("skills.selectFolder") });
     if (folderPath) importSkill("", "folder", false, folderPath as string);
   };
   const handleImportZip = async () => {
     const filePath = await open({
-      title: "选择技能 ZIP 文件",
-      filters: [{ name: "ZIP 文件", extensions: ["zip"] }],
+      title: t("skills.selectZipTitle"),
+      filters: [{ name: t("skills.zipFile"), extensions: ["zip"] }],
     });
     if (filePath) importSkill("", "zip", false, filePath as string);
   };
@@ -100,8 +102,8 @@ export function SkillsPage() {
     <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "color-mix(in srgb, var(--accent) 12%, transparent)", border: "3px dashed var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
       <div style={{ background: "var(--bg-elevated)", borderRadius: 16, padding: "32px 48px", textAlign: "center", boxShadow: "var(--shadow-lg)" }}>
         <div style={{ fontSize: "var(--icon-empty-lg)", marginBottom: 12 }}>📥</div>
-        <div style={{ fontSize: "var(--text-xl)", fontWeight: 700, color: "var(--text-primary)" }}>松开导入技能</div>
-        <div style={{ fontSize: "var(--text-base)", color: "var(--text-tertiary)", marginTop: 8 }}>支持文件夹 / ZIP 文件</div>
+        <div style={{ fontSize: "var(--text-xl)", fontWeight: 700, color: "var(--text-primary)" }}>{t("skills.dropRelease")}</div>
+        <div style={{ fontSize: "var(--text-base)", color: "var(--text-tertiary)", marginTop: 8 }}>{t("skills.dropSupport")}</div>
       </div>
     </div>
   );
@@ -142,11 +144,11 @@ export function SkillsPage() {
       return (
         <div style={{ display: "flex", flexDirection: "column", flex: 1, background: "var(--bg-root)" }}>
           <div style={{ padding: "14px 24px", background: "var(--bg-elevated)", borderBottom: "1px solid var(--border-subtle)", display: "flex", alignItems: "center", gap: 12 }}>
-            <button onClick={() => navigate("/skills")} className="btn btn-ghost btn-sm">← 返回</button>
+            <button onClick={() => navigate("/skills")} className="btn btn-ghost btn-sm">{t("skills.back")}</button>
             <span style={{ fontWeight: 600, fontSize: "var(--text-lg)", color: "var(--text-primary)" }}>{decodedName}</span>
           </div>
           <div className="skills-loading" style={{ flex: 1 }}>
-            <span className="skills-loading-dot" /> 加载中…
+            <span className="skills-loading-dot" /> {t("common.loading")}
           </div>
         </div>
       );
@@ -155,12 +157,12 @@ export function SkillsPage() {
       return (
         <div style={{ display: "flex", flexDirection: "column", flex: 1, background: "var(--bg-root)" }}>
           <div style={{ padding: "14px 24px", background: "var(--bg-elevated)", borderBottom: "1px solid var(--border-subtle)", display: "flex", alignItems: "center", gap: 12 }}>
-            <button onClick={() => navigate("/skills")} className="btn btn-ghost btn-sm">← 返回</button>
+            <button onClick={() => navigate("/skills")} className="btn btn-ghost btn-sm">{t("skills.back")}</button>
             <span style={{ fontWeight: 600, fontSize: "var(--text-lg)", color: "var(--text-primary)" }}>{decodedName}</span>
           </div>
           <div className="skills-empty" style={{ flex: 1 }}>
             <div className="skills-empty-icon">🔍</div>
-            <div className="skills-empty-title">未找到技能 &quot;{decodedName}&quot;</div>
+            <div className="skills-empty-title">{t("skills.notFound", { name: decodedName })}</div>
           </div>
         </div>
       );
@@ -169,45 +171,45 @@ export function SkillsPage() {
     return (
       <div className="page-root">
         <div className={isUser ? "page-header page-header--success" : "page-header"}>
-          <button onClick={() => navigate("/skills")} className="btn btn-ghost btn-sm">← 返回列表</button>
+          <button onClick={() => navigate("/skills")} className="btn btn-ghost btn-sm">{t("skills.backToList")}</button>
           <span className={`skill-card-icon ${iconClassFor(detail.name)}`} style={{ width: 36, height: 36, fontSize: "var(--text-lg)" }}>{isUser ? "🎨" : "📦"}</span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 700, fontSize: "var(--text-lg)", color: "var(--text-primary)" }}>{detail.name}</div>
-            <div style={{ fontSize: "var(--text-xs)", color: "var(--text-tertiary)", marginTop: 2 }}>{truncateDesc(detail.description, 72) || "暂无描述"}</div>
+            <div style={{ fontSize: "var(--text-xs)", color: "var(--text-tertiary)", marginTop: 2 }}>{truncateDesc(detail.description, 72) || t("skills.noDesc")}</div>
           </div>
-          <Badge variant={isUser ? "green" : "purple"}>{isUser ? "🎨 我的技能" : "📦 系统技能"}</Badge>
+          <Badge variant={isUser ? "green" : "purple"}>{isUser ? "🎨 " + t("skills.mySkill") : "📦 " + t("skills.systemSkill")}</Badge>
           <Dropdown
-            trigger={<Button variant="ghost" size="sm">📤 导出 ▾</Button>}
+            trigger={<Button variant="ghost" size="sm">{t("skills.exportBtn")}</Button>}
             items={[
-              { label: "📦 导出为 ZIP", onClick: async () => { const fp = await save({ defaultPath: `${detail.name}.zip`, filters: [{ name: "ZIP 完整包", extensions: ["zip"] }] }); if (fp) exportSkill(detail.name, "zip", fp); } },
-              { label: "📁 导出为文件夹", onClick: async () => { const dp = await open({ directory: true, title: "选择导出目标文件夹" }); if (dp) exportSkill(detail.name, "folder", (dp as string) + "/" + detail.name); } },
+              { label: t("skills.exportAsZip"), onClick: async () => { const fp = await save({ defaultPath: `${detail.name}.zip`, filters: [{ name: t("skills.zipFull"), extensions: ["zip"] }] }); if (fp) exportSkill(detail.name, "zip", fp); } },
+              { label: t("skills.exportAsFolder"), onClick: async () => { const dp = await open({ directory: true, title: t("skills.selectExportFolder") }); if (dp) exportSkill(detail.name, "folder", (dp as string) + "/" + detail.name); } },
             ]}
           />
           {isUser && (
             <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-              <button onClick={() => navigate(`/skills/${encodeURIComponent(detail.name)}/edit`)} className="btn btn-success btn-sm">编辑</button>
-              <button onClick={async () => { if (await ask(`确认删除技能 "${detail.name}"？`, { title: "删除技能", kind: "warning" })) { deleteSkill(detail.name); navigate("/skills"); } }} className="btn btn-danger btn-sm">删除</button>
+              <button onClick={() => navigate(`/skills/${encodeURIComponent(detail.name)}/edit`)} className="btn btn-success btn-sm">{t("skills.edit")}</button>
+              <button onClick={async () => { if (await ask(t("skills.confirmDelete", { name: detail.name }), { title: t("skills.deleteTitle"), kind: "warning" })) { deleteSkill(detail.name); navigate("/skills"); } }} className="btn btn-danger btn-sm">{t("skills.delete")}</button>
             </div>
           )}
         </div>
         <div style={{ flex: 1, overflowY: "auto", padding: "24px 36px", maxWidth: 820, margin: "0 auto", width: "100%" }}>
           <div className="skill-detail-card accent-left">
-            <h3 style={{ fontSize: "var(--text-md)", fontWeight: 600, color: "var(--text-primary)", margin: "0 0 12px" }}>📝 技能描述</h3>
-            <p style={{ fontSize: "var(--text-md)", color: "var(--text-secondary)", lineHeight: 1.7, margin: "0 0 16px" }}>{detail.description || "暂无描述"}</p>
+            <h3 style={{ fontSize: "var(--text-md)", fontWeight: 600, color: "var(--text-primary)", margin: "0 0 12px" }}>{t("skills.descTitle")}</h3>
+            <p style={{ fontSize: "var(--text-md)", color: "var(--text-secondary)", lineHeight: 1.7, margin: "0 0 16px" }}>{detail.description || t("skills.noDesc")}</p>
             {detail.tags && detail.tags.length > 0 && <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>{detail.tags.map((tag) => <span key={tag} className="skill-card-tag">{tag}</span>)}</div>}
             <div style={{ display: "flex", gap: 20, fontSize: "var(--text-sm)", color: "var(--text-tertiary)" }}>
-              <span>📄 {(detail.size / 1024).toFixed(1)} KB</span><span>🕐 {detail.modified_at || "未知"}</span><span>🔖 {detail.type === "ACTION" ? "动作" : "知识"}技能</span>
+              <span>📄 {t("skills.kb", { size: (detail.size / 1024).toFixed(1) })}</span><span>🕐 {detail.modified_at || t("skills.unknown")}</span><span>🔖 {t("skills.typeSuffix", { type: detail.type === "ACTION" ? t("skills.action") : t("skills.knowledge") })}</span>
             </div>
           </div>
           {detail.when_to_use && (
             <div className="skill-detail-card warn-left">
-              <h3 style={{ fontSize: "var(--text-md)", fontWeight: 600, color: "var(--text-primary)", margin: "0 0 10px" }}>🎯 何时调用</h3>
+              <h3 style={{ fontSize: "var(--text-md)", fontWeight: 600, color: "var(--text-primary)", margin: "0 0 10px" }}>{t("skills.whenToUse")}</h3>
               <p style={{ fontSize: "var(--text-base)", color: "var(--text-secondary)", lineHeight: 1.85, margin: 0 }}>{detail.when_to_use}</p>
             </div>
           )}
           <div className="skill-detail-card">
-            <h3 style={{ fontSize: "var(--text-md)", fontWeight: 600, color: "var(--text-primary)", margin: "0 0 12px" }}>📋 技能内容</h3>
-            <pre style={{ fontSize: "var(--text-sm)", color: "var(--text-secondary)", lineHeight: 1.7, margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word", background: "var(--color-code-bg)", borderRadius: 8, padding: 18, maxHeight: 500, overflowY: "auto", border: "1px solid var(--border-subtle)" }}>{detail.content || "(暂无内容)"}</pre>
+            <h3 style={{ fontSize: "var(--text-md)", fontWeight: 600, color: "var(--text-primary)", margin: "0 0 12px" }}>{t("skills.contentTitle")}</h3>
+            <pre style={{ fontSize: "var(--text-sm)", color: "var(--text-secondary)", lineHeight: 1.7, margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word", background: "var(--color-code-bg)", borderRadius: 8, padding: 18, maxHeight: 500, overflowY: "auto", border: "1px solid var(--border-subtle)" }}>{detail.content || t("skills.noContent")}</pre>
           </div>
         </div>
         {isDragOver && renderDragOverlay()}
@@ -226,20 +228,20 @@ export function SkillsPage() {
         <div style={{ flex: 1 }}>
           <h1 className="page-title" style={{ marginBottom: 4 }}>
             <span style={{ width: 34, height: 34, fontSize: "var(--text-lg)", display: "flex", alignItems: "center", justifyContent: "center" }}>📙</span>
-            技能
+            {t("skills.title")}
           </h1>
 
         </div>
         <div className="skills-page-actions">
           <Dropdown
-            trigger={<Button variant="accent" size="sm">📥 导入 ▾</Button>}
+            trigger={<Button variant="accent" size="sm">{t("skills.importBtn")}</Button>}
             items={[
-              { label: "📁 导入文件夹", onClick: handleImportFolder },
-              { label: "📦 导入 ZIP", onClick: handleImportZip },
+              { label: t("skills.importFolder"), onClick: handleImportFolder },
+              { label: t("skills.importZip"), onClick: handleImportZip },
             ]}
           />
-          <button onClick={() => navigate("/skills/new")} className="btn btn-success btn-sm">＋ 新建</button>
-          {loading && <span className="skills-loading-dot" style={{ marginLeft: 8 }} title="刷新中..." />}
+          <button onClick={() => navigate("/skills/new")} className="btn btn-success btn-sm">{t("skills.new")}</button>
+          {loading && <span className="skills-loading-dot" style={{ marginLeft: 8 }} title={t("skills.refreshing")} />}
         </div>
       </div>
 
@@ -248,24 +250,24 @@ export function SkillsPage() {
         <div style={{ width: "90%", margin: "0 auto" }}>
           <div className="skills-search-wrap" style={{ marginBottom: 32 }}>
             <span className="skills-search-icon">🔍</span>
-            <input type="text" className="skills-search-input" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="搜索技能名称、描述或标签..." style={{ padding: "12px 36px 12px 42px", fontSize: "var(--text-md)", borderRadius: 10 }} />
+            <input type="text" className="skills-search-input" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder={t("skills.searchPlaceholder")} style={{ padding: "12px 36px 12px 42px", fontSize: "var(--text-md)", borderRadius: 10 }} />
             {searchQuery && <button className="skills-search-clear" onClick={() => setSearchQuery("")}>✕</button>}
           </div>
 
           {loading && skills.length === 0 ? (
-            <div className="skills-loading"><span className="skills-loading-dot" /> 加载技能列表中…</div>
+            <div className="skills-loading"><span className="skills-loading-dot" /> {t("skills.loadingList")}</div>
           ) : skills.length === 0 ? (
             <div className="skills-empty">
               <div className="skills-empty-icon">📭</div>
-              <div className="skills-empty-title">暂无可用技能</div>
-              <div className="skills-empty-desc">你可以新建一个自定义技能，或从外部导入 SKILL.md 文件</div>
+              <div className="skills-empty-title">{t("skills.emptyTitle")}</div>
+              <div className="skills-empty-desc">{t("skills.emptyDesc")}</div>
               <div className="skills-empty-actions">
-                <button onClick={() => navigate("/skills/new")} className="btn btn-success">＋ 新建技能</button>
+                <button onClick={() => navigate("/skills/new")} className="btn btn-success">{t("skills.newSkill")}</button>
                 <Dropdown
-                  trigger={<Button variant="accent">📥 导入 ▾</Button>}
+                  trigger={<Button variant="accent">{t("skills.importBtn")}</Button>}
                   items={[
-                    { label: "📁 导入文件夹", onClick: handleImportFolder },
-                    { label: "📦 导入 ZIP", onClick: handleImportZip },
+                    { label: t("skills.importFolder"), onClick: handleImportFolder },
+                    { label: t("skills.importZip"), onClick: handleImportZip },
                   ]}
                 />
               </div>
@@ -273,21 +275,21 @@ export function SkillsPage() {
           ) : searchQuery && systemSkills.length === 0 && userSkills.length === 0 ? (
             <div className="skills-no-match">
               <div className="skills-no-match-icon">🔍</div>
-              <div className="skills-no-match-title">没有匹配 &quot;{searchQuery}&quot; 的技能</div>
-              <div className="skills-no-match-hint">请尝试其他关键词</div>
+              <div className="skills-no-match-title">{t("skills.noMatch", { q: searchQuery })}</div>
+              <div className="skills-no-match-hint">{t("skills.tryOther")}</div>
             </div>
           ) : (
             <>
               {systemSkills.length > 0 && (
                 <section className="skills-section">
-                  <div className="skills-section-label">System Installed</div>
+                  <div className="skills-section-label">{t("skills.systemInstalled")}</div>
                   <div className="skills-section-divider" />
                   <div className="skills-grid">{systemSkills.map(renderSkillCard)}</div>
                 </section>
               )}
               {userSkills.length > 0 && (
                 <section className="skills-section">
-                  <div className="skills-section-label">My Skills</div>
+                  <div className="skills-section-label">{t("skills.mySkills")}</div>
                   <div className="skills-section-divider" />
                   <div className="skills-grid">{userSkills.map(renderSkillCard)}</div>
                 </section>

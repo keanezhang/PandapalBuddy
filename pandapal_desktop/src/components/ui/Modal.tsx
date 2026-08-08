@@ -8,6 +8,7 @@
  */
 
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
 interface ModalProps {
   title?: ReactNode;
@@ -34,6 +35,7 @@ export function Modal({
   bare = false,
   children,
 }: ModalProps) {
+  const { t } = useTranslation();
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div
@@ -46,7 +48,7 @@ export function Modal({
             <span className="modal-title">{title}</span>
             {headerExtra}
             <div style={{ flex: 1 }} />
-            <button className="modal-close" onClick={onClose} title="关闭">
+            <button className="modal-close" onClick={onClose} title={t("common.close")}>
               ✕
             </button>
           </div>

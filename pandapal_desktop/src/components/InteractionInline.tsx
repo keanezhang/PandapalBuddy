@@ -4,6 +4,7 @@
  * 交互型工具内嵌问题渲染组件（多问题版）。纯 v2 Token。
  */
 import { useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { useBackend } from "../providers/BackendProvider";
 import type { QuestionItem } from "../types/api";
 
@@ -17,6 +18,7 @@ interface InteractionInlineProps {
 }
 
 export function InteractionInline({ questions, run_id, tool_name, sessionId, onResolved }: InteractionInlineProps) {
+  const { t } = useTranslation();
   const { sendInteractionResponse } = useBackend();
   const [answers, setAnswers] = useState<Map<number, string[]>>(new Map());
   const [submitted, setSubmitted] = useState(false);
@@ -47,7 +49,7 @@ export function InteractionInline({ questions, run_id, tool_name, sessionId, onR
     // AskUserRenderer 卡片（标注工具名 + 选择结果）在时间线里展示，这样运行时
     // 与历史还原保持一致，避免出现未标注来源的重复回显。
     const responseParts = questions.map((q, qi) => {
-      const header = q.header || `问题${qi + 1}`;
+      const header = q.header || t("chat.questionN", { n: qi + 1 });
       const ans = answers.get(qi) ?? [];
       return `${header}=${ans.map(stripFreePrefix).join(",")}`;
     });
@@ -102,7 +104,7 @@ export function InteractionInline({ questions, run_id, tool_name, sessionId, onR
                   cursor: allAnswered ? "pointer" : "not-allowed",
                 }}
               >
-                {allAnswered ? "提交全部回答" : `请回答所有问题（${unansweredCount} 题未答）`}
+                {allAnswered ? t("interaction.submitAll") : t("interaction.pendingAll", { count: unansweredCount })}
               </button>
             </div>
           )}
@@ -122,6 +124,7 @@ function QuestionCard({
   index: number; question: QuestionItem; selected: string[];
   onSelect: (label: string) => void; disabled: boolean;
 }) {
+  const { t } = useTranslation();
   const multiSelect = question.multiSelect;
   const freeSelected = selected.length === 1 && selected[0].startsWith(FREE_INPUT_PREFIX);
   const freeText = freeSelected ? selected[0].slice(FREE_INPUT_PREFIX.length) : "";
@@ -145,10 +148,10 @@ function QuestionCard({
             color: freeSelected ? "var(--success)" : multiSelect ? "var(--accent-2)" : "var(--info)",
             marginRight: "var(--space-1)",
           }}>
-            {question.header}{multiSelect ? " (多选)" : ""}
+            {question.header}{multiSelect ? t("interaction.multiSelectSuffix") : ""}
           </span>
         )}
-        <span style={{ color: "var(--text-tertiary)", fontSize: "var(--text-2xs)" }}>第{index + 1}题</span>
+        <span style={{ color: "var(--text-tertiary)", fontSize: "var(--text-2xs)" }}>{t("interaction.questionIndex", { index: index + 1 })}</span>
       </div>
       <div style={{ fontSize: "var(--text-base)", fontWeight: 500, color: "var(--text-primary)", marginBottom: "var(--space-2)", lineHeight: 1.5 }}>
         {question.question}
@@ -177,7 +180,7 @@ function QuestionCard({
             );
           })}
           <div onClick={handleFreeInputToggle} className="interaction-option">
-            <span className="radio" /> 自由输入...
+            <span className="radio" /> {t("interaction.freeInput")}
           </div>
         </div>
       ) : (
@@ -186,7 +189,7 @@ function QuestionCard({
             value={freeText}
             onChange={(e) => handleFreeInputChange(e.target.value)}
             disabled={disabled}
-            placeholder="输入你的想法..."
+            placeholder={t("interaction.freeInputPlaceholder")}
             rows={3}
             autoFocus
             style={{
@@ -204,7 +207,7 @@ function QuestionCard({
             className="btn btn-ghost btn-xs"
             style={{ alignSelf: "flex-start" }}
           >
-            ← 返回选项
+            ← {t("interaction.backToOptions")}
           </button>
         </div>
       )}

@@ -6,6 +6,7 @@
  * 全部使用 var(--xxx) v2 Token
  */
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { usePreferenceStore } from "../store/preferenceStore";
 import { useIsStreaming } from "../store/chatStore";
 
@@ -49,6 +50,7 @@ function IconSwap() {
 }
 
 export function TopToolbar() {
+  const { t } = useTranslation();
   const isStreaming = useIsStreaming();
 
   // 模式切换（办公助手 / 编码）已移至左侧边栏 ModeSwitcher
@@ -97,11 +99,10 @@ export function TopToolbar() {
               animation: "spin 0.8s linear infinite",
               display: "inline-block",
             }} />
-            AI 思考中
+            {t("topbar.aiThinking")}
           </div>
         )}
       </div>
-
       {/* 右侧 */}
       <div style={{
         display: "flex", alignItems: "center", gap: "var(--space-2)",
@@ -111,7 +112,7 @@ export function TopToolbar() {
         <button
           type="button"
           onClick={toggleSidebar}
-          title={sidebarCollapsed ? "显示侧边栏" : "隐藏侧边栏"}
+          title={sidebarCollapsed ? t("topbar.showSidebar") : t("topbar.hideSidebar")}
           style={toolbarBtnStyle}
           onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-elevated)"; e.currentTarget.style.color = "var(--text-primary)"; }}
           onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--text-tertiary)"; }}
@@ -123,7 +124,7 @@ export function TopToolbar() {
         <button
           type="button"
           onClick={toggleViewer}
-          title={viewerVisible ? "隐藏查看器" : "显示查看器"}
+          title={viewerVisible ? t("topbar.hideViewer") : t("topbar.showViewer")}
           style={{
             ...toolbarBtnStyle,
             color: viewerVisible ? "var(--accent)" : "var(--text-tertiary)",
@@ -139,7 +140,7 @@ export function TopToolbar() {
         <button
           type="button"
           onClick={swapPanels}
-          title="交换面板位置"
+          title={t("topbar.swapPanels")}
           style={{
             ...toolbarBtnStyle,
             color: swapped ? "var(--accent)" : "var(--text-tertiary)",

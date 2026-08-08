@@ -1,6 +1,7 @@
 {
   "name": "pandapal-desktop",
   "private": true,
+  "packageManager": "pnpm@11.20.0",
   "version": "0.1.0",
   "type": "module",
   "scripts": {
@@ -23,9 +24,11 @@
     "@tauri-apps/plugin-fs": "^2.5.1",
     "@tauri-apps/plugin-store": "^2",
     "dompurify": "^3.2.7",
+    "i18next": "^26.3.6",
     "marked": "^18.0.5",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-i18next": "^17.0.11",
     "react-router-dom": "^6.23.1",
     "zustand": "^4.5.2"
   },

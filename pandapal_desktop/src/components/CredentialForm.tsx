@@ -10,6 +10,7 @@
  */
 
 import { useState, useCallback, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import {
   useCredentialStore,
   getProviderMeta,
@@ -99,6 +100,7 @@ export function CredentialForm({
   keyChanged = false,
   onKeyChangedToggle,
 }: CredentialFormProps) {
+  const { t } = useTranslation();
   const [showKey, setShowKey] = useState(false);
   const [comboOpen, setComboOpen] = useState(false);
 
@@ -295,7 +297,7 @@ export function CredentialForm({
           )}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
-          {isDefault && <span className="cred-badge cred-badge--success">默认</span>}
+          {isDefault && <span className="cred-badge cred-badge--success">{t("cred.default")}</span>}
           {guideUrl && (
             <a
               href={guideUrl}
@@ -304,7 +306,7 @@ export function CredentialForm({
               className="cred-guide-link"
               onClick={(e) => e.stopPropagation()}
             >
-              获取密钥 →
+              {t("cred.getKey")} →
             </a>
           )}
         </div>
@@ -331,9 +333,9 @@ export function CredentialForm({
                 onKeyChangedToggle?.(true);
                 setShowKey(false);
               }}
-              title="替换为新的 API Key"
+              title={t("cred.changeKeyTitle")}
             >
-              更换密钥
+              {t("cred.changeKey")}
             </button>
           </div>
         ) : (
@@ -358,13 +360,13 @@ export function CredentialForm({
                   onClick={() => setShowKey((v) => !v)}
                   tabIndex={-1}
                 >
-                  {showKey ? "隐藏" : "显示"}
+                  {showKey ? t("cred.hide") : t("cred.show")}
                 </button>
               </div>
             </div>
             {isSaved && keyChanged && (
               <div className="cred-placeholder">
-                请填写完整的新密钥；
+                {t("cred.fillNewKey")}
                 <button
                   type="button"
                   className="cred-link-btn"
@@ -374,13 +376,13 @@ export function CredentialForm({
                     onChange({ ...credential, api_key: "" });
                   }}
                 >
-                  取消更换
+                  {t("cred.cancelChange")}
                 </button>
               </div>
             )}
             {isMaskedKey(credential.api_key) && (
               <div className="cred-error-text">
-                ⚠ 这看起来是脱敏值，不能作为密钥保存，请填写完整的真实密钥
+                ⚠ {t("cred.maskedKeyWarning")}
               </div>
             )}
           </>
@@ -397,7 +399,7 @@ export function CredentialForm({
           ║   _DECLARED_MODELS 白名单换马甲复活，明令禁止。                   ║
           ╚══════════════════════════════════════════════════════════════════╝ */}
       <div className="cred-field">
-        <label className="cred-label">模型 ID *</label>
+        <label className="cred-label">{t("cred.modelId")} *</label>
         <div className="cred-combo-wrap">
           <input
             type="text"
@@ -410,7 +412,7 @@ export function CredentialForm({
             // 延迟收起：否则 mousedown 尚未触发 onClick，列表就先被 blur 关掉了
             onBlur={() => setTimeout(() => setComboOpen(false), 120)}
             // 占位文案不举具体 model_id 例子：代码内不留任何模型字面量（PRD G2 上线检查清单）
-            placeholder="输入或从下拉推荐中选择模型 ID"
+            placeholder={t("cred.modelIdPlaceholder")}
             disabled={disabled}
             className={CX("cred-input", duplicateKey && "cred-input--error")}
             role="combobox"
@@ -438,17 +440,17 @@ export function CredentialForm({
               {/* 无匹配项也**不阻塞输入**：明确告诉用户手填是受支持的路径 */}
               <div className="cred-combo-hint">
                 {comboCandidates.length === 0
-                  ? "无匹配的推荐模型 —— 可直接手填任意模型 ID，填写单价后即可保存"
-                  : "以上仅为推荐，可直接手填任意模型 ID"}
+                  ? t("cred.comboNoMatch")
+                  : t("cred.comboHint")}
               </div>
             </div>
           )}
         </div>
         {duplicateKey && (
-          <div className="cred-error-text">⚠ 该模型已配置，请勿重复添加</div>
+          <div className="cred-error-text">⚠ {t("cred.duplicateModel")}</div>
         )}
         <div className="cred-placeholder">
-          可手填服务商支持的任意模型 ID；下拉仅为常见模型的推荐，不构成限制
+          {t("cred.modelIdHint")}
         </div>
       </div>
 
@@ -456,20 +458,20 @@ export function CredentialForm({
       <div className="cred-price-section">
         <div className="cred-price-header">
           <span className="cred-label">
-            计费设置{" "}
+            {t("cred.pricing")}{" "}
             <span style={{ fontWeight: 400, color: "var(--text-muted)" }}>
               CNY / 1k token
             </span>
           </span>
           <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
             {priceSource === "system" && (
-              <span className="cred-badge cred-badge--muted">系统默认价</span>
+              <span className="cred-badge cred-badge--muted">{t("cred.systemPrice")}</span>
             )}
             {priceSource === "user" && (
-              <span className="cred-badge cred-badge--accent">我填的价</span>
+              <span className="cred-badge cred-badge--accent">{t("cred.userPrice")}</span>
             )}
             {priceSource === "missing" && (
-              <span className="cred-badge cred-badge--warning">待补价</span>
+              <span className="cred-badge cred-badge--warning">{t("cred.missingPrice")}</span>
             )}
             {/* 「我要自己填」：仅在正用系统默认价时有意义 */}
             {priceSource === "system" && (
@@ -479,7 +481,7 @@ export function CredentialForm({
                 onClick={handleOverridePrice}
                 disabled={disabled}
               >
-                我要自己填
+                {t("cred.fillMyself")}
               </button>
             )}
             {/* 「恢复默认价」：仅在系统表命中且用户已覆盖时可见 */}
@@ -490,7 +492,7 @@ export function CredentialForm({
                 onClick={handleRestoreDefaultPrice}
                 disabled={disabled}
               >
-                恢复默认价
+                {t("cred.restoreDefault")}
               </button>
             )}
           </div>
@@ -499,19 +501,21 @@ export function CredentialForm({
         {!priceEditable && systemPrice ? (
           // 命中系统默认表且用户未覆盖：只读展示，用户零输入（PRD Story 2）
           <div className="cred-placeholder">
-            输入 ¥{systemPrice.input_price_per_1k} · 输出 ¥
-            {systemPrice.output_price_per_1k}
+            {t("cred.systemPriceDetail", {
+              input: systemPrice.input_price_per_1k,
+              output: systemPrice.output_price_per_1k,
+            })}
             {systemPrice.cache_read_price_per_1k != null && (
-              <> · 缓存命中 ¥{systemPrice.cache_read_price_per_1k}</>
+              <> {t("cred.systemPriceCache", { cache: systemPrice.cache_read_price_per_1k })}</>
             )}
             <br />
-            系统默认价为代表性估算，若你有采购折扣请点「我要自己填」。
+            {t("cred.systemPriceHint")}
           </div>
         ) : (
           <>
             <div className="cred-price-row">
               <div className="cred-price-cell">
-                <label className="cred-label">输入价 *</label>
+                <label className="cred-label">{t("cred.inputPrice")} *</label>
                 <input
                   type="number"
                   min={0}
@@ -524,7 +528,7 @@ export function CredentialForm({
                 />
               </div>
               <div className="cred-price-cell">
-                <label className="cred-label">输出价 *</label>
+                <label className="cred-label">{t("cred.outputPrice")} *</label>
                 <input
                   type="number"
                   min={0}
@@ -538,9 +542,9 @@ export function CredentialForm({
               </div>
               <div className="cred-price-cell">
                 <label className="cred-label">
-                  缓存命中价{" "}
+                  {t("cred.cachePrice")}{" "}
                   <span style={{ fontWeight: 400, color: "var(--text-muted)" }}>
-                    （可选）
+                    {t("cred.optional")}
                   </span>
                 </label>
                 <input
@@ -551,7 +555,7 @@ export function CredentialForm({
                   onChange={(e) =>
                     handlePriceInput("cache_read_price_per_1k", e.target.value)
                   }
-                  placeholder="留空 = 按输入价计"
+                  placeholder={t("cred.cachePricePlaceholder")}
                   disabled={disabled}
                   className={CX("cred-input", priceNegative && "cred-input--error")}
                 />
@@ -559,17 +563,17 @@ export function CredentialForm({
             </div>
             {priceSource === "missing" && (
               <div className="cred-placeholder">
-                该模型无系统默认价，请填写你的实际单价后再保存
+                {t("cred.missingPriceHint")}
               </div>
             )}
             {priceHalfFilled && (
-              <div className="cred-error-text">⚠ 输入价与输出价需同时填写</div>
+              <div className="cred-error-text">⚠ {t("cred.priceHalfFilled")}</div>
             )}
             {priceNegative && (
-              <div className="cred-error-text">⚠ 单价必须是不小于 0 的数字</div>
+              <div className="cred-error-text">⚠ {t("cred.priceNegative")}</div>
             )}
             <div className="cred-placeholder">
-              缓存命中价留空时按**生效的输入价**计（保守估高，绝不低估费用）
+              {t("cred.cachePriceHint")}
             </div>
           </>
         )}
@@ -581,29 +585,29 @@ export function CredentialForm({
       {/* ── Base URL ── */}
       <div className="cred-field">
         <label className="cred-label">
-          API 地址{" "}
+          {t("cred.baseUrl")}{" "}
           <span style={{ fontWeight: 400, color: "var(--text-muted)" }}>
-            （可选）
+            {t("cred.optional")}
           </span>
         </label>
         <input
           type="text"
           value={credential.base_url ?? ""}
           onChange={(e) => updateField("base_url", e.target.value || undefined)}
-          placeholder={defaultBaseUrl || "留空使用官方默认地址"}
+          placeholder={defaultBaseUrl || t("cred.baseUrlPlaceholder")}
           disabled={disabled}
           className="cred-input"
         />
         {defaultBaseUrl && (
           <div className="cred-placeholder">
-            留空使用官方默认地址：{defaultBaseUrl}
+            {t("cred.baseUrlHint", { url: defaultBaseUrl })}
           </div>
         )}
       </div>
 
       {/* ── 校验状态 ── */}
       {isVerifying && (
-        <div className="verify-progress" style={{ marginTop: "var(--space-1)" }}>⏳ 正在验证 {providerDisplayName}…</div>
+        <div className="verify-progress" style={{ marginTop: "var(--space-1)" }}>⏳ {t("cred.verifying", { provider: providerDisplayName })}…</div>
       )}
       {error && (
         <div className="cred-error-text">
@@ -620,14 +624,14 @@ export function CredentialForm({
               className="cred-action-btn"
               onClick={onSetDefault}
               disabled={disabled}
-              title="设为默认模型（对应 toml 的 default_model_id）"
+              title={t("cred.setDefaultTitle")}
             >
-              设为默认
+              {t("cred.setDefault")}
             </button>
           )}
           {isDefault && (
             <span style={{ fontSize: "var(--text-xs)", color: "var(--success)", fontWeight: 500 }}>
-              ✓ 当前默认
+              ✓ {t("cred.currentDefault")}
             </span>
           )}
         </div>
@@ -638,9 +642,9 @@ export function CredentialForm({
               className="cred-action-btn cred-action-btn--danger"
               onClick={onDelete}
               disabled={disabled}
-              title="删除此服务商凭据"
+              title={t("cred.deleteTitle")}
             >
-              删除
+              {t("cred.delete")}
             </button>
           )}
         </div>

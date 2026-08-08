@@ -16,14 +16,15 @@
  * 绿灯只认后端明确发来的 info 反馈，不靠"缺失"反推。
  */
 import React from "react";
+import { useTranslation } from "react-i18next";
 import type { ToolFeedback } from "../../../types/api";
 
 type Tone = {
   color: string;
   bg: string;
   icon: string;
-  /** 底部安心文案；null = 不显示 */
-  footer: string | null;
+  /** 底部安心文案 key；null = 不显示 */
+  footerKey: string | null;
 };
 
 const TONE: Record<ToolFeedback["severity"], Tone> = {
@@ -31,31 +32,33 @@ const TONE: Record<ToolFeedback["severity"], Tone> = {
     color: "var(--danger)",
     bg: "rgba(239,68,68,0.08)",
     icon: "✗",
-    footer: "已把诊断交给 Agent，正在修改…",
+    footerKey: "toolFeedback.errorFooter",
   },
   warning: {
     color: "var(--warning)",
     bg: "rgba(245,158,11,0.08)",
     icon: "!",
-    footer: "已提示 Agent 关注，不影响继续执行。",
+    footerKey: "toolFeedback.warningFooter",
   },
   info: {
     color: "var(--success)",
     bg: "rgba(34,197,94,0.08)",
     icon: "✓",
-    footer: null,   // 通过态正文已自解释，再加一句footer 是噪音
+    footerKey: null,   // 通过态正文已自解释，再加一句footer 是噪音
   },
 };
 
-/** source → 给人看的名字。未知 source 原样显示，不隐藏（新 provider 无需改这里也能用）。 */
-const SOURCE_LABEL: Record<string, string> = {
-  code_quality_gate: "代码质量检查",
+/** source → 给人看的名字 key。未知 source 原样显示，不隐藏（新 provider 无需改这里也能用）。 */
+const SOURCE_LABEL_KEY: Record<string, string> = {
+  code_quality_gate: "toolFeedback.codeQualityGate",
 };
 
 export function ToolFeedbackBanner({ feedback }: { feedback?: ToolFeedback | null }) {
+  const { t } = useTranslation();
   if (!feedback) return null;                       // 见文件头：缺失 ≠ 通过
   const tone = TONE[feedback.severity] ?? TONE.info;
-  const label = SOURCE_LABEL[feedback.source] ?? feedback.source;
+  const labelKey = SOURCE_LABEL_KEY[feedback.source];
+  const label = labelKey ? t(labelKey) : feedback.source;
   const passed = feedback.severity === "info";
 
   return (
@@ -76,7 +79,7 @@ export function ToolFeedbackBanner({ feedback }: { feedback?: ToolFeedback | nul
         <span style={{ color: tone.color, fontWeight: 600 }}>
           {label}
           <span style={{ fontWeight: 400, marginLeft: 4 }}>
-            {passed ? "通过" : "未通过"}
+            {passed ? t("toolFeedback.passed") : t("toolFeedback.failed")}
           </span>
         </span>
       </div>
@@ -99,9 +102,9 @@ export function ToolFeedbackBanner({ feedback }: { feedback?: ToolFeedback | nul
         {feedback.text}
       </pre>
 
-      {tone.footer && (
+      {tone.footerKey && (
         <div style={{ marginTop: 4, fontSize: "var(--text-xs)", color: "var(--text-tertiary)" }}>
-          {tone.footer}
+          {t(tone.footerKey)}
         </div>
       )}
     </div>

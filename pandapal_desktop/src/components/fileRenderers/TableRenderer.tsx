@@ -7,6 +7,7 @@
  *   - 虚拟滚动：仅渲染可视行，去掉此前的 500 行硬截断，可承载十万级行数
  */
 import { useMemo, useRef, useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 
 interface TableRendererProps {
   content: string;
@@ -54,6 +55,7 @@ function parseDelimited(text: string, delimiter: string): string[][] {
 }
 
 export function TableRenderer({ content }: TableRendererProps) {
+  const { t } = useTranslation();
   const rows = useMemo(() => {
     if (!content.trim()) return [];
     try {
@@ -90,7 +92,7 @@ export function TableRenderer({ content }: TableRendererProps) {
         flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
         color: "var(--text-muted)", fontSize: "var(--text-base)",
       }}>
-        无法解析表格
+        {t("fileRenderers.tableParseFailed")}
       </div>
     );
   }

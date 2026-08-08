@@ -31,6 +31,7 @@
 
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
+import i18n from "../i18n";
 import type {
   ModelPriceEntry,
   ModelPricesPayload,
@@ -348,7 +349,7 @@ export const useCredentialStore = create<CredentialState>()((set, get) => ({
   },
 
   _setSaveResult: (success, error) =>
-    set({ saving: false, saveError: success ? null : (error ?? "保存失败") }),
+    set({ saving: false, saveError: success ? null : (error ?? i18n.t("cred.errSave")) }),
 
   _updateStatus: (status) => {
     // 必须落盘到 store：此前这里是空实现，checkStatus() 发出的 IPC 回包

@@ -12,6 +12,8 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import i18n from "../i18n";
 import type { DegradationStat, SessionData, Turn } from "../types/dashboard";
 import { useDashboardStore } from "../store/dashboardStore";
 import { useBackend } from "../providers/BackendProvider";
@@ -60,7 +62,7 @@ const fmtMs = (ms: number) => (ms >= 1000 ? (ms / 1000).toFixed(1) + "s" : Math.
  *  cancelled = 暂停（等待人工/用户/审批），是正常中间态，绝不用红色误导成失败。 */
 function runStatusMeta(status: string): { pill: string; icon: string; label: string } {
   if (status === "ok") return { pill: "ok", icon: "✓", label: "ok" };
-  if (status === "cancelled") return { pill: "warn", icon: "⏸", label: "暂停" };
+  if (status === "cancelled") return { pill: "warn", icon: "⏸", label: i18n.t("dashboard.paused") };
   return { pill: "danger", icon: "✕", label: status || "error" };
 }
 const dateOf = (s: SessionData) => s.created_at.slice(0, 10);
@@ -74,15 +76,17 @@ function fmtLocalTime(iso: string): string {
   }
 }
 const ACCENT = "var(--accent-soft)";
-const ROLE_META: Record<Turn["role"], { label: string; color: string }> = {
-  user: { label: "用户", color: "var(--accent-soft)" },
-  assistant: { label: "助手", color: "var(--success)" },
-  tool: { label: "工具", color: "var(--info)" },
+// roleKey 用于渲染期 t() 取值（模块级 i18n.t 只在 import 时求值一次，语言切换不刷新）
+const ROLE_META: Record<Turn["role"], { roleKey: string; color: string }> = {
+  user: { roleKey: "dashboard.roleUser", color: "var(--accent-soft)" },
+  assistant: { roleKey: "dashboard.roleAssistant", color: "var(--success)" },
+  tool: { roleKey: "dashboard.roleTool", color: "var(--info)" },
 };
 type TabId = "overview" | "cost" | "perf" | "sessions" | "health";
 
 /* ═══════════════ 页面容器 ═══════════════ */
 export function DashboardPage() {
+  const { t } = useTranslation();
   const { requestDashboard } = useBackend();
   const snapshot = useDashboardStore((s) => s.snapshot);
   const loading = useDashboardStore((s) => s.loading);
@@ -179,17 +183,17 @@ export function DashboardPage() {
   const toggleTurn = (key: string) =>
     setOpenTurns((prev) => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
 
-  const modelLabel = models.length === 0 ? "—" : models.length === 1 ? models[0].model : `混合 · ${models.length} 个模型`;
+  const modelLabel = models.length === 0 ? "—" : models.length === 1 ? models[0].model : t("dashboard.mixedModels", { count: models.length });
   const p99Over = perf.p99 >= ALERT_P99_LATENCY_MS && perf.count > 0;
 
   // Tab 去 icon（AC-04）：只留文字标签 + 计数徽标，减少视觉噪音
   const TABS: [TabId, string, string][] = [
-    ["overview", "概览", `${facts.length}`],
-    ["cost", "成本", ""],
-    ["perf", "性能", p99Over ? "P99↑" : ""],
-    ["sessions", "会话 · 链路", `${filtered.length}`],
+    ["overview", t("dashboard.tabOverview"), `${facts.length}`],
+    ["cost", t("dashboard.tabCost"), ""],
+    ["perf", t("dashboard.tabPerf"), p99Over ? "P99↑" : ""],
+    ["sessions", t("dashboard.tabSessions"), `${filtered.length}`],
     // 徽标只在有 abort 类降级时告警（其余情况显示总数或留空），避免 log_only 噪音刷存在感
-    ["health", "健康 · 降级", degSummary.abortCount > 0 ? `⚠ ${degSummary.abortCount}` : degSummary.total ? `${degSummary.total}` : ""],
+    ["health", t("dashboard.tabHealth"), degSummary.abortCount > 0 ? `⚠ ${degSummary.abortCount}` : degSummary.total ? `${degSummary.total}` : ""],
   ];
 
   return (
@@ -210,10 +214,10 @@ export function DashboardPage() {
           <input type="date" value={start ?? ""} min={dateBounds.min} max={end} onChange={(e) => setStart(e.target.value)} className="dash-date" />
           <span style={{ color: "var(--text-muted)", fontSize: "var(--text-sm)" }}>→</span>
           <input type="date" value={end ?? ""} min={start} max={dateBounds.max} onChange={(e) => setEnd(e.target.value)} className="dash-date" />
-          <QuickRange label="近 3 天" onClick={() => { setStart(shiftDate(dateBounds.max, -2)); setEnd(dateBounds.max); }} />
-          <QuickRange label="全部" onClick={() => { setStart(dateBounds.min); setEnd(dateBounds.max); }} />
-          <span className="dash-badge" onClick={() => requestDashboard()} title="刷新" style={{ cursor: "pointer", background: "color-mix(in srgb, var(--success) 12%, transparent)", color: "var(--success)" }}>
-            {loading ? "⟳ 加载中" : "⟳ 刷新"}
+          <QuickRange label={t("dashboard.quick3d")} onClick={() => { setStart(shiftDate(dateBounds.max, -2)); setEnd(dateBounds.max); }} />
+          <QuickRange label={t("dashboard.quickAll")} onClick={() => { setStart(dateBounds.min); setEnd(dateBounds.max); }} />
+          <span className="dash-badge" onClick={() => requestDashboard()} title={t("dashboard.refresh")} style={{ cursor: "pointer", background: "color-mix(in srgb, var(--success) 12%, transparent)", color: "var(--success)" }}>
+            {loading ? `⟳ ${t("dashboard.loading")}` : `⟳ ${t("dashboard.refresh")}`}
           </span>
         </div>
         {/* Tab 导航 */}
@@ -231,13 +235,13 @@ export function DashboardPage() {
       <div style={{ flex: 1, overflowY: "auto" }}>
         <div style={{ maxWidth: 1120, margin: "0 auto", padding: "18px 24px 60px" }}>
           {snapshot == null ? (
-            <Empty text={loading ? "正在加载运行数据…" : "暂无运行数据，点击右上角「刷新」重试"} />
+            <Empty text={loading ? t("dashboard.loadingData") : t("dashboard.noData")} />
           ) : tab === "health" ? (
             // 健康视图刻意排在「没有会话」守卫之前：降级事件是非会话级的累计数据，
             // 零会话时依然可能有降级（如启动期 backend_unavailable），不该被空态吞掉。
             <HealthView stats={degradations} summary={degSummary} />
           ) : filtered.length === 0 ? (
-            <Empty text="该日期范围内没有会话" />
+            <Empty text={t("dashboard.emptyRange")} />
           ) : (
             <>
               {tab === "overview" && <OverviewView health={health} daily={daily} perf={perf} onGoPerf={() => setTab("perf")} onErrorClick={jumpToFail} />}
@@ -271,16 +275,17 @@ export function DashboardPage() {
 function HealthView({ stats, summary }: {
   stats: DegradationStat[]; summary: ReturnType<typeof computeDegradations>;
 }) {
+  const { t } = useTranslation();
   if (stats.length === 0) {
     return (
       <>
-        <div className="dash-sect">健康 · 降级</div>
-        <Panel title="🛡 降级事件">
+        <div className="dash-sect">{t("dashboard.healthTitle")}</div>
+        <Panel title={t("dashboard.degradationEvents")}>
           <div style={{ padding: "36px 0", textAlign: "center" }}>
             <div style={{ fontSize: "var(--text-md)", color: "var(--success)", fontWeight: 600, marginBottom: 6 }}>
-              ✓ 未记录到任何降级
+              ✓ {t("dashboard.noDegradation")}
             </div>
-            <Muted text="没有「本该失败却兜了底」的事件。这是期望状态，不是数据缺失。" />
+            <Muted text={t("dashboard.noDegradationHint")} />
           </div>
         </Panel>
       </>
@@ -301,23 +306,23 @@ function HealthView({ stats, summary }: {
           <span style={{ fontSize: "var(--text-xl)" }}>⛔</span>
           <div>
             <div style={{ fontSize: "var(--text-base)", fontWeight: 600, color: "var(--text-primary)" }}>
-              {summary.abortCount} 次「直接中止」类降级
+              {t("dashboard.abortAlert", { count: summary.abortCount })}
             </div>
             <div style={{ fontSize: "var(--text-sm)", color: "var(--text-tertiary)", marginTop: 2 }}>
-              决策 / ID / 金额类字段缺失时拒绝放行——这是设计如此（fail-fast），但频繁触发说明上游在丢数据
+              {t("dashboard.abortAlertHint")}
             </div>
           </div>
         </div>
       )}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 14 }}>
-        <Kpi label="🛡 累计降级" value={fmt(summary.total)} sub={`${summary.distinctCodes} 种 event_code`} color={ACCENT} />
-        <Kpi label="⛔ 直接中止" value={fmt(summary.abortCount)} sub="fail-fast，拒绝放行" color={summary.abortCount > 0 ? "var(--danger)" : "var(--text-muted)"} />
-        <Kpi label="🎯 高风险类" value={fmt(summary.highStakesCount)} sub="决策 / ID / 金额" color={summary.highStakesCount > 0 ? "var(--warning)" : "var(--text-muted)"} />
-        <Kpi label="🔺 最高频" value={summary.top ? fmt(summary.top.count) : "—"} sub={summary.top?.event_code ?? "无"} />
+        <Kpi label={t("dashboard.totalDegradations")} value={fmt(summary.total)} sub={t("dashboard.totalSub", { count: summary.distinctCodes })} color={ACCENT} />
+        <Kpi label={t("dashboard.abortCount")} value={fmt(summary.abortCount)} sub={t("dashboard.abortKpiSub")} color={summary.abortCount > 0 ? "var(--danger)" : "var(--text-muted)"} />
+        <Kpi label={t("dashboard.highRiskCount")} value={fmt(summary.highStakesCount)} sub={t("dashboard.highRiskKpiSub")} color={summary.highStakesCount > 0 ? "var(--warning)" : "var(--text-muted)"} />
+        <Kpi label={t("dashboard.topFreq")} value={summary.top ? fmt(summary.top.count) : "—"} sub={summary.top?.event_code ?? t("dashboard.none")} />
       </div>
 
-      <Panel title={<>📦 按字段类别 <span className="dash-subtle">决策 / ID / 金额三类＝「本该失败却兜了底」，治理优先级最高</span></>} style={{ marginBottom: 14 }}>
+      <Panel title={<>{t("dashboard.byCategoryTitle")} <span className="dash-subtle">{t("dashboard.byCategoryHint")}</span></>} style={{ marginBottom: 14 }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {summary.byCategory.map((c) => {
             const pct = summary.total ? (c.count / summary.total) * 100 : 0;
@@ -325,7 +330,7 @@ function HealthView({ stats, summary }: {
             return (
               <div key={c.category} style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <span style={{ fontSize: "var(--text-sm)", color: "var(--text-secondary)", minWidth: 96 }}>
-                  {CATEGORY_LABEL[c.category] ?? c.category}
+                  {t(CATEGORY_LABEL[c.category] ?? c.category)}
                 </span>
                 <div style={{ flex: 1, height: 8, borderRadius: 4, background: "var(--bg-elevated)", overflow: "hidden" }}>
                   <div style={{ width: `${pct}%`, height: "100%", borderRadius: 4, background: color }} />
@@ -338,22 +343,22 @@ function HealthView({ stats, summary }: {
         </div>
       </Panel>
 
-      <Panel title={<>📋 降级明细 <span className="dash-subtle">按严重度 → 次数排序；累计口径，不受日期筛选影响</span></>}>
+      <Panel title={<>{t("dashboard.degradationDetailsTitle")} <span className="dash-subtle">{t("dashboard.detailsSortHint")}</span></>}>
         <div style={{ display: "flex", flexDirection: "column" }}>
           <div className="dash-deg-row" style={{ color: "var(--text-muted)", fontSize: "var(--text-2xs)", textTransform: "uppercase", letterSpacing: "0.4px", borderBottom: "1px solid var(--border-subtle)" }}>
-            <span>严重度</span><span>event_code</span><span>类别</span><span>触发点</span><span style={{ textAlign: "right" }}>次数</span>
+            <span>{t("dashboard.severity")}</span><span>event_code</span><span>{t("dashboard.category")}</span><span>{t("dashboard.triggerPoint")}</span><span style={{ textAlign: "right" }}>{t("dashboard.count")}</span>
           </div>
           {stats.map((d) => {
-            const sev = SEVERITY_META[d.severity] ?? { label: d.severity || "未知", color: "var(--text-tertiary)" };
+            const sev = SEVERITY_META[d.severity] ?? { labelKey: undefined, color: "var(--text-tertiary)" };
             return (
               <div key={`${d.event_code}|${d.source}|${d.severity}`} className="dash-deg-row">
                 <span>
                   <span className="dash-badge" style={{ height: 20, padding: "0 8px", fontSize: "var(--text-2xs)", background: "var(--bg-track)", color: sev.color }}>
-                    {sev.label}
+                    {sev.labelKey ? t(sev.labelKey) : (d.severity || t("dashboard.unknown"))}
                   </span>
                 </span>
-                <span className="mono" style={{ fontSize: "var(--text-sm)", color: "var(--text-primary)", fontWeight: 550 }}>{d.event_code || "（无 event_code）"}</span>
-                <span style={{ fontSize: "var(--text-sm)", color: "var(--text-tertiary)" }}>{CATEGORY_LABEL[d.category] ?? d.category}</span>
+                <span className="mono" style={{ fontSize: "var(--text-sm)", color: "var(--text-primary)", fontWeight: 550 }}>{d.event_code || t("dashboard.noEventCode")}</span>
+                <span style={{ fontSize: "var(--text-sm)", color: "var(--text-tertiary)" }}>{t(CATEGORY_LABEL[d.category] ?? d.category)}</span>
                 <span className="mono" style={{ fontSize: "var(--text-xs)", color: "var(--text-tertiary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={d.source}>{d.source}</span>
                 <span className="mono" style={{ fontSize: "var(--text-base)", fontWeight: 700, color: sev.color, textAlign: "right" }}>{fmt(d.count)}</span>
               </div>
@@ -370,36 +375,37 @@ function OverviewView({ health, daily, perf, onGoPerf, onErrorClick }: {
   health: ReturnType<typeof computeHealth>; daily: ReturnType<typeof dailySeries>;
   perf: ReturnType<typeof computePerf>; onGoPerf: () => void; onErrorClick: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <>
       <BudgetBar />
       {/* KPI 4 个宏观总量（AC-04）：净费用 / 总 tokens / LLM 调用量 / 成功率。删失败率 KPI；
           「定位失败会话」深链移到成功率卡（无失败时禁用），保留能力仅换承载（决策 1）。 */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 14 }}>
-        <Kpi label="💰 累计净费用" value={fmtCost(health.netCost)} sub={health.cacheSavedUsd > 0 ? `缓存已节省 ${fmtCost(health.cacheSavedUsd)}` : "实际净费用"} color="var(--warning)" />
-        <Kpi label="🔢 总 Tokens" value={fmt(health.totalIn + health.totalOut)} sub={`${fmt(health.totalIn)} 入 / ${fmt(health.totalOut)} 出`} />
-        <Kpi label="📊 LLM 调用量" value={fmt(health.llmCalls)} sub={`${health.runTotal} 次 run`} color={ACCENT} />
-        <Kpi label="✅ 成功率" value={health.runTotal ? Math.round((health.runOk / health.runTotal) * 100) + "%" : "—"} sub={health.runFail > 0 ? "点击定位失败会话 →" : `${health.runOk} 成功 · ${health.runFail} 失败`} color="var(--success)" clickable={health.runFail > 0} onClick={health.runFail > 0 ? onErrorClick : undefined} />
+        <Kpi label={t("dashboard.netCostTotal")} value={fmtCost(health.netCost)} sub={health.cacheSavedUsd > 0 ? `${t("dashboard.cacheSaved")} ${fmtCost(health.cacheSavedUsd)}` : t("dashboard.actualNetCost")} color="var(--warning)" />
+        <Kpi label={t("dashboard.totalTokens")} value={fmt(health.totalIn + health.totalOut)} sub={t("dashboard.inOut", { in: fmt(health.totalIn), out: fmt(health.totalOut) })} />
+        <Kpi label={t("dashboard.llmCalls")} value={fmt(health.llmCalls)} sub={t("dashboard.runTotal", { count: health.runTotal })} color={ACCENT} />
+        <Kpi label={t("dashboard.successRate")} value={health.runTotal ? Math.round((health.runOk / health.runTotal) * 100) + "%" : "—"} sub={health.runFail > 0 ? t("dashboard.jumpToFailed") : t("dashboard.okFail", { ok: health.runOk, fail: health.runFail })} color="var(--success)" clickable={health.runFail > 0} onClick={health.runFail > 0 ? onErrorClick : undefined} />
       </div>
       <CacheMacro health={health} />
       {/* 总体 P50 stat（AC-04）：一眼看中位延迟，细分分位/直方图在性能页 */}
-      <Panel title="⏱ 总体延迟 P50" style={{ marginBottom: 14 }}>
+      <Panel title={t("dashboard.overallLatencyP50")} style={{ marginBottom: 14 }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
           <span className="mono" style={{ fontSize: "var(--text-3xl)", fontWeight: 700, color: "var(--success)" }}>{fmtMs(perf.p50)}</span>
-          <span style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>中位 LLM 调用延迟{perf.reliable ? "" : `（样本 ${perf.count} 偏少，仅供参考）`}</span>
-          <span style={{ marginLeft: "auto" }}><span className="dash-alert-act" onClick={onGoPerf}>查看性能分布 →</span></span>
+          <span style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>{t("dashboard.medianLlmLatency")}{perf.reliable ? "" : t("dashboard.fewSamples", { count: perf.count })}</span>
+          <span style={{ marginLeft: "auto" }}><span className="dash-alert-act" onClick={onGoPerf}>{t("dashboard.viewPerf")} →</span></span>
         </div>
       </Panel>
       {/* 双曲线趋势（AC-04）：费用-日期 + token-日期，曲线替代直方图；每日费用图从成本页迁入此处 */}
-      <Panel title="📈 净费用 趋势" style={{ marginBottom: 14 }}>
+      <Panel title={t("dashboard.netCostTrend")} style={{ marginBottom: 14 }}>
         <LineTrend data={daily} fmtVal={fmtCost}
-          lines={[{ values: daily.map((d) => d.cost), color: "var(--warning)", label: "净费用 / 天" }]} />
+          lines={[{ values: daily.map((d) => d.cost), color: "var(--warning)", label: t("dashboard.costPerDay") }]} />
       </Panel>
-      <Panel title="📈 Tokens日用量 趋势">
+      <Panel title={t("dashboard.tokenDailyTrend")}>
         <LineTrend data={daily} fmtVal={fmt}
           lines={[
-            { values: daily.map((d) => d.input), color: ACCENT, label: "输入 Token" },
-            { values: daily.map((d) => d.output), color: "var(--success)", label: "输出 Token" },
+            { values: daily.map((d) => d.input), color: ACCENT, label: t("dashboard.inputToken") },
+            { values: daily.map((d) => d.output), color: "var(--success)", label: t("dashboard.outputToken") },
           ]} />
       </Panel>
     </>
@@ -408,18 +414,19 @@ function OverviewView({ health, daily, perf, onGoPerf, onErrorClick }: {
 
 /* 缓存命中宏观统计：整体命中率 + 命中 token + 相对全价省下的钱 */
 function CacheMacro({ health }: { health: ReturnType<typeof computeHealth> }) {
+  const { t } = useTranslation();
   const active = health.cachedTokens > 0;
   return (
     <div style={{ marginBottom: 14 }}>
-      <Panel title={<>🎯 缓存命中 · 宏观节省 <span className="dash-subtle">因命中 prefix cache 省下的 token 与费用（相对「全价」基线）</span></>}>
+      <Panel title={<>{t("dashboard.cacheMacroTitle")} <span className="dash-subtle">{t("dashboard.cacheMacroHint")}</span></>}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, alignItems: "center" }}>
-          <CacheStat label="整体命中率" value={health.hitRate.toFixed(1) + "%"} sub={`Σ命中 / Σ输入 · 按 token 加权`} color={active ? ACCENT : "var(--text-muted)"} big />
-          <CacheStat label="命中 Token" value={fmt(health.cachedTokens)} sub={`共 ${fmt(health.totalIn)} 输入 token`} color={active ? "var(--success)" : "var(--text-muted)"} />
-          <CacheStat label="命中节省费用" value={fmtCost(health.cacheSavedUsd)} sub={active ? `全价 ${fmtCost(health.totalCost)} → 缓存后约 ${fmtCost(health.netCost)}` : "无命中 / 未配置缓存价"} color={active ? "var(--warning)" : "var(--text-muted)"} />
+          <CacheStat label={t("dashboard.cacheHitRate")} value={health.hitRate.toFixed(1) + "%"} sub={t("dashboard.cacheHitRateSub")} color={active ? ACCENT : "var(--text-muted)"} big />
+          <CacheStat label={t("dashboard.cacheHitTokens")} value={fmt(health.cachedTokens)} sub={t("dashboard.cacheTotalIn", { count: fmt(health.totalIn) })} color={active ? "var(--success)" : "var(--text-muted)"} />
+          <CacheStat label={t("dashboard.cacheSavedCost")} value={fmtCost(health.cacheSavedUsd)} sub={active ? t("dashboard.cachePriceCompare", { full: fmtCost(health.totalCost), net: fmtCost(health.netCost) }) : t("dashboard.cacheNoHit")} color={active ? "var(--warning)" : "var(--text-muted)"} />
         </div>
         {!active && (
           <div style={{ marginTop: 10, fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>
-            💡 暂无缓存命中数据（或该模型未在价格表配置 <span className="mono">cache_read_price</span>，节省不臆造，记 0）。
+            💡 {t("dashboard.cacheNoData")} <span className="mono">cache_read_price</span>）
           </div>
         )}
       </Panel>
@@ -442,14 +449,15 @@ function CostView({ models, health, topSpend, onSessionClick }: {
   models: ReturnType<typeof computeModels>; health: ReturnType<typeof computeHealth>;
   topSpend: ReturnType<typeof topSpendSessions>; onSessionClick: (id: string) => void;
 }) {
+  const { t } = useTranslation();
   // 费用全部引用 derive 派生层算好的值（netCost / m.netCost / m.netShare），本视图不再自算任何费用
   const { totalCost, totalIn, totalOut, netCost, cacheSavedUsd, llmCalls: callCount } = health;
   return (
     <>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 14 }}>
-        <Kpi label="总费用" value={fmtCost(netCost)} sub={cacheSavedUsd > 0 ? `实际净费用 · 全价 ${fmtCost(totalCost)}` : `${fmt(totalIn + totalOut)} tokens`} color="var(--warning)" />
-        <Kpi label="模型数" value={String(models.length)} sub={models.map((m) => m.model.split("-")[0]).join(" · ") || "—"} />
-        <Kpi label="单次均价" value={callCount ? fmtCost(netCost / callCount) : "—"} sub="每次 LLM 调用（净）" />
+        <Kpi label={t("dashboard.totalCost")} value={fmtCost(netCost)} sub={cacheSavedUsd > 0 ? t("dashboard.netCostFull", { net: fmtCost(netCost), full: fmtCost(totalCost) }) : `${fmt(totalIn + totalOut)} tokens`} color="var(--warning)" />
+        <Kpi label={t("dashboard.modelCount")} value={String(models.length)} sub={models.map((m) => m.model.split("-")[0]).join(" · ") || "—"} />
+        <Kpi label={t("dashboard.avgCostPerCall")} value={callCount ? fmtCost(netCost / callCount) : "—"} sub={t("dashboard.avgCostPerCallSub")} />
       </div>
       {/* 费用构成 + Token 构成 并列（AC：入/出 token 从 KPI 行下移至此，与费用环形图并排） */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
@@ -458,13 +466,13 @@ function CostView({ models, health, topSpend, onSessionClick }: {
       </div>
       <ModelBreakdown models={models} netCost={netCost} />
       {/* 每日费用图已迁移至概览（去与概览重叠，AC-05·2e）。此处仅保留消费 Top10 深链。 */}
-      <Panel title={<>🔥 消费 Top 会话 <span className="dash-subtle">净费用降序前 10（不足按实际）</span></>}>
+      <Panel title={<>{t("dashboard.topSpendTitle")} <span className="dash-subtle">{t("dashboard.topSpendHint")}</span></>}>
         {topSpend.slice(0, 10).map((s, i) => (
           <div key={s.session.id} className="dash-lrow" onClick={() => onSessionClick(s.session.id)}>
             <span className={"dash-rank" + (i === 0 ? " top" : "")}>{i + 1}</span>
             <div className="dash-flex-main">
-              <div style={{ fontSize: "var(--text-base)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.session.title || "未命名会话"}</div>
-              <div className="mono" style={{ fontSize: "var(--text-xs)", color: "var(--text-tertiary)", marginTop: 2 }}>{s.session.model} · {s.session.llm_calls} 次</div>
+              <div style={{ fontSize: "var(--text-base)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.session.title || t("dashboard.unnamedSession")}</div>
+              <div className="mono" style={{ fontSize: "var(--text-xs)", color: "var(--text-tertiary)", marginTop: 2 }}>{s.session.model} · {s.session.llm_calls} {t("dashboard.times")}</div>
             </div>
             <span className="mono" style={{ fontWeight: 700, color: "var(--warning)" }}>{fmtCost(s.cost)}</span>
             <span className="dash-go">›</span>
@@ -477,7 +485,7 @@ function CostView({ models, health, topSpend, onSessionClick }: {
 
 /* 费用构成：输入费用 + 输出费用 = 实际净费用；净 + 命中节省 = 全价基线（正向三项式口径）*/
 function CostComposition({ health }: { health: ReturnType<typeof computeHealth> }) {
-
+  const { t } = useTranslation();
   // 全部引用 derive 派生层算好的值，本组件不做任何费用计算
   // 新口径（cost_of_call 正向三项式）：inCost+outCost == net；net+saved == full（全价基线）
   const { inputCost: inCost, outputCost: outCost, totalCost, netCost: net } = health;
@@ -487,13 +495,13 @@ function CostComposition({ health }: { health: ReturnType<typeof computeHealth> 
   const ioDenom = inCost + outCost || 1;
   const inNetPct = (inCost / ioDenom) * 100, outNetPct = (outCost / ioDenom) * 100;
   return (
-    <Panel title={<>💰 费用构成 = <span className="dash-subtle">输入 + 输出</span></>}>
+    <Panel title={<>{t("dashboard.costComposition")} <span className="dash-subtle">{t("dashboard.inputPlusOutput")}</span></>}>
       {/* 环形图：输入费用 vs 输出费用 占比（仅两项，中心=实际净费用） */}
       <div style={{ display: "flex", gap: 28, alignItems: "center", flexWrap: "wrap" }}>
-        <Donut segments={[{ v: inCost, c: ACCENT }, { v: outCost, c: "var(--success)" }]} center={fmtCost(net)} label="总净费用" />
+        <Donut segments={[{ v: inCost, c: ACCENT }, { v: outCost, c: "var(--success)" }]} center={fmtCost(net)} label={t("dashboard.totalNetCost")} />
         <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 220 }}>
-          <DonutLegend color={ACCENT} label="输入 token 费用" value={fmtCost(inCost)} pct={inNetPct} />
-          <DonutLegend color="var(--success)" label="输出 token 费用" value={fmtCost(outCost)} pct={outNetPct} />
+          <DonutLegend color={ACCENT} label={t("dashboard.inputCost")} value={fmtCost(inCost)} pct={inNetPct} />
+          <DonutLegend color="var(--success)" label={t("dashboard.outputCost")} value={fmtCost(outCost)} pct={outNetPct} />
         </div>
       </div>
     </Panel>
@@ -502,19 +510,20 @@ function CostComposition({ health }: { health: ReturnType<typeof computeHealth> 
 
 /* Token 构成：输入 Tokens vs 输出 Tokens 占比（环形图，与费用构成并列）。 */
 function TokenComposition({ health }: { health: ReturnType<typeof computeHealth> }) {
+  const { t } = useTranslation();
   const { totalIn, totalOut } = health;
   const total = totalIn + totalOut;
   const denom = total || 1;
   const inPct = (totalIn / denom) * 100, outPct = (totalOut / denom) * 100;
   const fmtK = (n: number) => (n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(n));
   return (
-    <Panel title={<>🔢 Tokens 构成 = <span className="dash-subtle">输入 + 输出</span></>}>
+    <Panel title={<>{t("dashboard.tokenComposition")} <span className="dash-subtle">{t("dashboard.inputPlusOutput")}</span></>}>
       {/* 环形图：输入 vs 输出 token 占比（中心=总 tokens） */}
       <div style={{ display: "flex", gap: 28, alignItems: "center", flexWrap: "wrap" }}>
-        <Donut segments={[{ v: totalIn, c: ACCENT }, { v: totalOut, c: "var(--success)" }]} center={fmtK(total)} label="总 Tokens" />
+        <Donut segments={[{ v: totalIn, c: ACCENT }, { v: totalOut, c: "var(--success)" }]} center={fmtK(total)} label={t("dashboard.totalTokens")} />
         <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 220 }}>
-          <DonutLegend color={ACCENT} label="输入 Tokens" value={fmt(totalIn)} pct={inPct} />
-          <DonutLegend color="var(--success)" label="输出 Tokens" value={fmt(totalOut)} pct={outPct} />
+          <DonutLegend color={ACCENT} label={t("dashboard.inputTokens")} value={fmt(totalIn)} pct={inPct} />
+          <DonutLegend color="var(--success)" label={t("dashboard.outputTokens")} value={fmt(totalOut)} pct={outPct} />
         </div>
       </div>
     </Panel>
@@ -524,31 +533,32 @@ function TokenComposition({ health }: { health: ReturnType<typeof computeHealth>
 /* 按模型统一明细：一张表把「实际净费用 + 占比 + tokens + 缓存节省」聚齐，
  * 取代此前重复三次的（费用占比 donut / 每模型明细 / 缓存命中节省·按模型）三块面板。 */
 function ModelBreakdown({ models, netCost }: { models: ReturnType<typeof computeModels>; netCost: number }) {
+  const { t } = useTranslation();
   const maxNet = Math.max(1e-9, ...models.map((m) => m.netCost));
   const totalSaved = models.reduce((a, m) => a + m.cacheSavedUsd, 0);
   const totalTokens = models.reduce((a, m) => a + m.tokens, 0);
   const fmtK = (n: number) => (n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(n));
   return (
-    <Panel title={<>📊 按模型分类</>} style={{ marginBottom: 14 }}>
+    <Panel title={<>{t("dashboard.byModelTitle")}</>} style={{ marginBottom: 14 }}>
       {models.length === 0 ? (
-        <Muted text="暂无模型调用数据。" />
+        <Muted text={t("dashboard.noModelData")} />
       ) : (
         <>
           {/* 双环形（AC-05 2a/2b）：费用占比环 + tokens 占比环 */}
           <div style={{ display: "flex", gap: 36, alignItems: "center", justifyContent: "center", flexWrap: "wrap", marginBottom: 16 }}>
-            <Donut segments={models.map((m) => ({ v: m.netCost, c: colorForModel(m.model) }))} center={fmtCost(netCost)} label="实际净费用" />
-            <Donut segments={models.map((m) => ({ v: m.tokens, c: colorForModel(m.model) }))} center={fmtK(totalTokens)} label="Tokens" />
+            <Donut segments={models.map((m) => ({ v: m.netCost, c: colorForModel(m.model) }))} center={fmtCost(netCost)} label={t("dashboard.actualNetCost")} />
+            <Donut segments={models.map((m) => ({ v: m.tokens, c: colorForModel(m.model) }))} center={fmtK(totalTokens)} label={t("dashboard.totalTokens")} />
           </div>
           <div>
             {/* 表头 */}
             <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 0 6px", fontSize: "var(--text-2xs)", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.4px", borderBottom: "1px solid var(--border-subtle)" }}>
-              <span style={{ width: 150, flexShrink: 0 }}>模型</span>
+              <span style={{ width: 150, flexShrink: 0 }}>{t("dashboard.model")}</span>
               <span style={{ flex: 1 }} />
-              <span style={{ minWidth: 40, textAlign: "right" }}>占比</span>
-              <span style={{ minWidth: 62, textAlign: "right" }}>净费用</span>
-              <span style={{ minWidth: 70, textAlign: "right" }}>Tokens</span>
-              <span style={{ minWidth: 56, textAlign: "right" }}>命中率</span>
-              <span style={{ minWidth: 64, textAlign: "right" }}>缓存省</span>
+              <span style={{ minWidth: 40, textAlign: "right" }}>{t("dashboard.share")}</span>
+              <span style={{ minWidth: 62, textAlign: "right" }}>{t("dashboard.netCost")}</span>
+              <span style={{ minWidth: 70, textAlign: "right" }}>{t("dashboard.totalTokens")}</span>
+              <span style={{ minWidth: 56, textAlign: "right" }}>{t("dashboard.hitRate")}</span>
+              <span style={{ minWidth: 64, textAlign: "right" }}>{t("dashboard.cacheSavedCost")}</span>
             </div>
             {models.map((m) => (
               <div key={m.model} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", fontSize: "var(--text-sm)", borderBottom: "1px solid rgba(127,127,127,0.06)" }}>
@@ -560,10 +570,10 @@ function ModelBreakdown({ models, netCost }: { models: ReturnType<typeof compute
                   <span style={{ display: "block", height: "100%", width: `${(m.netCost / maxNet) * 100}%`, background: colorForModel(m.model), borderRadius: 5 }} />
                 </span>
                 <span className="mono" style={{ color: "var(--text-tertiary)", minWidth: 40, textAlign: "right" }}>{(m.netShare * 100).toFixed(0)}%</span>
-                <span className="mono" style={{ color: "var(--success)", fontWeight: 700, minWidth: 62, textAlign: "right" }} title={`全价 ${fmtCost(m.cost)}`}>{fmtCost(m.netCost)}</span>
+                <span className="mono" style={{ color: "var(--success)", fontWeight: 700, minWidth: 62, textAlign: "right" }} title={t("dashboard.fullPrice", { cost: fmtCost(m.cost) })}>{fmtCost(m.netCost)}</span>
                 <span className="mono" style={{ color: "var(--text-tertiary)", minWidth: 70, textAlign: "right" }}>{fmt(m.tokens)}</span>
-                <span className="mono" style={{ color: m.cachedTokens > 0 ? ACCENT : "var(--text-muted)", minWidth: 56, textAlign: "right" }} title={m.inputTokens > 0 ? `命中 ${fmt(m.cachedTokens)} / 输入 ${fmt(m.inputTokens)} tok` : "无输入 token"}>{m.inputTokens > 0 ? m.hitRate.toFixed(1) + "%" : "—"}</span>
-                <span className="mono" style={{ color: m.cacheSavedUsd > 0 ? "var(--warning)" : "var(--text-muted)", minWidth: 64, textAlign: "right" }} title={m.cachedTokens > 0 ? `命中 ${fmt(m.cachedTokens)} tok` : "无命中"}>{m.cacheSavedUsd > 0 ? fmtCost(m.cacheSavedUsd) : "—"}</span>
+                <span className="mono" style={{ color: m.cachedTokens > 0 ? ACCENT : "var(--text-muted)", minWidth: 56, textAlign: "right" }} title={m.inputTokens > 0 ? t("dashboard.hitOfInput", { hit: fmt(m.cachedTokens), input: fmt(m.inputTokens) }) : t("dashboard.noInputTokens")}>{m.inputTokens > 0 ? m.hitRate.toFixed(1) + "%" : "—"}</span>
+                <span className="mono" style={{ color: m.cacheSavedUsd > 0 ? "var(--warning)" : "var(--text-muted)", minWidth: 64, textAlign: "right" }} title={m.cachedTokens > 0 ? t("dashboard.hitTokens", { hit: fmt(m.cachedTokens) }) : t("dashboard.noHit")}>{m.cacheSavedUsd > 0 ? fmtCost(m.cacheSavedUsd) : "—"}</span>
               </div>
             ))}
           </div>
@@ -577,16 +587,17 @@ function ModelBreakdown({ models, netCost }: { models: ReturnType<typeof compute
 function PerfView({ perf, slow, toolSlow, toolUsage, toolSuccess, onSlowClick }: {
   perf: ReturnType<typeof computePerf>; slow: CallFact[]; toolSlow: ToolCallFact[]; toolUsage: ToolUsage[]; toolSuccess: ToolSuccessByModel[]; onSlowClick: (sid: string, turn: number) => void;
 }) {
-  const warn = !perf.reliable ? <span className="dash-pill warn">⚠ 样本 {perf.count} &lt; {PERF_MIN_SAMPLE_SIZE}，仅供参考</span> : null;
+  const { t } = useTranslation();
+  const warn = !perf.reliable ? <span className="dash-pill warn">⚠ {t("dashboard.fewSamplesWarn", { count: perf.count, min: PERF_MIN_SAMPLE_SIZE })}</span> : null;
   const maxBucket = Math.max(1, ...perf.buckets.map((b) => b.count));
   return (
     <>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 14 }}>
-        <Panel title={<>P50 中位延迟 {warn}</>}><BigStat value={fmtMs(perf.p50)} color="var(--success)" /></Panel>
-        <Panel title="P95 延迟"><BigStat value={fmtMs(perf.p95)} color="var(--warning)" /></Panel>
-        <Panel title={<>P99 延迟 {perf.p99 >= ALERT_P99_LATENCY_MS && <span className="dash-pill danger">越阈</span>}</>}><BigStat value={fmtMs(perf.p99)} color="var(--danger)" /></Panel>
+        <Panel title={<>{t("dashboard.p50Title")} {warn}</>}><BigStat value={fmtMs(perf.p50)} color="var(--success)" /></Panel>
+        <Panel title={t("dashboard.p95Title")}><BigStat value={fmtMs(perf.p95)} color="var(--warning)" /></Panel>
+        <Panel title={<>{t("dashboard.p99Title")} {perf.p99 >= ALERT_P99_LATENCY_MS && <span className="dash-pill danger">{t("dashboard.overThreshold")}</span>}</>}><BigStat value={fmtMs(perf.p99)} color="var(--danger)" /></Panel>
       </div>
-      <Panel title="延迟分布直方图" style={{ marginBottom: 14 }}>
+      <Panel title={t("dashboard.latencyHistogram")} style={{ marginBottom: 14 }}>
         <svg viewBox="0 0 920 180" width="100%" style={{ display: "block" }}>
           <line x1={0} y1={150} x2={920} y2={150} stroke="var(--border-subtle)" />
           {perf.buckets.map((b, i) => {
@@ -606,8 +617,8 @@ function PerfView({ perf, slow, toolSlow, toolUsage, toolSuccess, onSlowClick }:
         </svg>
       </Panel>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        <Panel title={`慢 LLM 调用 Top ${SLOW_CALL_TOP_N} · 点击深链`}>
-          {slow.length === 0 ? <Muted text="无调用记录" /> : slow.map((f, i) => (
+        <Panel title={t("dashboard.slowLlmTop", { n: SLOW_CALL_TOP_N })}>
+          {slow.length === 0 ? <Muted text={t("dashboard.noCallRecords")} /> : slow.map((f, i) => (
             <div key={f.sessionId + f.turn} className="dash-lrow" onClick={() => onSlowClick(f.sessionId, f.turn)}>
               <span className={"dash-rank" + (i === 0 ? " top" : "")}>{i + 1}</span>
               <div className="dash-flex-main">
@@ -622,8 +633,8 @@ function PerfView({ perf, slow, toolSlow, toolUsage, toolSuccess, onSlowClick }:
             </div>
           ))}
         </Panel>
-        <Panel title={`慢工具调用 Top ${SLOW_CALL_TOP_N} · 点击深链`}>
-          {toolSlow.length === 0 ? <Muted text="无工具调用记录（或旧数据无 per-call 耗时）" /> : toolSlow.map((f, i) => (
+        <Panel title={t("dashboard.slowToolTop", { n: SLOW_CALL_TOP_N })}>
+          {toolSlow.length === 0 ? <Muted text={t("dashboard.noToolCallRecords")} /> : toolSlow.map((f, i) => (
             <div key={f.sessionId + f.turn + f.name + i} className="dash-lrow" onClick={() => onSlowClick(f.sessionId, f.turn)}>
               <span className={"dash-rank" + (i === 0 ? " top" : "")}>{i + 1}</span>
               <div className="dash-flex-main">
@@ -646,28 +657,29 @@ function PerfView({ perf, slow, toolSlow, toolUsage, toolSuccess, onSlowClick }:
  * 口径：分母 = 已 trace 到 status 的工具调用（与慢工具榜/工具使用榜同源）；
  * total==0 显示「—」不显示 0%；旧快照无 status 的调用不计入（标注说明）。 */
 function ToolSuccessByModelPanel({ rows }: { rows: ToolSuccessByModel[] }) {
+  const { t } = useTranslation();
   const maxTotal = Math.max(1, ...rows.map((r) => r.total));
   return (
     <Panel
       title={
         <>
-          🎯 工具成功率 · 按模型
+          {t("dashboard.toolSuccessTitle")}
           <span className="dash-subtle">
-            各模型发起的工具调用成功率
+            {t("dashboard.toolSuccessHint")}
           </span>
         </>
       }
       style={{ marginTop: 12 }}
     >
       {rows.length === 0 ? (
-        <Muted text="暂无带状态的工具调用。" />
+        <Muted text={t("dashboard.noToolStatusCalls")} />
       ) : (
         <>
           <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "0 12px 6px", fontSize: "var(--text-2xs)", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.4px", borderBottom: "1px solid var(--border-subtle)" }}>
-            <span style={{ width: 170, flexShrink: 0 }}>模型</span>
+            <span style={{ width: 170, flexShrink: 0 }}>{t("dashboard.model")}</span>
             <span style={{ flex: 1 }} />
-            <span style={{ minWidth: 90, textAlign: "right" }}>成功 / 总数</span>
-            <span style={{ minWidth: 64, textAlign: "right" }}>成功率</span>
+            <span style={{ minWidth: 90, textAlign: "right" }}>{t("dashboard.successTotal")}</span>
+            <span style={{ minWidth: 64, textAlign: "right" }}>{t("dashboard.successRate")}</span>
           </div>
           {rows.map((r) => {
             // 成功率配色：≥95% 绿；≥80% 琥珀；<80% 红（诊断信号，非严格阈值）
@@ -704,31 +716,32 @@ function ToolUsageRank({ usage }: { usage: ToolUsage[] }) {
   const max = Math.max(1, ...sorted.map((u) => (sortBy === "count" ? u.count : u.totalMs)));
   const totalCount = usage.reduce((a, u) => a + u.count, 0);
   const totalMs = usage.reduce((a, u) => a + u.totalMs, 0);
+  const { t } = useTranslation();
   return (
     <Panel
       title={
         <>
-          🔧 工具使用排行
-          <span className="dash-subtle">累积 {fmt(totalCount)} 次 · {fmtMs(totalMs)}（按{sortBy === "count" ? "次数" : "时长"}排序）</span>
+          {t("dashboard.toolUsageTitle")}
+          <span className="dash-subtle">{t("dashboard.toolUsageSub", { count: fmt(totalCount), time: fmtMs(totalMs) })}{t(sortBy === "count" ? "dashboard.sortByCount" : "dashboard.sortByTime")}</span>
           <span style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
-            <button type="button" className={"dash-seg" + (sortBy === "count" ? " on" : "")} onClick={() => setSortBy("count")}>次数</button>
-            <button type="button" className={"dash-seg" + (sortBy === "time" ? " on" : "")} onClick={() => setSortBy("time")}>时长</button>
+            <button type="button" className={"dash-seg" + (sortBy === "count" ? " on" : "")} onClick={() => setSortBy("count")}>{t("dashboard.byCount")}</button>
+            <button type="button" className={"dash-seg" + (sortBy === "time" ? " on" : "")} onClick={() => setSortBy("time")}>{t("dashboard.byTime")}</button>
           </span>
         </>
       }
       style={{ marginTop: 12 }}
     >
       {sorted.length === 0 ? (
-        <Muted text="暂无工具调用记录（或旧数据无 per-call 耗时）。" />
+        <Muted text={t("dashboard.noToolUsage")} />
       ) : (
         <>
           <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "0 12px 6px", fontSize: "var(--text-2xs)", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.4px", borderBottom: "1px solid var(--border-subtle)" }}>
             <span style={{ width: 20, flexShrink: 0 }} />
-            <span style={{ width: 160, flexShrink: 0 }}>工具</span>
+            <span style={{ width: 160, flexShrink: 0 }}>{t("dashboard.tool")}</span>
             <span style={{ flex: 1 }} />
-            <span style={{ minWidth: 64, textAlign: "right" }}>累积次数</span>
-            <span style={{ minWidth: 72, textAlign: "right" }}>累积时长</span>
-            <span style={{ minWidth: 72, textAlign: "right" }}>平均单次</span>
+            <span style={{ minWidth: 64, textAlign: "right" }}>{t("dashboard.totalCount")}</span>
+            <span style={{ minWidth: 72, textAlign: "right" }}>{t("dashboard.totalDuration")}</span>
+            <span style={{ minWidth: 72, textAlign: "right" }}>{t("dashboard.avgPerCall")}</span>
           </div>
           {sorted.map((u, i) => (
             <div key={u.name} className="dash-lrow" style={{ cursor: "default" }}>
@@ -737,7 +750,7 @@ function ToolUsageRank({ usage }: { usage: ToolUsage[] }) {
               <span className="dash-bar-track">
                 <span style={{ display: "block", height: "100%", width: `${((sortBy === "count" ? u.count : u.totalMs) / max) * 100}%`, background: "var(--info)", opacity: 0.85, borderRadius: 5 }} />
               </span>
-              <span className="mono" style={{ minWidth: 64, textAlign: "right", fontWeight: sortBy === "count" ? 700 : 400, color: sortBy === "count" ? "var(--text-primary)" : "var(--text-secondary)" }}>{fmt(u.count)} 次</span>
+              <span className="mono" style={{ minWidth: 64, textAlign: "right", fontWeight: sortBy === "count" ? 700 : 400, color: sortBy === "count" ? "var(--text-primary)" : "var(--text-secondary)" }}>{t("dashboard.timesCount", { count: fmt(u.count) })}</span>
               <span className="mono" style={{ minWidth: 72, textAlign: "right", fontWeight: sortBy === "time" ? 700 : 400, color: sortBy === "time" ? "var(--text-primary)" : "var(--text-secondary)" }}>{fmtMs(u.totalMs)}</span>
               <span className="mono" style={{ minWidth: 72, textAlign: "right", color: "var(--text-tertiary)" }}>{fmtMs(u.avgMs)}</span>
             </div>
@@ -753,9 +766,10 @@ function SessionsView({ sessions, openSessions, toggleSession, openTurns, toggle
   sessions: SessionData[]; openSessions: Set<string>; toggleSession: (id: string) => void;
   openTurns: Set<string>; toggleTurn: (k: string) => void; flashId: string | null;
 }) {
+  const { t } = useTranslation();
   return (
     <>
-      <div className="dash-sect">会话明细 · {sessions.length}（run 链路 + 逐轮 + 上下文 · 融合）</div>
+      <div className="dash-sect">{t("dashboard.sessionsDetail")} · {sessions.length}（{t("dashboard.sessionsHint")}）</div>
       {sessions.map((s) => (
         <SessionCard
           key={s.id} session={s}
@@ -775,31 +789,32 @@ function SessionCard({ session, open, onToggle, openTurns, toggleTurn, flash }: 
 }) {
   const cost = sessionNetCost(session), tok = session.input_tokens + session.output_tokens;
   const runs = useMemo(() => groupRuns(session), [session]);
+  const { t } = useTranslation();
   return (
     <div id={"dash-sc-" + session.id} className={"dash-scard" + (open ? " open" : "") + (flash ? " flash" : "")}>
       <div className="dash-shead" onClick={onToggle}>
         <span className="dash-arw" style={{ transform: open ? "rotate(90deg)" : "none" }}>▶</span>
         <div className="dash-flex-main">
-          <div style={{ fontSize: "var(--text-md)", fontWeight: 600, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{session.title || "未命名会话"}</div>
+          <div style={{ fontSize: "var(--text-md)", fontWeight: 600, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{session.title || t("dashboard.unnamedSession")}</div>
           <div className="mono" style={{ display: "flex", gap: 10, marginTop: 3, fontSize: "var(--text-xs)", color: "var(--text-tertiary)", flexWrap: "wrap" }}>
             <span style={{ color: colorForModel(session.model) }}>{session.model}</span>
             <span>{session.created_at.slice(5, 16)}</span>
-            <span>{session.llm_calls} 次 LLM</span>
+            <span>{t("dashboard.llmCallsCount", { count: session.llm_calls })}</span>
             {(() => { const st = runStatusMeta(session.runs[0]?.status ?? "ok");
               const c = st.pill === "ok" ? "var(--success)" : st.pill === "warn" ? "var(--warning)" : "var(--danger)";
-              return <span style={{ color: c }}>{st.icon} {st.pill === "ok" ? "完成" : st.label}</span>; })()}
+              return <span style={{ color: c }}>{st.icon} {st.pill === "ok" ? t("dashboard.statusDone") : st.label}</span>; })()}
           </div>
         </div>
         <div style={{ display: "flex", gap: 18, flexShrink: 0, textAlign: "right" }}>
-          <Stat val={fmt(tok)} lbl="Tokens" color={ACCENT} />
-          <Stat val={fmtCost(cost)} lbl="净费用" color="var(--warning)" />
+          <Stat val={fmt(tok)} lbl={t("dashboard.totalTokens")} color={ACCENT} />
+          <Stat val={fmtCost(cost)} lbl={t("dashboard.netCost")} color="var(--warning)" />
         </div>
       </div>
       {open && (
         <div style={{ padding: "0 12px 12px" }}>
           <details className="dash-sysfold">
-            <summary>⚙️ 系统提示词 system prompt · 本会话所有调用共享（逐轮不重复展示）{session.system_prompt ? ` · ${session.system_prompt.length} 字` : ""}</summary>
-            <div className="dash-sysbody">{session.system_prompt || "系统提示词未记录（该会话 logs.md 缺失或为旧格式）。"}</div>
+            <summary>{t("dashboard.sysPromptSummary")}{session.system_prompt ? ` · ${session.system_prompt.length} ${t("dashboard.chars")}` : ""}</summary>
+            <div className="dash-sysbody">{session.system_prompt || t("dashboard.noSysPrompt")}</div>
           </details>
 
           {/* 按 run 分组：每个 run = 链路条 + 该 run 的 waterfall + 该 run 的逐轮明细（整体一块）*/}
@@ -811,11 +826,11 @@ function SessionCard({ session, open, onToggle, openTurns, toggleTurn, flash }: 
                 <span className="mono" style={{ color: ACCENT, fontSize: "var(--text-sm)" }}>{run.runId}</span>
                 <span className="mono" style={{ color: "var(--text-tertiary)", fontSize: "var(--text-xs)" }}>{run.steps} steps · {fmtMs(run.durationMs)}</span>
                 {/* D1 range 对齐：run 级 net/tokens/命中率 = 对话后 footer 单 run 数字，供逐字段核对 */}
-                <span className="mono" style={{ color: ACCENT, fontSize: "var(--text-xs)" }} title="本 run 输入/输出 token（与对话后 footer 单 run 数字对齐）">in {fmt(run.inTokens)} · out {fmt(run.outTokens)}</span>
-                <span className="mono" style={{ color: "var(--warning)", fontSize: "var(--text-xs)" }} title="本 run 实际净费用 = Σ 各步 net_cost_usd（与对话后 footer 逐字段相等，D1）">净 {fmtCost(run.net)}</span>
-                <span className={"dash-pill " + (run.cacheHit > 0 ? "acc" : "mut")} title="run 级命中率 = 原始 cached / 原始 In（唯一口径，与 footer 同公式，R2）">🎯 run 命中率 {run.cacheHit.toFixed(1)}%</span>
+                <span className="mono" style={{ color: ACCENT, fontSize: "var(--text-xs)" }} title={t("dashboard.runInOutTitle")}>in {fmt(run.inTokens)} · out {fmt(run.outTokens)}</span>
+                <span className="mono" style={{ color: "var(--warning)", fontSize: "var(--text-xs)" }} title={t("dashboard.runNetTitle")}>{t("dashboard.net")} {fmtCost(run.net)}</span>
+                <span className={"dash-pill " + (run.cacheHit > 0 ? "acc" : "mut")} title={t("dashboard.runHitRateTitle")}>🎯 {t("dashboard.runHitRate")} {run.cacheHit.toFixed(1)}%</span>
                 <span style={{ marginLeft: "auto", fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>
-                  {runs.length > 1 ? `run ${ri + 1} / ${runs.length} · 会话总计为 ${runs.length} run 合计` : "本会话 1 个 run（多轮对话 = 多个 run，各自一条链路）"}
+                  {runs.length > 1 ? t("dashboard.runOfTotal", { cur: ri + 1, total: runs.length }) : t("dashboard.singleRun")}
                 </span>
               </div>
               ); })()}
@@ -825,16 +840,16 @@ function SessionCard({ session, open, onToggle, openTurns, toggleTurn, flash }: 
                   background: err ? "color-mix(in srgb, var(--danger) 8%, transparent)" : "color-mix(in srgb, var(--warning) 8%, transparent)",
                   border: err ? "1px solid rgba(239,68,68,0.22)" : "1px solid rgba(245,158,11,0.22)",
                   fontSize: "var(--text-sm)", color: err ? "var(--danger)" : "var(--warning)" }}>
-                  <span>{err ? "⚠️ 失败原因" : "⏸ 结束原因"}</span>
+                  <span>{err ? t("dashboard.failReason") : t("dashboard.endReason")}</span>
                   <span style={{ color: "var(--text-secondary)", fontFamily: "var(--font-mono)" }}>{run.finishReason}</span>
                 </div>
               ); })()}
               <div className="dash-wf-embed"><Waterfall run={run} session={session} /></div>
-              <div className="dash-tdiv">逐轮明细 · 点开看「发往模型的上下文 / 推理 / 工具 / 回复」</div>
-              {run.turns.map((t, i) => (
-                <TurnRow key={t.turn} turn={t} runTurns={run.turns} idxInRun={i}
-                  open={openTurns.has(session.id + "#" + t.turn)}
-                  onToggle={() => toggleTurn(session.id + "#" + t.turn)} />
+              <div className="dash-tdiv">{t("dashboard.turnDetailTitle")}</div>
+              {run.turns.map((tr, i) => (
+                <TurnRow key={tr.turn} turn={tr} runTurns={run.turns} idxInRun={i}
+                  open={openTurns.has(session.id + "#" + tr.turn)}
+                  onToggle={() => toggleTurn(session.id + "#" + tr.turn)} />
               ))}
             </div>
           ))}
@@ -848,43 +863,44 @@ function TurnRow({ turn, runTurns, idxInRun, open, onToggle }: {
   turn: Turn; runTurns: Turn[]; idxInRun: number; open: boolean; onToggle: () => void;
 }) {
   const rm = ROLE_META[turn.role];
+  const { t } = useTranslation();
   let summary = turn.content ? turn.content.replace(/\n/g, " ") : "";
-  if (!summary && turn.tool_calls?.length) summary = "调用工具：" + turn.tool_calls.map((tc) => tc.name).join(", ");
+  if (!summary && turn.tool_calls?.length) summary = t("dashboard.callTool") + turn.tool_calls.map((tc) => tc.name).join(", ");
   const ctx = useMemo(() => (turn.role === "assistant" ? buildContext(runTurns, idxInRun) : null), [turn, runTurns, idxInRun]);
   return (
     <div className="dash-turnwrap">
       <div className={"dash-turn" + (open ? " open" : "")} onClick={onToggle}>
         <span style={{ width: 6, height: 6, borderRadius: "50%", background: rm.color, flexShrink: 0 }} />
-        <span style={{ fontSize: "var(--text-sm)", fontWeight: 600, color: rm.color, flexShrink: 0, minWidth: 62 }}>T{turn.turn}·{rm.label}</span>
+        <span style={{ fontSize: "var(--text-sm)", fontWeight: 600, color: rm.color, flexShrink: 0, minWidth: 62 }}>T{turn.turn}·{t(rm.roleKey)}</span>
         <span style={{ flex: 1, fontSize: "var(--text-sm)", color: "var(--text-tertiary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{summary.slice(0, 72)}</span>
         {turn.llm ? (
           <span className="mono" style={{ display: "flex", gap: 11, flexShrink: 0, fontSize: "var(--text-xs)", alignItems: "center" }}>
             <span style={{ color: ACCENT }}>in {fmt(turn.llm.input_tokens)}</span>
             <span style={{ color: "var(--success)" }}>out {fmt(turn.llm.output_tokens)}</span>
-            <span style={{ color: "var(--warning)" }} title={`实际净费用 · 全价 ${fmtCost(callFullCost(turn.llm))}${(turn.llm.cache_saved_usd ?? 0) > 0 ? ` · 命中省 ${fmtCost(turn.llm.cache_saved_usd ?? 0)}` : ""}`}>{fmtCost(callNetCost(turn.llm))}</span>
+            <span style={{ color: "var(--warning)" }} title={t("dashboard.fullPriceDetail", { full: fmtCost(callFullCost(turn.llm)), saved: (turn.llm.cache_saved_usd ?? 0) > 0 ? t("dashboard.cacheSaved", { v: fmtCost(turn.llm.cache_saved_usd ?? 0) }) : "" })}>{fmtCost(callNetCost(turn.llm))}</span>
             <span style={{ color: turn.llm.duration_ms >= ALERT_P99_LATENCY_MS ? "var(--danger)" : "var(--text-muted)" }}>{fmtMs(turn.llm.duration_ms)}</span>
             {turn.llm.cache_hit_ratio != null && <span style={{ color: ACCENT }}>🎯 {turn.llm.cache_hit_ratio.toFixed(1)}%</span>}
           </span>
         ) : (
-          <span style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", flexShrink: 0 }}>{turn.role === "tool" ? "工具返回" : "用户输入"}</span>
+          <span style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", flexShrink: 0 }}>{turn.role === "tool" ? t("dashboard.toolReturn") : t("dashboard.userInput")}</span>
         )}
         <span className="dash-tchev" style={{ transform: open ? "rotate(90deg)" : "none" }}>›</span>
       </div>
       {open && (
         <div className="dash-tdetails">
-          {turn.role === "user" && <Block label="💬 用户消息" mono={false}>{turn.content}</Block>}
+          {turn.role === "user" && <Block label={t("dashboard.userMsg")} mono={false}>{turn.content}</Block>}
           {turn.role === "assistant" && (
             <>
               {ctx && <CtxBlock msgs={ctx} />}
-              {turn.reasoning && <Block label="🧠 推理 reasoning" color={ACCENT}>{turn.reasoning}</Block>}
+              {turn.reasoning && <Block label={t("dashboard.reasoning")} color={ACCENT}>{turn.reasoning}</Block>}
               {turn.tool_calls?.map((tc, i) => (
-                <Block key={i} label={"🔧 工具调用 · " + tc.name} color="var(--info)">{JSON.stringify(tc.args, null, 2)}</Block>
+                <Block key={i} label={t("dashboard.toolCall", { name: tc.name })} color="var(--info)">{JSON.stringify(tc.args, null, 2)}</Block>
               ))}
-              {turn.content && <Block label="💬 回复" mono={false} color="var(--success)">{turn.content}</Block>}
+              {turn.content && <Block label={t("dashboard.reply")} mono={false} color="var(--success)">{turn.content}</Block>}
               {turn.llm && <div className="mono" style={{ fontSize: "var(--text-2xs)", color: "var(--text-muted)" }}>{turn.llm.model} · step {turn.llm.step} · {fmtLocalTime(turn.timestamp)}</div>}
             </>
           )}
-          {turn.role === "tool" && <Block label="📤 工具结果">{turn.content}</Block>}
+          {turn.role === "tool" && <Block label={t("dashboard.toolResult")}>{turn.content}</Block>}
         </div>
       )}
     </div>
@@ -894,6 +910,7 @@ function TurnRow({ turn, runTurns, idxInRun, open, onToggle }: {
 /* ═══════════════ 图表 & 小组件 ═══════════════ */
 function Waterfall({ run, session }: { run: ReturnType<typeof groupRuns>[number]; session: SessionData }) {
   const spans = useMemo(() => buildSpans(run, session, ALERT_P99_LATENCY_MS), [run, session]);
+  const { t } = useTranslation();
   const total = spans[0]?.durationMs || 1;
   const anyUnknown = spans.some((s) => s.kind === "tool" && s.unknown);
   // over = 超 p99 的「慢调用」高亮，用琥珀色（warning）——不是错误，不用红色（红仅表失败）。
@@ -910,18 +927,18 @@ function Waterfall({ run, session }: { run: ReturnType<typeof groupRuns>[number]
                 position: "absolute", top: 5, height: 18, left: `${(s.startMs / total) * 100}%`,
                 padding: "0 8px", borderRadius: 5, border: "1px dashed var(--text-muted)", background: "transparent",
                 display: "flex", alignItems: "center", color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: "var(--text-2xs)", whiteSpace: "nowrap",
-              }}>耗时未知</span>
+              }}>{t("dashboard.unknownDuration")}</span>
             ) : (
               <span title={s.meta} style={{
                 position: "absolute", top: 5, height: 18, left: `${(s.startMs / total) * 100}%`,
                 width: `${Math.max((s.durationMs / total) * 100, 2)}%`, background: color(s), opacity: s.kind === "run" ? 0.5 : 0.9,
                 borderRadius: 5, display: "flex", alignItems: "center", padding: "0 7px", color: "var(--text-on-accent)", fontFamily: "var(--font-mono)", fontSize: "var(--text-2xs)", whiteSpace: "nowrap",
-              }}>{s.durationMs / total > 0.12 ? fmtMs(s.durationMs) : ""}{s.over ? " 🐢慢" : ""}</span>
+              }}>{s.durationMs / total > 0.12 ? fmtMs(s.durationMs) : ""}{s.over ? ` ${t("dashboard.slowBadge")}` : ""}</span>
             )}
           </span>
         </div>
       ))}
-      {anyUnknown && <div style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", marginTop: 4 }}>💡 虚线标记 = 该工具调用无 trace span，无法获取真实耗时（不以均值伪造）</div>}
+      {anyUnknown && <div style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", marginTop: 4 }}>{t("dashboard.dashedMarkHint")}</div>}
     </div>
   );
 }
@@ -952,6 +969,7 @@ function LineTrend({ data, lines, fmtVal }: {
   fmtVal: (n: number) => string;
 }) {
   const W = 900, H = 170, padL = 6, padR = 6, padT = 16, padB = 22;
+  const { t } = useTranslation();
   const innerW = W - padL - padR, innerH = H - padT - padB;
   const n = data.length;
   const max = Math.max(1e-9, ...lines.flatMap((l) => l.values));
@@ -977,7 +995,7 @@ function LineTrend({ data, lines, fmtVal }: {
     <div>
       <div style={{ display: "flex", gap: 16, marginBottom: 8, fontSize: "var(--text-xs)" }}>
         {lines.map((l) => <Legend key={l.label} color={l.color} label={l.label} />)}
-        <span style={{ marginLeft: "auto", color: "var(--text-muted)" }}>峰值 {fmtVal(max)}</span>
+        <span style={{ marginLeft: "auto", color: "var(--text-muted)" }}>{t("dashboard.peak")} {fmtVal(max)}</span>
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: "block" }}>
         <defs>
@@ -1011,15 +1029,16 @@ function LineTrend({ data, lines, fmtVal }: {
 
 function CtxBlock({ msgs }: { msgs: ReturnType<typeof buildContext> }) {
   const col: Record<string, string> = { system: "var(--text-muted)", user: ACCENT, assistant: "var(--success)", tool: "var(--info)" };
+  const { t } = useTranslation();
   return (
     <div className="dash-tblk ctx">
-      <div className="dash-bl">📥 发往模型的上下文 · {msgs.length} 条消息（完整原文 · system 不重复）</div>
+      <div className="dash-bl">{t("dashboard.sentContext", { count: msgs.length })}</div>
       <div className="dash-bc" style={{ fontFamily: "inherit" }}>
         {msgs.map((m, i) => (
           <div key={i} style={{ display: "flex", gap: 8, padding: "5px 0", borderTop: i ? "1px dashed var(--border-subtle)" : "none", alignItems: "baseline" }}>
             <span className="mono" style={{ flexShrink: 0, fontSize: "var(--text-2xs)", padding: "1px 6px", borderRadius: 4, background: "var(--bg-track)", color: col[m.role] }}>{m.role}</span>
             <span style={{ flex: 1, fontSize: "var(--text-xs)", color: m.isSystemRef ? "var(--text-muted)" : "var(--text-secondary)" }}>
-              {m.isSystemRef ? "共享系统提示 · 见会话顶部 ⚙️（此处不重复）" : m.text}
+              {m.isSystemRef ? t("dashboard.sharedSysHint") : m.text}
             </span>
           </div>
         ))}

@@ -6,6 +6,7 @@
  * 数据来源：result 文本形如「用户选择了：出行时间=秋季; 预算范围=舒适 10K-18K; ...」。
  */
 import React from "react";
+import { useTranslation } from "react-i18next";
 import type { ToolCallState } from "../../../store/chatStore";
 
 interface QA { header: string; answer: string }
@@ -28,6 +29,7 @@ function parseSelections(result: string): QA[] {
 }
 
 export function AskUserRenderer({ tc }: { tc: ToolCallState }) {
+  const { t } = useTranslation();
   const resultText = tc.result?.full || tc.result?.preview || tc.result?.error || "";
   const qas = parseSelections(resultText);
   // 以「是否解析出选择」判定成败，而非 tc.status——校验失败（如选项数超限）的结果
@@ -49,7 +51,7 @@ export function AskUserRenderer({ tc }: { tc: ToolCallState }) {
           className={answered ? "badge badge-green" : "badge badge-red"}
           style={{ marginLeft: "auto" }}
         >
-          {answered ? "已回答" : "无效"}
+          {answered ? t("toolFeedback.answered") : t("toolFeedback.invalid")}
         </span>
       </div>
 

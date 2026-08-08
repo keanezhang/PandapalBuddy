@@ -12,6 +12,7 @@ import { create } from "zustand";
 import { readTextFile, writeTextFile, readDir, remove, stat } from "@tauri-apps/plugin-fs";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { usePreferenceStore } from "./preferenceStore";
+import i18n from "../i18n";
 
 export interface FileNode {
   path: string;
@@ -369,7 +370,7 @@ export const useFileStore = create<FileState>((set, get) => ({
     try {
       // 不传 directory 参数，默认即为文件选择模式（非目录）
       const selected = await open({
-        title: "选择文件",
+        title: i18n.t("file.selectFile"),
         multiple: false,
       });
       console.debug("[file] file dialog result:", typeof selected, selected);
@@ -385,7 +386,7 @@ export const useFileStore = create<FileState>((set, get) => ({
   pickAndSaveAs: async (content: string) => {
     try {
       const dest = await save({
-        filters: [{ name: "所有文件", extensions: ["*"] }],
+        filters: [{ name: i18n.t("file.allFiles"), extensions: ["*"] }],
       });
       if (dest) {
         await writeTextFile(dest, content);

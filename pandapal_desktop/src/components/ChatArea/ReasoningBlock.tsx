@@ -5,6 +5,7 @@
  * 流式状态下自动滚到底部。
  */
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 interface ReasoningBlockProps {
   tokens: string[];
@@ -21,6 +22,7 @@ function formatThinkDuration(ms?: number): string {
 }
 
 export function ReasoningBlock({ tokens, isStreaming, durationMs }: ReasoningBlockProps) {
+  const { t } = useTranslation();
   const text = tokens.join("");
   const textRef = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);
@@ -58,7 +60,7 @@ export function ReasoningBlock({ tokens, isStreaming, durationMs }: ReasoningBlo
     <div className="reasoning-block">
       <div className="reasoning-title">
         {isStreaming && <span className="spinner" />}
-        {isStreaming ? "思考中…" : "思考"}
+        {isStreaming ? t("chat.thinkingStreaming") : t("chat.thinking")}
         {!isStreaming && durationMs != null && (
           <span style={{ marginLeft: 6, fontSize: "var(--text-2xs)", color: "var(--text-muted)", fontWeight: 400 }}>
             {formatThinkDuration(durationMs)}
@@ -81,7 +83,7 @@ export function ReasoningBlock({ tokens, isStreaming, durationMs }: ReasoningBlo
           className="reasoning-toggle"
           onClick={() => setExpanded((v) => !v)}
         >
-          {expanded ? "▲ 收起" : "▼ 展开全部"}
+          {expanded ? t("chat.collapse") : t("chat.expandAll")}
         </button>
       )}
     </div>

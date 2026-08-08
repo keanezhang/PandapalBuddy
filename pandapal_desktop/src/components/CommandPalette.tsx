@@ -16,6 +16,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useCommandPaletteStore } from "../store/commandPaletteStore";
 import { useSessionStore } from "../store/sessionStore";
 import { useTaskSchedulerStore } from "../store/taskSchedulerStore";
@@ -53,6 +54,7 @@ function match(haystack: string, q: string): boolean {
 }
 
 export function CommandPalette() {
+  const { t } = useTranslation();
   const open = useCommandPaletteStore((s) => s.open);
   const closePalette = useCommandPaletteStore((s) => s.closePalette);
   const toggle = useCommandPaletteStore((s) => s.toggle);
@@ -129,7 +131,7 @@ export function CommandPalette() {
             kind: "session" as const,
             id: s.session_id,
             icon: s.is_favorite ? "⭐" : "💬",
-            title: s.title || "新会话",
+            title: s.title || t("commandPalette.newSession"),
             subtitle: s.group_name ?? undefined,
             run: () => { switchSession(s.session_id); closePalette(); },
           }))
@@ -137,11 +139,11 @@ export function CommandPalette() {
           kind: "session" as const,
           id: s.session_id,
           icon: s.is_favorite ? "⭐" : "💬",
-          title: s.title || "新会话",
+          title: s.title || t("commandPalette.newSession"),
           subtitle: s.preview || undefined,
           run: () => { switchSession(s.session_id); closePalette(); },
         }));
-    if (sessionItems.length) out.push({ kind: "session", label: "会话", items: sessionItems });
+    if (sessionItems.length) out.push({ kind: "session", label: t("commandPalette.groupSessions"), items: sessionItems });
 
     // 2. 消息全文（仅非空查询，来自后端）
     if (q !== "" && backendMessages.length) {
@@ -149,11 +151,11 @@ export function CommandPalette() {
         kind: "message" as const,
         id: `${m.session_id}-${i}`,
         icon: ROLE_ICON[m.role] ?? "💬",
-        title: m.snippet || "(空)",
+        title: m.snippet || t("commandPalette.emptySnippet"),
         subtitle: m.title,
         run: () => { switchSession(m.session_id); closePalette(); },
       }));
-      out.push({ kind: "message", label: "消息", items: messageItems });
+      out.push({ kind: "message", label: t("commandPalette.groupMessages"), items: messageItems });
     }
 
     // 3. 定时任务（客户端过滤）
@@ -168,7 +170,7 @@ export function CommandPalette() {
         subtitle: t.cron_expression || undefined,
         run: () => { selectTask(t.task_id); closePalette(); },
       }));
-    if (taskItems.length) out.push({ kind: "task", label: "任务安排", items: taskItems });
+    if (taskItems.length) out.push({ kind: "task", label: t("commandPalette.groupTasks"), items: taskItems });
 
     // 4. Skills（客户端过滤）
     const skillItems: ResultItem[] = skills
@@ -186,12 +188,12 @@ export function CommandPalette() {
           closePalette();
         },
       }));
-    if (skillItems.length) out.push({ kind: "skill", label: "Skills", items: skillItems });
+    if (skillItems.length) out.push({ kind: "skill", label: t("commandPalette.groupSkills"), items: skillItems });
 
     return out;
   }, [
     query, sessions, backendSessions, backendMessages, tasks, skills,
-    switchSession, selectTask, selectSkill, navigate, closePalette,
+    switchSession, selectTask, selectSkill, navigate, closePalette, t,
   ]);
 
   // 扁平化用于键盘导航
@@ -233,11 +235,11 @@ export function CommandPalette() {
             className="cmdk-input"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="搜索会话、消息、任务、Skills…"
+            placeholder={t("commandPalette.searchPlaceholder")}
             spellCheck={false}
             autoComplete="off"
           />
-          {hasQuery && searchLoading && <span className="cmdk-loading">搜索中…</span>}
+          {hasQuery && searchLoading && <span className="cmdk-loading">{t("commandPalette.searching")}</span>}
         </div>
 
         {/* 结果区 */}
@@ -245,8 +247,8 @@ export function CommandPalette() {
           {flat.length === 0 && (
             <div className="cmdk-empty">
               {hasQuery
-                ? (searchLoading ? "搜索中…" : `没有匹配「${query.trim()}」的结果`)
-                : "开始输入以搜索"}
+                ? (searchLoading ? t("commandPalette.searching") : t("commandPalette.noResults", { query: query.trim() }))
+                : t("commandPalette.startTyping")}
             </div>
           )}
 
@@ -286,9 +288,9 @@ export function CommandPalette() {
 
         {/* 底部提示 */}
         <div className="cmdk-footer">
-          <span><kbd className="cmdk-kbd">↑</kbd><kbd className="cmdk-kbd">↓</kbd> 切换</span>
-          <span><kbd className="cmdk-kbd">↵</kbd> 打开</span>
-          <span><kbd className="cmdk-kbd">⌘K</kbd> 唤起</span>
+          <span><kbd className="cmdk-kbd">↑</kbd><kbd className="cmdk-kbd">↓</kbd> {t("commandPalette.footerSwitch")}</span>
+          <span><kbd className="cmdk-kbd">↵</kbd> {t("commandPalette.footerOpen")}</span>
+          <span><kbd className="cmdk-kbd">⌘K</kbd> {t("commandPalette.footerInvoke")}</span>
           <span><kbd className="cmdk-kbd">Esc</kbd></span>
         </div>
       </div>

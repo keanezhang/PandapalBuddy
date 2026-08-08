@@ -4,6 +4,7 @@
  * 搜索结果卡片。纯 v2 Token。
  */
 import React, { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 interface Props {
   resultSummary: string;
@@ -11,6 +12,7 @@ interface Props {
 }
 
 export function SearchResultBlock({ resultSummary, collapsed }: Props) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(!collapsed);
 
   if (!resultSummary) return null;
@@ -34,7 +36,7 @@ export function SearchResultBlock({ resultSummary, collapsed }: Props) {
       >
         <span style={{ fontSize: "var(--text-sm)" }}>🔍</span>
         <span style={{ fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--info)" }}>
-          web_search 结果
+          {t("chat.searchResultTitle")}
         </span>
         {collapsed && (
           <span style={{ fontSize: "var(--text-2xs)", color: "var(--text-muted)", marginLeft: "auto" }}>

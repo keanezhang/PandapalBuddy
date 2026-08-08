@@ -25,6 +25,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import { useCredentialStore } from "../store/credentialStore";
 import { useConnectionStore } from "../store/connectionStore";
@@ -47,6 +48,7 @@ interface CredentialGateProps {
 }
 
 export function CredentialGate({ children, bypassCredentialCheck = false }: CredentialGateProps) {
+  const { t } = useTranslation();
   const checkLocal = useCredentialStore((s) => s.checkLocal);
   const loadCatalog = useCredentialStore((s) => s.loadCatalog);
   const connStatus = useConnectionStore((s) => s.status);
@@ -104,10 +106,10 @@ export function CredentialGate({ children, bypassCredentialCheck = false }: Cred
     if (connStatus === "connected") {
       setPhase("ready");
     } else if (connStatus === "closed" || connStatus === "error") {
-      setErrorMsg(connError ?? "后端启动失败");
+      setErrorMsg(connError ?? t("credentialGate.startFailed"));
       setPhase("error");
     }
-  }, [bypassCredentialCheck, phase, connStatus, connError]);
+  }, [bypassCredentialCheck, phase, connStatus, connError, t]);
 
   // 启动超时兜底：sidecar 起来了但迟迟不发 PANDAPAL_READY（启动中崩溃、DB 被
   // 锁、卡在某个子系统）时，connStatus 既不会变 connected 也不会变 closed/error，
@@ -118,13 +120,12 @@ export function CredentialGate({ children, bypassCredentialCheck = false }: Cred
     if (phase !== "starting") return;
     const timer = setTimeout(() => {
       setErrorMsg(
-        `后端启动超时（${SIDECAR_START_TIMEOUT_MS / 1000} 秒未就绪）。` +
-          `可重试；若反复失败请查看日志中 sidecar 的启动输出。`,
+        t("credentialGate.startTimeout", { seconds: SIDECAR_START_TIMEOUT_MS / 1000 }),
       );
       setPhase("error");
     }, SIDECAR_START_TIMEOUT_MS);
     return () => clearTimeout(timer);
-  }, [bypassCredentialCheck, phase]);
+  }, [bypassCredentialCheck, phase, t]);
 
   // bypass 模式（配置向导自身）：直接放行
   if (bypassCredentialCheck) {
@@ -132,21 +133,21 @@ export function CredentialGate({ children, bypassCredentialCheck = false }: Cred
   }
 
   if (phase === "checking") {
-    return <GateLoading text="正在检查配置..." icon="🔑" />;
+    return <GateLoading text={t("credentialGate.checking")} icon="🔑" />;
   }
 
   if (phase === "starting") {
-    return <GateLoading text="正在启动后端..." />;
+    return <GateLoading text={t("credentialGate.starting")} />;
   }
 
   if (phase === "error") {
     return (
       <GateScreen>
         <div style={{ fontSize: "var(--icon-empty-lg)" }}>⚠️</div>
-        <p className="gate-error-title">后端启动失败</p>
+        <p className="gate-error-title">{t("credentialGate.startFailed")}</p>
         {errorMsg && <p className="gate-error-detail">{errorMsg}</p>}
         <button className="gate-btn" onClick={() => void checkAndStart()}>
-          重试
+          {t("credentialGate.retry")}
         </button>
       </GateScreen>
     );

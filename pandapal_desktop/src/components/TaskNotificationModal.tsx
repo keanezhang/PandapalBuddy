@@ -5,6 +5,7 @@
  * 数据源：BackendProvider context（pendingTaskNotification）。
  */
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { useBackend } from "../providers/BackendProvider";
 
 const LEVEL_INFO: Record<string, { icon: string; color: string; bg: string }> = {
@@ -14,6 +15,7 @@ const LEVEL_INFO: Record<string, { icon: string; color: string; bg: string }> = 
 };
 
 export function TaskNotificationModal() {
+  const { t } = useTranslation();
   const { pendingTaskNotification, clearTaskNotification } = useBackend();
 
   if (!pendingTaskNotification) return null;
@@ -27,7 +29,7 @@ export function TaskNotificationModal() {
         <div className="modal-header">
           <span className="modal-title" style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
             <span>{info.icon}</span>
-            {pendingTaskNotification.title || "任务通知"}
+            {pendingTaskNotification.title || t("tasks.notificationTitle")}
           </span>
           <button className="modal-close" onClick={clearTaskNotification}>✕</button>
         </div>
@@ -44,7 +46,7 @@ export function TaskNotificationModal() {
           </div>
         </div>
         <div className="modal-footer">
-          <button className="btn btn-primary btn-sm" onClick={clearTaskNotification}>我知道了</button>
+          <button className="btn btn-primary btn-sm" onClick={clearTaskNotification}>{t("tasks.gotIt")}</button>
         </div>
       </div>
     </div>

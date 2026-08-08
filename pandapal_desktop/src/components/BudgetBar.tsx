@@ -8,6 +8,7 @@
  * 挂载时 budgetQuery() 主动刷新一次。「设置」按钮打开 BudgetSettingsModal。
  */
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useBackend } from "../providers/BackendProvider";
 import { useBudgetStore } from "../store/budgetStore";
 import { useCredentialStore } from "../store/credentialStore";
@@ -42,6 +43,7 @@ function BudgetRow({
   current?: boolean;
   catalog: ProviderMeta[];
 }) {
+  const { t } = useTranslation();
   const color = STATE_COLOR[b.state];
   const pct = Math.min(100, Math.max(0, b.usage_ratio * 100));
   const s = sym(b.currency);
@@ -49,8 +51,8 @@ function BudgetRow({
     <div
       style={{ minWidth: 190, flex: "0 1 240px" }}
       title={
-        `已用 ${s}${b.spent_native.toFixed(2)} / 额度 ${s}${b.limit_native ?? 0}` +
-        (b.state === "exhausted" ? "（已耗尽·停机）" : b.state === "near" ? "（临近）" : "")
+        t("budget.rowTitleSpent", { spent: `${s}${b.spent_native.toFixed(2)}`, limit: `${s}${b.limit_native ?? 0}` }) +
+        (b.state === "exhausted" ? t("budget.stateExhaustedSuffix") : b.state === "near" ? t("budget.stateNearSuffix") : "")
       }
     >
       <div style={{ display: "flex", justifyContent: "space-between", fontSize: "var(--text-xs)", marginBottom: 4 }}>
@@ -58,11 +60,11 @@ function BudgetRow({
           {displayNameOf(b.provider, catalog)}
           {current && (
             <span style={{ fontSize: "var(--text-2xs)", fontWeight: 600, padding: "0 5px", borderRadius: 20, background: "color-mix(in srgb, var(--accent) 14%, transparent)", color: "var(--accent-soft)" }}>
-              使用中
+              {t("budget.inUse")}
             </span>
           )}
-          {b.state === "exhausted" && <span style={{ color: "var(--danger)" }}>· 耗尽</span>}
-          {b.state === "near" && <span style={{ color: "var(--warning)" }}>· 临近</span>}
+          {b.state === "exhausted" && <span style={{ color: "var(--danger)" }}>· {t("budget.stateExhausted")}</span>}
+          {b.state === "near" && <span style={{ color: "var(--warning)" }}>· {t("budget.stateNear")}</span>}
         </span>
         <span className="mono" style={{ color: "var(--text-tertiary)" }}>
           {s}{b.spent_native.toFixed(2)} / {s}{b.limit_native ?? 0}
@@ -76,6 +78,7 @@ function BudgetRow({
 }
 
 export function BudgetBar() {
+  const { t } = useTranslation();
   const { budgetQuery } = useBackend();
   const budgets = useBudgetStore((s) => s.budgets);
   // 「当前使用中」= 用户实际选中的模型所属 provider。
@@ -112,12 +115,12 @@ export function BudgetBar() {
       }}
     >
       <span style={{ fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-        💳 预算额度<span style={{ fontWeight: 400, color: "var(--text-muted)", fontSize: "var(--text-xs)" }}>按厂家分账</span>
+        💳 {t("budget.title")}<span style={{ fontWeight: 400, color: "var(--text-muted)", fontSize: "var(--text-xs)" }}>{t("budget.titleHint")}</span>
       </span>
 
       {budgets.length === 0 ? (
         <span style={{ flex: 1, fontSize: "var(--text-sm)", color: "var(--text-muted)" }}>
-          未设额度 —— 点「设置」为各厂家设充值上限，超额自动停该厂家
+          {t("budget.unsetHint")}
         </span>
       ) : (
         <div style={{ flex: 1, display: "flex", gap: 18, flexWrap: "wrap", alignItems: "center" }}>
@@ -138,9 +141,9 @@ export function BudgetBar() {
                 border: "1px solid var(--border-subtle)", background: "transparent",
                 color: "var(--text-tertiary)", flexShrink: 0, whiteSpace: "nowrap",
               }}
-              title={expanded ? "折叠为仅当前模型" : "展开全部厂家额度"}
+              title={expanded ? t("budget.collapseTitle") : t("budget.expandTitle")}
             >
-              {expanded ? "▴ 收起" : `▾ 全部 ${budgets.length} 家`}
+              {expanded ? t("budget.collapse") : t("budget.expandAll", { count: budgets.length })}
             </button>
           )}
         </div>
@@ -154,7 +157,7 @@ export function BudgetBar() {
           color: "var(--accent-soft)", flexShrink: 0,
         }}
       >
-        ⚙ 设置
+        ⚙ {t("budget.settings")}
       </button>
 
       {open && <BudgetSettingsModal onClose={() => setOpen(false)} budgets={budgets} />}

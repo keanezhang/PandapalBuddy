@@ -22,6 +22,7 @@
  */
 
 import { Navigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useAuthStore } from "../store/authStore";
 import { WorkspaceGate } from "./WorkspaceGate";
 import { CredentialGate } from "./CredentialGate";
@@ -34,11 +35,12 @@ interface AuthGuardProps {
 }
 
 export function AuthGuard({ children, bypassCredentialCheck = false }: AuthGuardProps) {
+  const { t } = useTranslation();
   const status = useAuthStore((s) => s.status);
 
   // 1. 登录态加载中
   if (status === "loading") {
-    return <GateLoading text="正在启动..." />;
+    return <GateLoading text={t("auth.starting")} />;
   }
 
   // 2. 未登录 → 跳登录页

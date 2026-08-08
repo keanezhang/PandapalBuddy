@@ -12,6 +12,7 @@
  *       不再触发磁盘 IO；因此默认所有目录折叠，只展示顶层条目（类 IDE 行为）。
  */
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useWorkspaceStore } from "../store/workspaceStore";
 import { useFileStore, type FileNode } from "../store/fileStore";
 import { fileIcon } from "./fileRenderers/fileTypes";
@@ -61,6 +62,7 @@ function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
 
 /* ── 文件树入口 ─────────────────────────────────────────────────────── */
 export function FileExplorer() {
+  const { t } = useTranslation();
   const current = useWorkspaceStore((s) => s.current);
   const fileTree = useFileStore((s) => s.fileTree);
   const loading = useFileStore((s) => s.fileTreeLoading);
@@ -72,13 +74,13 @@ export function FileExplorer() {
   }, [current, loadFileTree]);
 
   if (!current) {
-    return <div className="file-tree-empty">未打开工作目录</div>;
+    return <div className="file-tree-empty">{t("fileExplorer.noWorkspace")}</div>;
   }
   if (loading && fileTree.length === 0) {
-    return <div className="file-tree-empty"><span className="skills-loading-dot" /> 加载文件树…</div>;
+    return <div className="file-tree-empty"><span className="skills-loading-dot" /> {t("fileExplorer.loading")}</div>;
   }
   if (fileTree.length === 0) {
-    return <div className="file-tree-empty">该目录暂无可显示的文件</div>;
+    return <div className="file-tree-empty">{t("fileExplorer.empty")}</div>;
   }
 
   return (

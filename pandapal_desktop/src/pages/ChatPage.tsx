@@ -6,6 +6,7 @@
  */
 
 import { useState, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { MessageList } from "../components/ChatArea/MessageList";
 import { InputBar } from "../components/InputBar";
 import { TaskPanel } from "../components/TaskPanel/TaskPanel";
@@ -146,6 +147,7 @@ function ChatPanel({
 import type { ActivatedSkill } from "../store/skillStore";
 
 function ActivatedSkillBadge({ skill, onClear }: { skill: ActivatedSkill; onClear: () => void }) {
+  const { t } = useTranslation();
   return (
     <div style={{
       margin: "0 var(--space-4) var(--space-1)",
@@ -169,7 +171,7 @@ function ActivatedSkillBadge({ skill, onClear }: { skill: ActivatedSkill; onClea
       )}
       <button
         onClick={onClear}
-        title="停用此 Skill"
+        title={t("chat.disableSkill")}
         style={{
           marginLeft: "auto",
           background: "none",

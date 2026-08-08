@@ -5,6 +5,7 @@
  * 样式类：.toast-container / .toast / .toast--type（SECTION 20）。
  */
 
+import { useTranslation } from "react-i18next";
 import { useToastStore, type ToastType } from "./toastStore";
 
 const ICONS: Record<ToastType, string> = {
@@ -14,6 +15,7 @@ const ICONS: Record<ToastType, string> = {
 };
 
 export function ToastHost() {
+  const { t } = useTranslation();
   const toasts = useToastStore((s) => s.toasts);
   const dismiss = useToastStore((s) => s.dismiss);
 
@@ -21,14 +23,14 @@ export function ToastHost() {
 
   return (
     <div className="toast-container">
-      {toasts.map((t) => (
-        <div key={t.id} className={`toast toast--${t.type}`}>
-          <span className="toast-icon">{ICONS[t.type]}</span>
+      {toasts.map((toast) => (
+        <div key={toast.id} className={`toast toast--${toast.type}`}>
+          <span className="toast-icon">{ICONS[toast.type]}</span>
           <span className="toast-body">
-            {t.message}
-            {t.highlight && <span className="toast-highlight">{t.highlight}</span>}
+            {toast.message}
+            {toast.highlight && <span className="toast-highlight">{toast.highlight}</span>}
           </span>
-          <button className="toast-close" onClick={() => dismiss(t.id)} aria-label="关闭">
+          <button className="toast-close" onClick={() => dismiss(toast.id)} aria-label={t("common.close")}>
             ✕
           </button>
         </div>

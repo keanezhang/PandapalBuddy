@@ -13,12 +13,14 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useAuthStore } from "../store/authStore";
 import { AuthLayout, AuthError, AuthField, AuthFooter } from "../components/auth/AuthLayout";
 
 type TabMode = "local" | "cloud";
 
 export function LoginPage() {
+  const { t } = useTranslation();
   const [tab, setTab] = useState<TabMode>("local");
   // null = 正在查询本地账号状态（避免闪烁创建/登录表单）
   const [localRegistered, setLocalRegistered] = useState<boolean | null>(null);
@@ -54,12 +56,12 @@ export function LoginPage() {
       // 创建本地账号
       if (localPassword.length < 6) {
         clearError();
-        useAuthStore.setState({ error: "密码至少需要 6 位" });
+        useAuthStore.setState({ error: t("auth.errPassTooShort6") });
         return;
       }
       if (localPassword !== confirmPassword) {
         clearError();
-        useAuthStore.setState({ error: "两次输入的密码不一致" });
+        useAuthStore.setState({ error: t("auth.errPassMismatch") });
         return;
       }
     }
@@ -90,9 +92,9 @@ export function LoginPage() {
       subtitle={
         tab === "local"
           ? localRegistered
-            ? "本地账号登录"
-            : "创建你的本地账号"
-          : "登录到你的云端账号"
+            ? t("auth.subtitleLocalRegistered")
+            : t("auth.subtitleLocalCreate")
+          : t("auth.subtitleCloud")
       }
     >
       {/* 模式 Tab */}
@@ -105,7 +107,7 @@ export function LoginPage() {
             setTab("local");
           }}
         >
-          本地模式
+          {t("auth.localMode")}
         </button>
         <button
           type="button"
@@ -115,7 +117,7 @@ export function LoginPage() {
             setTab("cloud");
           }}
         >
-          云端登录
+          {t("auth.cloudLogin")}
         </button>
       </div>
 
@@ -127,40 +129,40 @@ export function LoginPage() {
         <form onSubmit={handleLocalSubmit} className="auth-form">
           <div className="auth-hint">
             {localRegistered
-              ? "已配置本地账号，密码校验在本地完成，完全离线可用。"
-              : "本地账号存储在设备上（密码加密保存），无需服务器即可使用 PandaPal。"}
+              ? t("auth.hintLocalRegistered")
+              : t("auth.hintLocalCreate")}
           </div>
 
-          <AuthField label="用户名">
+          <AuthField label={t("auth.username")}>
             <input
               type="text"
               value={localUsername}
               onChange={(e) => setLocalUsername(e.target.value)}
-              placeholder="请输入用户名"
+              placeholder={t("auth.placeholderUsername")}
               className="auth-input"
               autoFocus
               disabled={loading}
             />
           </AuthField>
 
-          <AuthField label="密码">
+          <AuthField label={t("auth.password")}>
             <input
               type="password"
               value={localPassword}
               onChange={(e) => setLocalPassword(e.target.value)}
-              placeholder="请输入密码"
+              placeholder={t("auth.placeholderPassword")}
               className="auth-input"
               disabled={loading}
             />
           </AuthField>
 
           {localRegistered === false && (
-            <AuthField label="确认密码">
+            <AuthField label={t("auth.confirmPassword")}>
               <input
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="请再次输入密码"
+                placeholder={t("auth.placeholderConfirm")}
                 className="auth-input"
                 disabled={loading}
               />
@@ -169,10 +171,10 @@ export function LoginPage() {
 
           <button type="submit" className="auth-submit" disabled={loading}>
             {loading
-              ? "处理中..."
+              ? t("auth.processing")
               : localRegistered === false
-                ? "创建本地账号"
-                : "登 录"}
+                ? t("auth.createLocalAccount")
+                : t("auth.login")}
           </button>
         </form>
       )}
@@ -180,35 +182,35 @@ export function LoginPage() {
       {/* 云端登录面板 */}
       {tab === "cloud" && (
         <form onSubmit={handleCloudSubmit} className="auth-form">
-          <AuthField label="用户名">
+          <AuthField label={t("auth.username")}>
             <input
               type="text"
               value={cloudUsername}
               onChange={(e) => setCloudUsername(e.target.value)}
-              placeholder="请输入用户名"
+              placeholder={t("auth.placeholderUsername")}
               className="auth-input"
               autoFocus
               disabled={loading}
             />
           </AuthField>
 
-          <AuthField label="密码">
+          <AuthField label={t("auth.password")}>
             <input
               type="password"
               value={cloudPassword}
               onChange={(e) => setCloudPassword(e.target.value)}
-              placeholder="请输入密码"
+              placeholder={t("auth.placeholderPassword")}
               className="auth-input"
               disabled={loading}
             />
           </AuthField>
 
           <button type="submit" className="auth-submit" disabled={loading}>
-            {loading ? "登录中..." : "登 录"}
+            {loading ? t("auth.loggingIn") : t("auth.login")}
           </button>
 
           {/* 底部链接 */}
-          <AuthFooter text="还没有云端账号？" linkTo="/register" linkText="立即注册" />
+          <AuthFooter text={t("auth.noCloudAccount")} linkTo="/register" linkText={t("auth.registerNow")} />
         </form>
       )}
     </AuthLayout>

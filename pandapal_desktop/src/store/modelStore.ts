@@ -17,6 +17,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { ModelPriceSource } from "../types/api";
+import i18n from "../i18n";
 
 export interface ModelInfo {
   id: string;
@@ -104,7 +105,7 @@ export const useModelStore = create<ModelState>()(
           if (dropped) {
             console.warn(
               `[model] 持久化选择的模型已不可用：${dropped.previous} → 已切换至 ${
-                dropped.fallback || "(无可用模型)"
+                dropped.fallback || i18n.t("model.noModels")
               }`,
             );
           }

@@ -9,6 +9,7 @@
  *   点击可展开看每一步。
  */
 import React, { useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { SkillProgressGroup, SkillActivityStatus } from "../../store/chatStore";
 import { formatDuration } from "./toolRenderers/_primitives";
 
@@ -19,6 +20,7 @@ const STEP_META: Record<SkillActivityStatus, { icon: string; color: string }> = 
 };
 
 export function SkillProgressBlock({ group }: { group: SkillProgressGroup }) {
+  const { t } = useTranslation();
   const running = group.status === "running";
   // 运行中默认展开（活的日志）；终态默认收起成 chip。
   const [expanded, setExpanded] = useState(running);
@@ -65,7 +67,7 @@ export function SkillProgressBlock({ group }: { group: SkillProgressGroup }) {
         </span>
         {!running && (
           <span style={{ color: "var(--text-tertiary)", fontSize: "var(--text-xs)", flexShrink: 0 }}>
-            {group.steps.length} 步
+            {t("skills.steps", { count: group.steps.length })}
           </span>
         )}
         <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "var(--space-2)", flexShrink: 0 }}>

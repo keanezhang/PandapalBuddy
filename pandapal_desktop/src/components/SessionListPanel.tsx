@@ -22,6 +22,8 @@
  */
 import React, { useState, useCallback, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import i18n from "../i18n";
 import { useSessionStore } from "../store/sessionStore";
 import { useBackend } from "../providers/BackendProvider";
 import type { SessionInfo, SessionGroupInfo } from "../types/api";
@@ -32,6 +34,7 @@ const PAGE_SIZE = 10;
 const MAX_GROUPS = 10;
 
 export function SessionListPanel() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const sessions = useSessionStore((s) => s.sessions);
   const groups = useSessionStore((s) => s.groups);
@@ -102,7 +105,7 @@ export function SessionListPanel() {
               selected={s.session_id === currentSessionId}
               onClick={() => { switchSession(s.session_id); navigate("/"); }}
               onDelete={() => {
-                if (window.confirm(`确定删除会话「${s.title || s.session_id}」？\n删除后数据不可恢复。`)) {
+                if (window.confirm(t("sessions.deleteSessionConfirm", { title: s.title || s.session_id }))) {
                   deleteSession(s.session_id);
                 }
               }}
@@ -149,7 +152,7 @@ export function SessionListPanel() {
             textTransform: "uppercase",
             letterSpacing: "0.05em",
           }}>
-            移动到分组
+            {t("sessions.moveToGroup")}
           </div>
           <div className="dropdown-divider" />
           {groups.map((g) => (
@@ -173,7 +176,7 @@ export function SessionListPanel() {
                 setCtxMenu(null);
               }}
             >
-              移出分组
+              {t("sessions.removeFromGroup")}
             </div>
           )}
           {groups.length === 0 && (
@@ -182,7 +185,7 @@ export function SessionListPanel() {
               fontSize: "var(--text-sm)",
               color: "var(--text-muted)",
             }}>
-              暂无分组，请先在上方新建
+              {t("sessions.noGroupsHint")}
             </div>
           )}
         </div>
@@ -194,6 +197,7 @@ export function SessionListPanel() {
 // ── Header ────────────────────────────────────────────────
 
 function SessionListHeader({ onCreate }: { onCreate: () => void }) {
+  const { t } = useTranslation();
   return (
     <div
       style={{
@@ -205,10 +209,10 @@ function SessionListHeader({ onCreate }: { onCreate: () => void }) {
       }}
     >
       <span style={{ fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--text-primary)" }}>
-        会话
+        {t("sessions.title")}
       </span>
       <button
-        title="新建会话"
+        title={t("sessions.new")}
         onClick={onCreate}
         style={{
           width: 24,
@@ -242,6 +246,7 @@ function SessionListFilter({
   value: "all" | null | string;
   onChange: (v: "all" | null | string) => void;
 }) {
+  const { t } = useTranslation();
   const selectValue: string = value === "all" ? "__all__" : value === null ? "__none__" : value;
   return (
     <div style={{ padding: "6px 14px", borderBottom: "1px solid var(--border-subtle)" }}>
@@ -265,8 +270,8 @@ function SessionListFilter({
           boxSizing: "border-box",
         }}
       >
-        <option value="__all__">全部</option>
-        <option value="__none__">无分组</option>
+        <option value="__all__">{t("sessions.filterAll")}</option>
+        <option value="__none__">{t("sessions.filterNone")}</option>
         {groups.map((g) => (
           <option key={g.id} value={g.id}>
             📁 {g.name}
@@ -300,6 +305,7 @@ export function SessionGroupSection({
   /** deleteSessions=true 时连同组内会话一并删除；false 仅删分组保留会话 */
   onDelete: (id: string, deleteSessions: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -370,7 +376,7 @@ export function SessionGroupSection({
         className="sidebar-chat-item muted"
       >
         <span className="chat-icon">+</span>
-        <span className="chat-title">新建分组</span>
+        <span className="chat-title">{t("sessions.newGroup")}</span>
       </div>
 
       {limitHint && (
@@ -386,7 +392,7 @@ export function SessionGroupSection({
             borderRadius: "var(--radius-sm)",
           }}
         >
-          最多创建 {MAX_GROUPS} 个分组，不支持更多了。请先删除部分分组。
+          {t("sessions.maxGroups", { count: MAX_GROUPS })}
         </div>
       )}
 
@@ -415,7 +421,7 @@ export function SessionGroupSection({
               setCtxMenu(null);
             }}
           >
-            ✏️ 重命名
+            ✏️ {t("sessions.rename")}
           </div>
           <div className="dropdown-divider" />
           <div
@@ -426,7 +432,7 @@ export function SessionGroupSection({
               setCtxMenu(null);
             }}
           >
-            🗑 删除
+            🗑 {t("sessions.delete")}
           </div>
         </div>
       )}
@@ -434,8 +440,8 @@ export function SessionGroupSection({
       {/* ── 新建 / 重命名弹窗 ── */}
       {modal && (
         <GroupNameModal
-          title={modal.mode === "create" ? "新建分组" : "重命名分组"}
-          confirmLabel={modal.mode === "create" ? "创建" : "保存"}
+          title={modal.mode === "create" ? t("sessions.createGroup") : t("sessions.renameGroup")}
+          confirmLabel={modal.mode === "create" ? t("sessions.create") : t("sessions.save")}
           initialValue={modal.mode === "rename" ? modal.current : ""}
           onClose={() => setModal(null)}
           onConfirm={(name) => {
@@ -472,6 +478,7 @@ function GroupItem({
   onClick: () => void;
   onContextMenu: (x: number, y: number) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       className={`sidebar-chat-item${active ? " active" : ""}`}
@@ -481,7 +488,7 @@ function GroupItem({
         e.stopPropagation();
         onContextMenu(e.clientX, e.clientY);
       }}
-      title="左键打开分组 · 右键更多操作"
+      title={t("sessions.groupItemHint")}
     >
       <span className="chat-icon">🗂</span>
       <span className="chat-title">{group.name}</span>
@@ -504,6 +511,7 @@ function GroupNameModal({
   onConfirm: (name: string) => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const [name, setName] = useState(initialValue);
   const trimmed = name.trim();
   const submit = () => {
@@ -525,7 +533,7 @@ function GroupNameModal({
             autoFocus
             value={name}
             maxLength={20}
-            placeholder="请输入分组名称"
+            placeholder={t("sessions.groupNamePlaceholder")}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") submit();
@@ -547,7 +555,7 @@ function GroupNameModal({
         </div>
         <div className="modal-footer">
           <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>
-            取消
+            {t("sessions.cancel")}
           </button>
           <button
             type="button"
@@ -575,19 +583,20 @@ function GroupDeleteModal({
   onConfirm: (deleteSessions: boolean) => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   // false = 仅删分组保留会话；true = 连同会话一并删除
   const [deleteSessions, setDeleteSessions] = useState(false);
 
   const options: { value: boolean; title: string; desc: string }[] = [
-    { value: false, title: "仅删除分组", desc: "组内会话保留，变为「无分组」状态" },
-    { value: true, title: "连同会话一起删除", desc: "组内所有会话将被一并删除，且不可恢复" },
+    { value: false, title: t("sessions.deleteGroupOnly"), desc: t("sessions.deleteGroupOnlyDesc") },
+    { value: true, title: t("sessions.deleteGroupWithSessions"), desc: t("sessions.deleteGroupWithSessionsDesc") },
   ];
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" style={{ width: 420 }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <span className="modal-title">删除分组「{name}」</span>
+          <span className="modal-title">{t("sessions.deleteGroupTitle", { name })}</span>
           <button type="button" className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -638,14 +647,14 @@ function GroupDeleteModal({
         </div>
         <div className="modal-footer">
           <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>
-            取消
+            {t("sessions.cancel")}
           </button>
           <button
             type="button"
             className={`btn btn-sm ${deleteSessions ? "btn-danger-solid" : "btn-danger"}`}
             onClick={() => onConfirm(deleteSessions)}
           >
-            {deleteSessions ? "永久删除" : "删除分组"}
+            {deleteSessions ? t("sessions.permanentDelete") : t("sessions.deleteGroup")}
           </button>
         </div>
       </div>
@@ -670,6 +679,7 @@ function SessionItem({
   onToggleFavorite: () => void;
   onContextMenu: (x: number, y: number) => void;
 }) {
+  const { t } = useTranslation();
   const [hover, setHover] = useState(false);
 
   return (
@@ -692,7 +702,7 @@ function SessionItem({
         className="chat-title"
         style={{ fontWeight: selected ? 600 : 400 }}
       >
-        {session.title || "新会话"}
+        {session.title || t("sessions.newSessionFallback")}
       </span>
       {session.group_name && (
         <span className="session-group-tag">{session.group_name}</span>
@@ -700,14 +710,14 @@ function SessionItem({
       {hover && (
         <div style={{ display: "flex", gap: 4, alignItems: "center" }} onClick={(e) => e.stopPropagation()}>
           <button
-            title={session.is_favorite ? "取消收藏" : "收藏"}
+            title={session.is_favorite ? t("sessions.unfavorite") : t("sessions.favorite")}
             onClick={onToggleFavorite}
             style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: 0, fontSize: "var(--text-sm)", fontFamily: "inherit" }}
           >
             {session.is_favorite ? "☆" : "⭐"}
           </button>
           <button
-            title="删除"
+            title={t("sessions.deleteSession")}
             onClick={onDelete}
             style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: 0, fontSize: "var(--text-sm)", fontFamily: "inherit" }}
           >
@@ -722,6 +732,7 @@ function SessionItem({
 // ── Empty / LoadMore ──────────────────────────────────────
 
 function SessionListEmpty() {
+  const { t } = useTranslation();
   return (
     <div
       style={{
@@ -732,7 +743,7 @@ function SessionListEmpty() {
       }}
     >
       <div style={{ fontSize: "var(--text-3xl)", marginBottom: 10 }}>💬</div>
-      <div>点击 + 开始新对话</div>
+      <div>{t("sessions.emptyHint")}</div>
     </div>
   );
 }
@@ -744,6 +755,7 @@ function LoadMoreButton({
   onClick: () => void;
   loading: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <button
       onClick={onClick}
@@ -758,7 +770,7 @@ function LoadMoreButton({
         fontSize: "var(--text-base)",
       }}
     >
-      {loading ? "加载中..." : "▼ 加载更多"}
+      {loading ? t("sessions.loading") : t("sessions.loadMore")}
     </button>
   );
 }
@@ -771,10 +783,10 @@ function formatTime(iso: string): string {
     const dt = new Date(iso);
     const now = Date.now();
     const diff = now - dt.getTime();
-    if (diff < 60_000) return "刚刚";
-    if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`;
-    if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`;
-    if (diff < 604_800_000) return `${Math.floor(diff / 86_400_000)} 天前`;
+    if (diff < 60_000) return i18n.t("sessions.justNow");
+    if (diff < 3_600_000) return i18n.t("sessions.minutesAgo", { count: Math.floor(diff / 60_000) });
+    if (diff < 86_400_000) return i18n.t("sessions.hoursAgo", { count: Math.floor(diff / 3_600_000) });
+    if (diff < 604_800_000) return i18n.t("sessions.daysAgo", { count: Math.floor(diff / 86_400_000) });
     return dt.toLocaleDateString();
   } catch {
     return "";

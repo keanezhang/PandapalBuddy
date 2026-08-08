@@ -10,6 +10,7 @@
  *   2. AI 建议 — readOnly InlineDiffEditor，对比 original vs suggested
  */
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { useFileStore } from "../store/fileStore";
 import { RENDERER_MAP, ErrorRenderer, resolveViewerMode, toMonacoLang } from "./fileRenderers";
 
@@ -23,6 +24,7 @@ const Labels: Record<string, string> = {
 /* ── FileViewerPanel ─────────────────────────────────────────────────── */
 
 export function FileViewerPanel({ width }: { width: string }) {
+  const { t } = useTranslation();
   const {
     openFiles, activeFileId, fileContents, closeFile, switchActiveFile,
     saveCurrentFile, pickAndSaveAs,
@@ -226,7 +228,7 @@ export function FileViewerPanel({ width }: { width: string }) {
           color: "var(--text-tertiary)", padding: 40,
         }}>
           <div style={{ fontSize: "var(--icon-empty)", opacity: 0.3 }}>📄</div>
-          <div style={{ fontSize: "var(--text-base)" }}>暂无打开的文件</div>
+          <div style={{ fontSize: "var(--text-base)" }}>{t("fileViewer.empty")}</div>
         </div>
       </div>
     );
@@ -274,25 +276,25 @@ export function FileViewerPanel({ width }: { width: string }) {
           <span style={{
             color: "var(--text-primary)", flex: 1,
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-          }}>AI 建议修改：{af.path}</span>
+          }}>{t("fileViewer.suggestionTitle", { path: af.path })}</span>
           <button
             onClick={() => void acceptSuggestion(af.path)}
-            title="接受全部改动并写入文件"
+            title={t("fileViewer.acceptAllTitle")}
             style={{
               padding: "2px 10px", fontSize: "var(--text-xs)", cursor: "pointer",
               border: "1px solid var(--success)", borderRadius: 4,
               background: "transparent", color: "var(--success)", fontWeight: 600,
             }}
-          >全部接受</button>
+          >{t("fileViewer.acceptAll")}</button>
           <button
             onClick={() => void rejectSuggestion(af.path)}
-            title="拒绝全部改动，恢复原始内容"
+            title={t("fileViewer.rejectAllTitle")}
             style={{
               padding: "2px 10px", fontSize: "var(--text-xs)", cursor: "pointer",
               border: "1px solid var(--border-subtle)", borderRadius: 4,
               background: "transparent", color: "var(--text-tertiary)",
             }}
-          >全部拒绝</button>
+          >{t("fileViewer.rejectAll")}</button>
         </div>
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex" }}>
           <Renderer {...rendererProps} />
@@ -333,8 +335,8 @@ export function FileViewerPanel({ width }: { width: string }) {
         <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {af.path}
         </span>
-        {dirty && <span style={{ color: "var(--accent-2)", fontSize: "var(--text-2xs)" }}>● 已修改</span>}
-        <span style={{ fontSize: "var(--text-2xs)", opacity: 0.5 }}>Ctrl+S 保存 · Ctrl+W 关闭</span>
+        {dirty && <span style={{ color: "var(--accent-2)", fontSize: "var(--text-2xs)" }}>● {t("fileViewer.modified")}</span>}
+        <span style={{ fontSize: "var(--text-2xs)", opacity: 0.5 }}>{t("fileViewer.shortcuts")}</span>
       </div>
       <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex" }}>
         <Renderer {...rendererProps} />
@@ -359,7 +361,7 @@ export function FileViewerPanel({ width }: { width: string }) {
                 color: dirty ? "var(--text-on-accent)" : "var(--text-muted)",
                 fontWeight: dirty ? 600 : 400, opacity: dirty ? 1 : 0.6,
               }}
-            >保存</button>
+            >{t("common.save")}</button>
             <button
               onClick={() => void onSaveAs()}
               title="Ctrl+Shift+S"
@@ -368,7 +370,7 @@ export function FileViewerPanel({ width }: { width: string }) {
                 border: "1px solid var(--border-subtle)", borderRadius: 4,
                 background: "transparent", color: "var(--text-secondary)",
               }}
-            >另存为</button>
+            >{t("common.saveAs")}</button>
           </>
         )}
         <span style={{ flex: 1 }} />
@@ -380,7 +382,7 @@ export function FileViewerPanel({ width }: { width: string }) {
             border: "1px solid var(--border-subtle)", borderRadius: 4,
             background: "transparent", color: "var(--text-tertiary)",
           }}
-        >关闭</button>
+        >{t("common.close")}</button>
       </div>
     </div>
   );

@@ -10,6 +10,7 @@
 import React, { useMemo, useState } from "react";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
+import { useTranslation } from "react-i18next";
 
 marked.setOptions({ gfm: true, breaks: false });
 
@@ -66,6 +67,7 @@ function handleLinkClick(e: React.MouseEvent<HTMLDivElement>) {
 // ── 代码块：语言标签 + 复制按钮 ──────────────────────────────────────────────
 
 function CodeBlock({ lang, code }: { lang: string; code: string }) {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const handleCopy = () => {
     navigator.clipboard.writeText(code).then(() => {
@@ -88,7 +90,7 @@ function CodeBlock({ lang, code }: { lang: string; code: string }) {
           border: "none", cursor: "pointer", padding: "2px 6px", borderRadius: 4,
           fontFamily: "inherit",
         }}>
-          {copied ? "已复制 ✓" : "复制"}
+          {copied ? t("chat.copied") : t("chat.copy")}
         </button>
       </div>
       <pre style={{

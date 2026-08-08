@@ -9,6 +9,7 @@
  * 本文件不得再出现任何 provider 常量表或硬编码 provider id（PRD G5 / Story 5）。
  */
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useBackend } from "../providers/BackendProvider";
 import { useCredentialStore } from "../store/credentialStore";
 import type { BudgetView } from "../types/api";
@@ -25,6 +26,7 @@ interface Props {
 const CURRENCIES = ["CNY", "USD"];
 
 export function BudgetSettingsModal({ onClose, budgets }: Props) {
+  const { t } = useTranslation();
   const { setBudget } = useBackend();
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -101,17 +103,18 @@ export function BudgetSettingsModal({ onClose, budgets }: Props) {
     <div className="modal-overlay">
       <div ref={panelRef} className="modal" style={{ width: 420 }}>
         <div className="modal-header">
-          <span className="modal-title">💳 设置预算额度</span>
+          <span className="modal-title">💳 {t("budget.modalTitle")}</span>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <div style={{ fontSize: "var(--text-sm)", color: "var(--text-tertiary)", lineHeight: 1.5 }}>
-            为每个 LLM 厂家分别设置总额度（各家充值独立）。累计净费用达额度即
-            <b>只停该厂家</b>，其余照常；可随时上调。
+            {t("budget.modalDesc")}
+            <b>{t("budget.modalDescOnlyProvider")}</b>
+            {t("budget.modalDescRest")}
           </div>
 
           <div>
-            <div style={labelStyle}>厂家 Provider</div>
+            <div style={labelStyle}>{t("budget.labelProvider")}</div>
             <select
               value={provider}
               onChange={(e) => setProvider(e.target.value)}
@@ -124,24 +127,24 @@ export function BudgetSettingsModal({ onClose, budgets }: Props) {
             </select>
             {providerCatalog.length === 0 && (
               <div style={{ fontSize: "var(--text-xs)", color: "var(--danger)", marginTop: 6 }}>
-                系统 provider 目录未加载，暂时无法设置预算
+                {t("budget.catalogNotLoaded")}
               </div>
             )}
           </div>
 
           <div style={{ display: "flex", gap: 12 }}>
             <div style={{ width: 110 }}>
-              <div style={labelStyle}>币种</div>
+              <div style={labelStyle}>{t("budget.labelCurrency")}</div>
               <select value={currency} onChange={(e) => setCurrency(e.target.value)} style={inputStyle}>
                 {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
             <div style={{ flex: 1 }}>
-              <div style={labelStyle}>总额度（{symbol}）</div>
+              <div style={labelStyle}>{t("budget.labelLimit", { symbol })}</div>
               <input
                 type="number" min={0} step="0.01" value={limit}
                 onChange={(e) => setLimit(e.target.value)}
-                placeholder={`如 ${symbol}50`} style={inputStyle}
+                placeholder={t("budget.limitPlaceholder", { symbol })} style={inputStyle}
                 onKeyDown={(e) => { if (e.key === "Enter" && valid) save(); }}
               />
             </div>
@@ -149,18 +152,18 @@ export function BudgetSettingsModal({ onClose, budgets }: Props) {
 
           {byProvider.get(provider)?.limit_native != null && (
             <div style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>
-              当前已用 {symbol}{(byProvider.get(provider)!.spent_native).toFixed(2)}
-              {" · "}设 0 或低于已用将立即进入「耗尽」拦截。
+              {t("budget.spentSoFar", { symbol, spent: (byProvider.get(provider)!.spent_native).toFixed(2) })}
+              {" · "}{t("budget.zeroStopsHint")}
             </div>
           )}
         </div>
         <div className="modal-footer" style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-          <button className="btn" onClick={onClose}>取消</button>
+          <button className="btn" onClick={onClose}>{t("budget.cancel")}</button>
           <button
             className="btn btn-primary" onClick={save} disabled={!valid}
             style={{ opacity: valid ? 1 : 0.5, cursor: valid ? "pointer" : "not-allowed" }}
           >
-            保存
+            {t("budget.save")}
           </button>
         </div>
       </div>

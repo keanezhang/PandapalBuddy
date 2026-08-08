@@ -5,6 +5,7 @@
  * 纯 v2 Token。
  */
 import React, { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   useCurrentMessages,
   useIsStreaming,
@@ -17,6 +18,7 @@ import { MessageBubble } from "./MessageBubble";
 import { StreamingBubble } from "./StreamingBubble";
 
 export function MessageList() {
+  const { t } = useTranslation();
   const messages: ChatMessage[] = useCurrentMessages();
   const status = useConnectionStore((s) => s.status);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -68,10 +70,10 @@ export function MessageList() {
             fontSize: "var(--text-lg)", fontWeight: 600,
             color: "var(--text-primary)", marginBottom: "var(--space-2)",
           }}>
-            {isConnected ? "今天想聊点什么？" : "等待后端连接…"}
+            {isConnected ? t("chat.emptyTitleConnected") : t("chat.emptyTitleDisconnected")}
           </div>
           <div style={{ fontSize: "var(--text-base)", color: "var(--text-tertiary)" }}>
-            {isConnected ? "输入消息开始对话" : "正在启动 PandaPal 引擎"}
+            {isConnected ? t("chat.emptyHintConnected") : t("chat.emptyHintDisconnected")}
           </div>
         </div>
       </div>

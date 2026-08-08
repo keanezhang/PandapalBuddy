@@ -21,6 +21,7 @@
  */
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { usePreferenceStore } from "../store/preferenceStore";
 import type { AgentMode } from "../types/api";
 import { useCommandPaletteStore } from "../store/commandPaletteStore";
@@ -46,10 +47,14 @@ function formatTime(isoStr: string): string {
 // ── SidebarHeader ───────────────────────────────────────────────────
 
 function SidebarHeader() {
+  const { t } = useTranslation();
   const status = useConnectionStore((s) => s.status);
   const connText: Record<string, string> = {
-    waiting: "等待", connecting: "连接中", connected: "在线",
-    error: "失败", closed: "离线",
+    waiting: t("leftsidebar.conn.waiting"),
+    connecting: t("leftsidebar.conn.connecting"),
+    connected: t("leftsidebar.conn.connected"),
+    error: t("leftsidebar.conn.error"),
+    closed: t("leftsidebar.conn.closed"),
   };
   const online = status === "connected";
 
@@ -86,12 +91,13 @@ function SidebarHeader() {
 // office/coding 布局。仅本地 UI 状态，无 IPC 副作用。
 
 function ModeSwitcher() {
+  const { t } = useTranslation();
   const mode = usePreferenceStore((s) => s.mode);
   const setMode = usePreferenceStore((s) => s.setMode);
 
   const segments: { value: AgentMode; icon: string; label: string; mono?: boolean }[] = [
-    { value: "office", icon: "⌨️", label: "办公助手" },
-    { value: "coding", icon: "</>", label: "编码", mono: true },
+    { value: "office", icon: "⌨️", label: t("leftsidebar.mode.office") },
+    { value: "coding", icon: "</>", label: t("leftsidebar.mode.coding"), mono: true },
   ];
 
   return (
@@ -140,11 +146,12 @@ function ModeSwitcher() {
 
 // ── SectionHeader ────────────────────────────────────────────────────
 
-function SectionHeader({ theme, label, children, onAdd, addLabel = "+", addTitle = "新建" }: {
+function SectionHeader({ theme, label, children, onAdd, addLabel = "+", addTitle }: {
   theme: "gold" | "purple"; label: string;
   children?: React.ReactNode; onAdd?: () => void;
   addLabel?: string; addTitle?: string;
 }) {
+  const { t } = useTranslation();
   return (
     <>
       <div className={`sidebar-section-header${theme === "purple" ? " purple" : ""}`}>
@@ -153,7 +160,7 @@ function SectionHeader({ theme, label, children, onAdd, addLabel = "+", addTitle
           <button
             type="button"
             className="section-add"
-            title={addTitle}
+            title={addTitle ?? t("leftsidebar.new")}
             onClick={(e) => { e.stopPropagation(); onAdd(); }}
           >
             {addLabel}
@@ -168,21 +175,24 @@ function SectionHeader({ theme, label, children, onAdd, addLabel = "+", addTitle
 // ── ProjectSection ─ 当前工作目录（替代顶部工具栏中的工作区指示）──────
 
 function workspaceName(path: string | null): string {
-  if (!path) return "未打开";
+  if (!path) return "";
   const parts = path.split(/[/\\]/).filter(Boolean);
   return parts.length > 0 ? parts[parts.length - 1] : path;
 }
 
 function ProjectSection() {
+  const { t } = useTranslation();
   const current = useWorkspaceStore((s) => s.current);
   const pickAndOpen = useWorkspaceStore((s) => s.pickAndOpen);
-  const name = workspaceName(current);
+  const name = current ? workspaceName(current) : t("leftsidebar.workspaceNotOpened");
 
   return (
     <div
       className="sidebar-chat-item"
       onClick={() => void pickAndOpen()}
-      title={current ? `当前工作目录：${current}\n点击切换` : "点击打开工作目录"}
+      title={current
+        ? t("leftsidebar.workspaceTitle", { path: current })
+        : t("leftsidebar.workspaceOpenTitle")}
     >
       <span className="chat-icon">📂</span>
       <span className="chat-title">{name}</span>
@@ -193,12 +203,13 @@ function ProjectSection() {
 // ── SessionGroupsWrapper ─ 会话分组区域 ──────────────────────────
 
 function SessionGroupsWrapper() {
+  const { t } = useTranslation();
   const groups = useSessionStore((s) => s.groups);
   const { groupMutate } = useBackend();
 
   return (
     <div>
-      <SectionHeader theme="purple" label="会话分组" />
+      <SectionHeader theme="purple" label={t("leftsidebar.sectionGroups")} />
       <SessionGroupSection
         groups={groups}
         onCreate={(name) => groupMutate({ op: "create", name })}
@@ -212,6 +223,7 @@ function SessionGroupsWrapper() {
 // ── SidebarDock ─────────────────────────────────────────────────────
 
 function SidebarDock() {
+  const { t } = useTranslation();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const username = useAuthStore((s) => s.username);
   const logout = useAuthStore((s) => s.logout);
@@ -226,7 +238,7 @@ function SidebarDock() {
         flexShrink: 0,
       }}>
         <button
-          type="button" onClick={() => setSettingsOpen(true)} title="设置"
+          type="button" onClick={() => setSettingsOpen(true)} title={t("common.settings")}
           style={{
             width: 30, height: 30, borderRadius: "var(--radius-md)",
             border: "1px solid var(--border-default)", background: "transparent",
@@ -268,7 +280,7 @@ function SidebarDock() {
           onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--accent-2)"; e.currentTarget.style.color = "var(--accent-2)"; }}
           onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border-default)"; e.currentTarget.style.color = "var(--text-tertiary)"; }}
         >
-          退出
+          {t("common.logout")}
         </button>
       </div>
       {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} />}
@@ -289,29 +301,30 @@ function SidebarDock() {
 // 各分区都是独立组件,加模式 = 改这一处组合,不动外壳。
 
 function SidebarBody({ mode }: { mode: AgentMode }) {
+  const { t } = useTranslation();
   const loadFileTree = useFileStore((s) => s.loadFileTree);
   const workspace = useWorkspaceStore((s) => s.current);
 
   if (mode === "coding") {
     return (
       <>
-        <SectionHeader theme="purple" label="工作目录">
+        <SectionHeader theme="purple" label={t("leftsidebar.sectionWorkspace")}>
           <ProjectSection />
         </SectionHeader>
 
         <SectionHeader
           theme="purple"
-          label="文件"
+          label={t("leftsidebar.sectionFiles")}
           onAdd={workspace ? () => void loadFileTree(workspace) : undefined}
           addLabel="⟳"
-          addTitle="刷新文件树"
+          addTitle={t("leftsidebar.refreshFileTree")}
         />
         <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
           <FileExplorer />
         </div>
 
         {/* 编码模式下对话列表退居次要：固定矮区,不抢文件树的空间 */}
-        <SectionHeader theme="purple" label="对话列表" />
+        <SectionHeader theme="purple" label={t("leftsidebar.sectionSessions")} />
         <div style={{
           maxHeight: 180, overflowY: "auto", flexShrink: 0,
           borderTop: "1px solid var(--border-subtle)",
@@ -325,13 +338,13 @@ function SidebarBody({ mode }: { mode: AgentMode }) {
   // office（默认）
   return (
     <>
-      <SectionHeader theme="purple" label="工作目录">
+      <SectionHeader theme="purple" label={t("leftsidebar.sectionWorkspace")}>
         <ProjectSection />
       </SectionHeader>
 
       <SessionGroupsWrapper />
 
-      <SectionHeader theme="purple" label="对话列表" />
+      <SectionHeader theme="purple" label={t("leftsidebar.sectionSessions")} />
       <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
         <SessionListPanel />
       </div>
@@ -342,6 +355,7 @@ function SidebarBody({ mode }: { mode: AgentMode }) {
 // ── LeftSidebar ──────────────────────────────────────────────────────
 
 export function LeftSidebar() {
+  const { t } = useTranslation();
   const sidebarCollapsed = usePreferenceStore((s) => s.sidebarCollapsed);
   const sidebarWidth = usePreferenceStore((s) => s.sidebarWidth);
   const setSidebarWidth = usePreferenceStore((s) => s.setSidebarWidth);
@@ -393,7 +407,7 @@ export function LeftSidebar() {
             color: "var(--text-tertiary)", fontSize: "var(--text-md)", cursor: "pointer",
             display: "flex", alignItems: "center", justifyContent: "center",
           }}
-          title="展开"
+          title={t("leftsidebar.expand")}
         >▶</button>
       </div>
     );
@@ -456,6 +470,7 @@ export function LeftSidebar() {
 type NavId = "chat" | "search" | "scheduled" | "plugins" | "dashboard";
 
 function MainNav() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const { createSession } = useBackend();
@@ -466,11 +481,11 @@ function MainNav() {
   const onDashboardRoute = location.pathname.startsWith("/dashboard");
 
   const items: { id: NavId; icon: string; label: string; active: boolean; run: () => void }[] = [
-    { id: "chat",      icon: "🍀", label: "新对话",   active: false,             run: () => { createSession(); navigate("/"); } },
-    { id: "search",    icon: "🔍", label: "搜索",     active: false,             run: () => openPalette() },
-    { id: "dashboard", icon: "🚀", label: "dashboard", active: onDashboardRoute, run: () => navigate("/dashboard") },
-    { id: "scheduled", icon: "📋", label: "任务安排", active: onTasksRoute,      run: () => navigate("/tasks") },
-    { id: "plugins",   icon: "📙", label: "Skills",   active: onSkillsRoute,     run: () => navigate("/skills") },
+    { id: "chat",      icon: "🍀", label: t("leftsidebar.nav.chat"),       active: false,             run: () => { createSession(); navigate("/"); } },
+    { id: "search",    icon: "🔍", label: t("leftsidebar.nav.search"),     active: false,             run: () => openPalette() },
+    { id: "dashboard", icon: "🚀", label: "dashboard",                     active: onDashboardRoute,   run: () => navigate("/dashboard") },
+    { id: "scheduled", icon: "📋", label: t("leftsidebar.nav.tasks"),      active: onTasksRoute,       run: () => navigate("/tasks") },
+    { id: "plugins",   icon: "📙", label: "Skills",                        active: onSkillsRoute,      run: () => navigate("/skills") },
   ];
 
   return (

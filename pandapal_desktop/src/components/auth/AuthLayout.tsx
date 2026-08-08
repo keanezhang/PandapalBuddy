@@ -7,6 +7,7 @@
 
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 
 /** 页面骨架：渐变背景 + 卡片 + Logo/标题/副标题 */
 export function AuthLayout({
@@ -38,11 +39,12 @@ export function AuthError({
   message: string;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="auth-error">
       <span className="auth-error-icon">⚠️</span>
       <span className="auth-error-text">{message}</span>
-      <button className="auth-error-close" onClick={onClose} aria-label="关闭">
+      <button className="auth-error-close" onClick={onClose} aria-label={t("auth.close")}>
         ×
       </button>
     </div>

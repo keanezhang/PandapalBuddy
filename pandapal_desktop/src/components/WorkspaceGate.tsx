@@ -14,6 +14,7 @@
  */
 
 import { useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { useWorkspaceStore } from "../store/workspaceStore";
 import { GateScreen, GateLoading } from "./ui";
 
@@ -22,6 +23,7 @@ interface WorkspaceGateProps {
 }
 
 export function WorkspaceGate({ children }: WorkspaceGateProps) {
+  const { t } = useTranslation();
   const { current, status, recent, error, init, openWorkspace, pickAndOpen } =
     useWorkspaceStore();
 
@@ -37,27 +39,27 @@ export function WorkspaceGate({ children }: WorkspaceGateProps) {
   }
 
   if (status === "opening" || status === "idle") {
-    return <GateLoading text="正在打开工作区..." />;
+    return <GateLoading text={t("workspace.opening")} />;
   }
 
   // picking / error：打开文件夹界面
   return (
     <GateScreen>
       <div className="gate-logo">🐼</div>
-      <h1 className="gate-title">打开一个文件夹</h1>
+      <h1 className="gate-title">{t("workspace.title")}</h1>
       <p className="gate-subtitle">
-        选择你要让 AI 处理的项目目录。AI 只会在这个目录内读写文件。
+        {t("workspace.subtitle")}
       </p>
 
       <button className="gate-btn" onClick={() => void pickAndOpen()}>
-        选择文件夹…
+        {t("workspace.pickFolder")}
       </button>
 
-      {error && <p className="gate-error-text">打开失败：{error}</p>}
+      {error && <p className="gate-error-text">{t("workspace.openFailed", { error })}</p>}
 
       {recent.length > 0 && (
         <div className="gate-recent-box">
-          <p className="gate-recent-title">最近打开</p>
+          <p className="gate-recent-title">{t("workspace.recentTitle")}</p>
           <ul className="gate-recent-list">
             {recent.map((path) => (
               <li key={path}>

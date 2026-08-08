@@ -5,6 +5,7 @@
  * 支持缩放（按钮 + Ctrl/⌘ 滚轮），组件卸载时释放 blob URL。
  */
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { readFile } from "@tauri-apps/plugin-fs";
 
 interface ImageRendererProps {
@@ -25,6 +26,7 @@ function extOf(path: string): string {
 }
 
 export function ImageRenderer({ path }: ImageRendererProps) {
+  const { t } = useTranslation();
   const [url, setUrl] = useState("");
   const [error, setError] = useState(false);
   const [zoom, setZoom] = useState(1);
@@ -77,14 +79,14 @@ export function ImageRenderer({ path }: ImageRendererProps) {
         background: "var(--bg-panel)", borderBottom: "1px solid var(--border-subtle)",
         flexShrink: 0,
       }}>
-        <button onClick={zoomOut} style={btn} title="缩小">−</button>
+        <button onClick={zoomOut} style={btn} title={t("fileRenderers.zoomOut")}>−</button>
         <span style={{ fontSize: "var(--text-xs)", color: "var(--text-tertiary)", minWidth: 44, textAlign: "center" }}>
           {Math.round(zoom * 100)}%
         </span>
-        <button onClick={zoomIn} style={btn} title="放大">+</button>
-        <button onClick={reset} style={{ ...btn, minWidth: 0 }} title="重置">1:1</button>
+        <button onClick={zoomIn} style={btn} title={t("fileRenderers.zoomIn")}>+</button>
+        <button onClick={reset} style={{ ...btn, minWidth: 0 }} title={t("fileRenderers.zoomReset")}>1:1</button>
         <span style={{ fontSize: "var(--text-2xs)", color: "var(--text-muted)", opacity: 0.6, marginLeft: 4 }}>
-          Ctrl/⌘ + 滚轮缩放
+          {t("fileRenderers.zoomHint")}
         </span>
       </div>
       {/* 图片区 */}
@@ -97,7 +99,7 @@ export function ImageRenderer({ path }: ImageRendererProps) {
         }}
       >
         {error ? (
-          <span style={{ color: "var(--danger)", fontSize: "var(--text-base)" }}>图片加载失败</span>
+          <span style={{ color: "var(--danger)", fontSize: "var(--text-base)" }}>{t("fileRenderers.imageLoadFailed")}</span>
         ) : url ? (
           <img
             src={url}
@@ -110,7 +112,7 @@ export function ImageRenderer({ path }: ImageRendererProps) {
             onError={() => setError(true)}
           />
         ) : (
-          <span style={{ color: "var(--text-muted)", fontSize: "var(--text-base)" }}>加载中...</span>
+          <span style={{ color: "var(--text-muted)", fontSize: "var(--text-base)" }}>{t("common.loading")}...</span>
         )}
       </div>
     </div>

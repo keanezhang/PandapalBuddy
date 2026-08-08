@@ -18,6 +18,7 @@
  * 不经过 JS，本组件无从感知。
  */
 import React from "react";
+import i18n from "../i18n";
 
 const CRASH_KEY = "pandapal.lastCrash";
 
@@ -67,7 +68,7 @@ export class ErrorBoundary extends React.Component<React.PropsWithChildren, Boun
 
   private handleCopy = () => {
     const { error, info } = this.state;
-    const text = `${String(error)}\n\n${error?.stack ?? ""}\n\n组件栈:${info?.componentStack ?? ""}`;
+    const text = `${String(error)}\n\n${error?.stack ?? ""}\n\n${i18n.t("errors.boundary.componentStack")}:${info?.componentStack ?? ""}`;
     navigator.clipboard.writeText(text).catch(() => {});
   };
 
@@ -92,13 +93,13 @@ export class ErrorBoundary extends React.Component<React.PropsWithChildren, Boun
           color: "var(--text-primary, rgba(255,255,255,0.95))",
         }}>
           <div style={{ fontSize: "var(--text-lg)", fontWeight: 600, marginBottom: 8 }}>
-            ⚠ 界面渲染出错（已拦截，无需重启进程）
+            {i18n.t("errors.boundary.title")}
           </div>
           <div style={{
             fontSize: "var(--text-sm)", lineHeight: 1.6, color: "var(--text-secondary, #a3a3ad)",
             marginBottom: 12,
           }}>
-            请点击「重新加载」恢复界面，并把下面的错误信息发给开发排查根因。
+            {i18n.t("errors.boundary.hint")}
           </div>
           <pre style={{
             margin: 0, marginBottom: 16, padding: 12,
@@ -110,7 +111,7 @@ export class ErrorBoundary extends React.Component<React.PropsWithChildren, Boun
           }}>
             {String(error)}
             {error.stack ? `\n\n${error.stack}` : ""}
-            {info?.componentStack ? `\n\n组件栈:${info.componentStack}` : ""}
+            {info?.componentStack ? `\n\n${i18n.t("errors.boundary.componentStack")}:${info.componentStack}` : ""}
           </pre>
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
             <button
@@ -121,7 +122,7 @@ export class ErrorBoundary extends React.Component<React.PropsWithChildren, Boun
                 background: "transparent", color: "var(--text-secondary, rgba(255,255,255,0.55))",
               }}
             >
-              复制错误信息
+              {i18n.t("errors.boundary.copy")}
             </button>
             <button
               onClick={this.handleReload}
@@ -131,7 +132,7 @@ export class ErrorBoundary extends React.Component<React.PropsWithChildren, Boun
                 background: "var(--accent, #7C3AED)", color: "var(--text-on-accent)", fontWeight: 600,
               }}
             >
-              重新加载
+              {i18n.t("errors.boundary.reload")}
             </button>
           </div>
         </div>

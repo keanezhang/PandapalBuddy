@@ -7,6 +7,7 @@
  */
 import Editor from "@monaco-editor/react";
 import { useRef, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { InlineDiffEditor } from "./editor/InlineDiffEditor";
 import { computeDiff } from "./engine";
 import type monaco from "monaco-editor";
@@ -44,6 +45,7 @@ export function CodeRenderer({
   onPartialSave,
   initialAppliedKeys,
 }: CodeRendererProps) {
+  const { t } = useTranslation();
   const wrapperStyle = {
     flex: 1,
     overflow: "hidden",
@@ -260,7 +262,7 @@ export function CodeRenderer({
               fontSize: 13,
             }}
           >
-            加载编辑器...
+            {t("common.loadingEditor")}
           </div>
         }
       />

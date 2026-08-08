@@ -7,6 +7,7 @@
  * AI 建议模式（readOnly + original）委托 CodeRenderer 走 inline diff。
  */
 import { useEffect, useMemo, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { CodeRenderer } from "../../monacoInlineDiff";
 
 interface LogRendererProps {
@@ -36,6 +37,7 @@ function lineColor(line: string): string {
 }
 
 export function LogRenderer(props: LogRendererProps) {
+  const { t } = useTranslation();
   const isSuggestion = !!props.readOnly && props.original != null;
   const ref = useRef<HTMLDivElement>(null);
 
@@ -69,7 +71,7 @@ export function LogRenderer(props: LogRendererProps) {
           padding: "4px 12px", fontSize: "var(--text-xs)", color: "var(--text-muted)",
           borderBottom: "1px solid var(--border-subtle)", marginBottom: 4,
         }}>
-          仅显示末尾 {MAX_LINES} 行（共 {total} 行）
+          {t("fileRenderers.tailTruncated", { max: MAX_LINES, total })}
         </div>
       )}
       {lines.map((line, i) => (

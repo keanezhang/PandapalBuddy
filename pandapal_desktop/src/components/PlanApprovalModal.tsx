@@ -7,11 +7,13 @@
  * 与 HitlModal 同款，杜绝跨 session 错弹。
  */
 import React, { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useBackend } from "../providers/BackendProvider";
 import { useCurrentPlan } from "../store/planApprovalStore";
 import type { PlanApprovalRequestMsg } from "../types/api";
 
 export function PlanApprovalModal() {
+  const { t } = useTranslation();
   const plan = useCurrentPlan();
   const { sendPlanApprovalDecision } = useBackend();
 
@@ -24,7 +26,7 @@ export function PlanApprovalModal() {
     <div className="modal-overlay">
       <div className="modal" style={{ width: 520 }}>
         <div className="modal-header">
-          <span className="modal-title">📋 执行计划审批</span>
+          <span className="modal-title">📋 {t("planApproval.title")}</span>
           <button
             className="modal-close"
             onClick={() => sendPlanApprovalDecision(plan.run_id ?? "", "abandon", sessionId, userId)}
@@ -39,6 +41,7 @@ export function PlanApprovalModal() {
 }
 
 function PlanBody({ plan, sessionId, userId }: { plan: PlanApprovalRequestMsg; sessionId: string; userId: string | null }) {
+  const { t } = useTranslation();
   const { sendPlanApprovalDecision } = useBackend();
   const [mode, setMode] = useState<"approve" | "refine">();
   const [refineText, setRefineText] = useState("");
@@ -54,11 +57,11 @@ function PlanBody({ plan, sessionId, userId }: { plan: PlanApprovalRequestMsg; s
     return (
       <>
         <div className="modal-body">
-          <div className="task-section-label">请描述需要完善的内容</div>
+          <div className="task-section-label">{t("planApproval.refineLabel")}</div>
           <textarea
             value={refineText}
             onChange={(e) => setRefineText(e.target.value)}
-            placeholder="例如：需要增加单元测试步骤、步骤2应该先做代码审查…"
+            placeholder={t("planApproval.refinePlaceholder")}
             autoFocus
             rows={4}
             style={{
@@ -79,9 +82,9 @@ function PlanBody({ plan, sessionId, userId }: { plan: PlanApprovalRequestMsg; s
           />
         </div>
         <div className="modal-footer">
-          <button className="btn btn-ghost btn-sm" onClick={() => setMode(undefined)}>取消</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => setMode(undefined)}>{t("planApproval.cancel")}</button>
           <button className="btn btn-primary btn-sm" onClick={handleRefine} disabled={!refineText.trim()}>
-            提交完善建议
+            {t("planApproval.submitRefine")}
           </button>
         </div>
       </>
@@ -102,9 +105,9 @@ function PlanBody({ plan, sessionId, userId }: { plan: PlanApprovalRequestMsg; s
         </div>
       </div>
       <div className="modal-footer">
-        <button className="btn btn-danger btn-sm" onClick={handleAbandon}>✕ 放弃</button>
-        <button className="btn btn-ghost btn-sm" onClick={() => setMode("refine")}>✎ 需完善</button>
-        <button className="btn btn-primary btn-sm" onClick={handleApprove}>✓ 批准执行</button>
+        <button className="btn btn-danger btn-sm" onClick={handleAbandon}>✕ {t("planApproval.abandon")}</button>
+        <button className="btn btn-ghost btn-sm" onClick={() => setMode("refine")}>✎ {t("planApproval.refine")}</button>
+        <button className="btn btn-primary btn-sm" onClick={handleApprove}>✓ {t("planApproval.approve")}</button>
       </div>
     </>
   );

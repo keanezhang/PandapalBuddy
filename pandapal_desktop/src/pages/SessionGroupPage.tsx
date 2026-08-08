@@ -13,6 +13,7 @@
  */
 import { useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useBackend } from "../providers/BackendProvider";
 import { useSessionStore } from "../store/sessionStore";
 import { useGroupViewStore } from "../store/groupViewStore";
@@ -39,6 +40,7 @@ function truncate(text: string, max = 100): string {
 }
 
 export function SessionGroupPage() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { groupId } = useParams<{ groupId: string }>();
 
@@ -53,7 +55,7 @@ export function SessionGroupPage() {
   const viewGroupId = useGroupViewStore((s) => s.groupId);
 
   const group = groups.find((g) => g.id === groupId);
-  const groupName = group?.name ?? "会话分组";
+  const groupName = group?.name ?? t("sessionGroup.fallbackTitle");
 
   useEffect(() => {
     if (groupId) requestGroupSessions(groupId, 1, PAGE_SIZE);
@@ -86,17 +88,17 @@ export function SessionGroupPage() {
     <div className="page-root">
       {/* Banner */}
       <div className="page-header">
-        <button onClick={() => navigate("/")} className="btn btn-ghost btn-sm">← 返回</button>
+        <button onClick={() => navigate("/")} className="btn btn-ghost btn-sm">← {t("sessionGroup.back")}</button>
         <span className="skill-card-icon icon-violet" style={{ width: 34, height: 34, fontSize: "var(--text-lg)" }}>🗂</span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="page-title" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {groupName}
           </div>
           <div style={{ fontSize: "var(--text-xs)", color: "var(--text-tertiary)", marginTop: 2 }}>
-            该分组下的所有会话
+            {t("sessionGroup.subtitle")}
           </div>
         </div>
-        <span className="badge badge-purple">{sessions.length} 个会话</span>
+        <span className="badge badge-purple">{t("sessionGroup.sessionCount", { count: sessions.length })}</span>
       </div>
 
       {/* 内容区 */}
@@ -105,13 +107,13 @@ export function SessionGroupPage() {
         <div style={{ width: "100%", maxWidth: 1400, margin: "0 auto", padding: "0 28px" }}>
           {initialLoading ? (
             <div className="skills-loading" style={{ padding: "48px 0" }}>
-              <span className="skills-loading-dot" /> 加载会话列表中…
+              <span className="skills-loading-dot" /> {t("sessionGroup.loading")}
             </div>
           ) : sessions.length === 0 ? (
             <div className="skills-empty" style={{ padding: "56px 0" }}>
               <div className="skills-empty-icon">📭</div>
-              <div className="skills-empty-title">该分组暂无会话</div>
-              <div className="skills-empty-desc">在对话列表中右键会话，可将其移动到此分组</div>
+              <div className="skills-empty-title">{t("sessionGroup.emptyTitle")}</div>
+              <div className="skills-empty-desc">{t("sessionGroup.emptyDesc")}</div>
             </div>
           ) : (
             <>
@@ -133,12 +135,12 @@ export function SessionGroupPage() {
                       {s.is_favorite ? "⭐" : "💬"}
                     </span>
                     <div className="skill-card-body">
-                      <div className="skill-card-name">{s.title || "新会话"}</div>
+                      <div className="skill-card-name">{s.title || t("sessionGroup.newSession")}</div>
                       <div
                         className="skill-card-desc"
                         style={{ whiteSpace: "normal", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}
                       >
-                        {truncate(s.preview) || "（暂无内容）"}
+                        {truncate(s.preview) || t("sessionGroup.noContent")}
                       </div>
                     </div>
                     <span className="skill-card-check">›</span>
@@ -153,7 +155,7 @@ export function SessionGroupPage() {
                     className="btn btn-ghost btn-sm"
                     style={{ cursor: loading ? "wait" : "pointer" }}
                   >
-                    {loading ? "加载中…" : "▼ 加载更多"}
+                    {loading ? t("common.loading") : t("sessionGroup.loadMore")}
                   </button>
                 </div>
               )}

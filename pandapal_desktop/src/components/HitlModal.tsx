@@ -4,10 +4,12 @@
  * HITL 人工审批弹窗。纯 v2 Token。
  */
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { useCurrentPrompt } from "../store/hitlStore";
 import { useBackend } from "../providers/BackendProvider";
 
 export function HitlModal() {
+  const { t } = useTranslation();
   const prompt = useCurrentPrompt();
   const { sendHitlDecision } = useBackend();
 
@@ -25,7 +27,7 @@ export function HitlModal() {
     <div className="modal-overlay">
       <div className="modal">
         <div className="modal-header">
-          <span className="modal-title">⚠️ 工具调用需要审批</span>
+          <span className="modal-title">⚠️ {t("hitl.title")}</span>
           <button
             className="modal-close"
             onClick={reject}
@@ -35,7 +37,7 @@ export function HitlModal() {
         </div>
         <div className="modal-body">
           <div style={{ marginBottom: "var(--space-4)" }}>
-            <div className="task-section-label">工具名称</div>
+            <div className="task-section-label">{t("hitl.toolName")}</div>
             <code style={{
               fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)",
               background: "var(--bg-card-subtle)", padding: "3px 8px",
@@ -46,7 +48,7 @@ export function HitlModal() {
           </div>
           {paramsStr && (
             <div className="task-section">
-              <div className="task-section-label">参数</div>
+              <div className="task-section-label">{t("hitl.params")}</div>
               <pre style={{
                 fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)",
                 background: "var(--color-code-bg)", padding: "var(--space-3)",
@@ -64,13 +66,13 @@ export function HitlModal() {
             className="btn btn-danger btn-sm"
             onClick={reject}
           >
-            ✕ 拒绝
+            ✕ {t("hitl.reject")}
           </button>
           <button
             className="btn btn-success btn-sm"
             onClick={approve}
           >
-            ✓ 批准
+            ✓ {t("hitl.approve")}
           </button>
         </div>
       </div>

@@ -15,6 +15,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { CredentialForm } from "../components/CredentialForm";
 import {
   useCredentialStore,
@@ -34,6 +35,7 @@ import { useAuthStore } from "../store/authStore";
 // ── 组件 ─────────────────────────────────────────────────────────────────
 
 export function ModelConfigWizard() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const username = useAuthStore((s) => s.username);
   const logout = useAuthStore((s) => s.logout);
@@ -203,11 +205,11 @@ export function ModelConfigWizard() {
         {/* ── 头部 ── */}
         <div className="wizard-header">
           <div className="wizard-logo">🔑</div>
-          <h1 className="wizard-title">配置模型服务</h1>
+          <h1 className="wizard-title">{t("wizard.title")}</h1>
           <p className="wizard-subtitle">
-            PandaPal 需要您的模型服务凭据才能运行。
+            {t("wizard.subtitleLine1")}
             <br />
-            请输入您的 API Key，凭据将安全存储在本机，不会上传。
+            {t("wizard.subtitleLine2")}
           </p>
         </div>
 
@@ -217,8 +219,7 @@ export function ModelConfigWizard() {
         {/* ── 系统目录未就绪：fail-closed 且可感知，不静默灰化（PRD AC-09）── */}
         {providerCatalog.length === 0 && (
           <div className="wizard-global-error">
-            系统配置加载中或已损坏。若持续如此，请重新安装以修复
-            provider_catalog.toml。
+            {t("wizard.catalogBroken")}
           </div>
         )}
 
@@ -255,7 +256,7 @@ export function ModelConfigWizard() {
                 }
               }}
             >
-              + 添加模型
+              + {t("wizard.addModel")}
             </button>
           </div>
         )}
@@ -269,23 +270,23 @@ export function ModelConfigWizard() {
             onClick={() => void handleSubmit()}
           >
             {saving
-              ? "正在保存…"
-              : "保存并继续"}
+              ? t("wizard.saving")
+              : t("wizard.saveContinue")}
           </button>
 
           {!allFilled && (
             <p className="wizard-hint">
-              请填写所有必填字段（API Key、模型 ID）；无系统默认价的模型还需填写单价
+              {t("wizard.hintFillRequired")}
             </p>
           )}
           {hasDuplicate && (
             <p className="wizard-hint wizard-hint--danger">
-              存在重复的模型 ID —— 模型 ID 即路由键，重复会导致路由错配
+              {t("wizard.hintDuplicate")}
             </p>
           )}
           {(saveError || globalError) && (
             <p className="wizard-hint wizard-hint--danger">
-              保存失败：{saveError || globalError}
+              {t("wizard.saveFailed")}：{saveError || globalError}
             </p>
           )}
         </div>
@@ -297,7 +298,7 @@ export function ModelConfigWizard() {
             className="wizard-logout-btn"
             onClick={() => logout()}
           >
-            退出登录
+            {t("wizard.logout")}
           </button>
         </div>
       </div>

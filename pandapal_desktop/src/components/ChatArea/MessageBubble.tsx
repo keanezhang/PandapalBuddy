@@ -5,6 +5,7 @@
  * 用户消息：右侧气泡 | 系统消息：居中提示 | AI 消息：左侧头像 + 按 timeline 交错渲染
  */
 import React from "react";
+import { useTranslation } from "react-i18next";
 import type { CompletedMessage, PendingQuestionnaire } from "../../store/chatStore";
 import type { ReplyUsage } from "../../types/api";
 import { useChatStore } from "../../store/chatStore";
@@ -15,6 +16,7 @@ import { MessageContent } from "./MessageContent";
 interface MessageBubbleProps { message: CompletedMessage }
 
 export function MessageBubble({ message }: MessageBubbleProps) {
+  const { t } = useTranslation();
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
   const isResume = message.replyScope === "hitl_resume";
@@ -94,7 +96,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
       <div style={{ flex: 1, minWidth: 0 }}>
         {isResume && (
           <div style={{ fontSize: "var(--text-2xs)", fontWeight: 500, color: "var(--accent-soft)", marginBottom: "var(--space-2)", display: "flex", alignItems: "center", gap: 4 }}>
-            👌🏻 go on baby
+            {t("chat.resumeLabel")}
           </div>
         )}
 
@@ -114,14 +116,14 @@ export function MessageBubble({ message }: MessageBubbleProps) {
           {formatTime(message.timestamp)}
         </div>
         {/* 本轮对话消耗（后端 CostBudgetGuard.summary 精算，前端只展示不重算）；缺省则不显示 */}
-        {message.usage && <UsageFooter usage={message.usage} />}
+        {message.usage && <UsageFooter usage={message.usage} t={t} />}
       </div>
     </div>
   );
 }
 
 /* ── 本轮消耗页脚：净费用 · tokens 明细（命中/未命中/新写 · 回复/推理）· 命中率 · 耗时 ── */
-function UsageFooter({ usage: u }: { usage: ReplyUsage }) {
+function UsageFooter({ usage: u, t }: { usage: ReplyUsage; t: (key: string, opts?: Record<string, unknown>) => string }) {
   return (
     <div
       style={{
@@ -133,28 +135,28 @@ function UsageFooter({ usage: u }: { usage: ReplyUsage }) {
       }}
     >
       <span style={{ color: "var(--warning)", fontWeight: 600 }}
-            title={`全价基线 ${fmtCost(u.full_cost_usd)}${u.saved_usd > 0 ? ` · 缓存省 ${fmtCost(u.saved_usd)}` : ""}`}>
+            title={`${t("chat.usage.costBaseline", { cost: fmtCost(u.full_cost_usd) })}${u.saved_usd > 0 ? t("chat.usage.cacheSaved", { cost: fmtCost(u.saved_usd) }) : ""}`}>
         💰 {fmtCost(u.net_cost_usd)}
-        {u.saved_usd > 0 && <span style={{ color: "var(--success)", fontWeight: 400 }}> （省{fmtCost(u.saved_usd)}）</span>}
+        {u.saved_usd > 0 && <span style={{ color: "var(--success)", fontWeight: 400 }}>{t("chat.usage.saved", { cost: fmtCost(u.saved_usd) })}</span>}
       </span>
-      <span title="输入 token：命中缓存 / 未命中 / 本次新写入缓存">
+      <span title={t("chat.usage.inputTokensTitle")}>
         ↑ {fmtTok(u.input_tokens)}
         <span style={{ color: "var(--text-muted)" }}>
-          {" ("}命中{fmtTok(u.cached_tokens)} · 未命中{fmtTok(u.miss_tokens)}
-          {u.cache_creation_tokens > 0 && <> · 新写{fmtTok(u.cache_creation_tokens)}</>}
+          {" ("}{t("chat.usage.cacheHit")}{fmtTok(u.cached_tokens)} · {t("chat.usage.cacheMiss")}{fmtTok(u.miss_tokens)}
+          {u.cache_creation_tokens > 0 && <> · {t("chat.usage.cacheNewWrite")}{fmtTok(u.cache_creation_tokens)}</>}
           {")"}
         </span>
       </span>
-      <span title="输出 token：llm 回复 / 推理">
+      <span title={t("chat.usage.outputTokensTitle")}>
         ↓ {fmtTok(u.output_tokens)}
         <span style={{ color: "var(--text-muted)" }}>
-          {" ("}回复{fmtTok(u.reply_tokens)}
-          {u.reasoning_tokens > 0 && <> · 推理{fmtTok(u.reasoning_tokens)}</>}
+          {" ("}{t("chat.usage.reply")}{fmtTok(u.reply_tokens)}
+          {u.reasoning_tokens > 0 && <> · {t("chat.usage.reasoning")}{fmtTok(u.reasoning_tokens)}</>}
           {")"}
         </span>
       </span>
-      <span title="prefix cache 命中率 = 命中 / 输入">🎯 {(u.hit_rate * 100).toFixed(1)}%</span>
-      <span title="本轮耗时（墙钟）">⏱ {fmtDuration(u.duration_ms)}</span>
+      <span title={t("chat.usage.hitRateTitle")}>🎯 {(u.hit_rate * 100).toFixed(1)}%</span>
+      <span title={t("chat.usage.durationTitle")}>⏱ {fmtDuration(u.duration_ms)}</span>
     </div>
   );
 }

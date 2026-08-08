@@ -65,20 +65,20 @@ export function colorForModel(model: string): string {
  * 绝不吞掉——后端新增枚举时前端会原样显示，而不是静默漏行。 */
 
 /** 严重度 → 展示元数据。abort=直接中止，ui_bubble=冒泡到 UI，log_only=只留痕。 */
-export const SEVERITY_META: Record<string, { label: string; color: string }> = {
-  abort: { label: "中止", color: "var(--danger)" },
-  ui_bubble: { label: "冒泡 UI", color: "var(--warning)" },
-  log_only: { label: "仅留痕", color: "var(--text-tertiary)" },
+export const SEVERITY_META: Record<string, { labelKey: string; color: string }> = {
+  abort: { labelKey: "dashboard.severityAbort", color: "var(--danger)" },
+  ui_bubble: { labelKey: "dashboard.severityUiBubble", color: "var(--warning)" },
+  log_only: { labelKey: "dashboard.severityLogOnly", color: "var(--text-tertiary)" },
 };
 
-/** 字段类别 → 中文标签。对应健壮性契约 §0 的四类字段 + 两类补充。 */
+/** 字段类别 → 展示 key（i18n）。对应健壮性契约 §0 的四类字段 + 两类补充。 */
 export const CATEGORY_LABEL: Record<string, string> = {
-  decision: "决策 / 门禁",
-  id: "ID / 身份",
-  cost: "金额 / 计费",
-  exception_swallowed: "异常吞没",
-  capability: "能力降级",
-  display: "展示 / 辅助",
+  decision: "dashboard.categoryDecision",
+  id: "dashboard.categoryId",
+  cost: "dashboard.categoryCost",
+  exception_swallowed: "dashboard.categoryExceptionSwallowed",
+  capability: "dashboard.categoryCapability",
+  display: "dashboard.categoryDisplay",
 };
 
 /** 治理优先级：前三类（决策/ID/金额）是「本该失败却兜了底」，最该盯。 */

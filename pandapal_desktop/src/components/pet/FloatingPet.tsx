@@ -11,11 +11,13 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { usePetStore } from "../../store/petStore";
 import { PetSprite } from "./PetSprite";
 import { PetStore } from "./PetStore";
 
 export function FloatingPet() {
+  const { t } = useTranslation();
   const installedPets = usePetStore((s) => s.installedPets);
   const currentSlug = usePetStore((s) => s.currentSlug);
   const enabled = usePetStore((s) => s.enabled);
@@ -112,27 +114,27 @@ export function FloatingPet() {
                 <span
                   className="pet-panel-title editable"
                   onClick={startEditName}
-                  title="点击给宠物起名"
+                  title={t("pet.renameTitle")}
                 >
                   🐾 {nameOf(current)}
                 </span>
               )
             ) : (
-              <span className="pet-panel-title">🐾 宠物</span>
+              <span className="pet-panel-title">🐾 {t("pet.title")}</span>
             )}
             <button
               className="btn btn-primary btn-sm"
               onClick={() => setStoreOpen(true)}
-              title="浏览 petdex 宠物商店"
+              title={t("pet.browseStoreTitle")}
             >
-              去 look 1 look
+              {t("pet.goStore")}
             </button>
           </div>
 
           {/* 已安装列表 */}
-          <div className="pet-section-label">已安装</div>
+          <div className="pet-section-label">{t("pet.installedSection")}</div>
           {installedPets.length === 0 ? (
-            <div className="pet-empty">还没有pets，抬头往上看～</div>
+            <div className="pet-empty">{t("pet.empty")}</div>
           ) : (
             <div className="pet-list">
               {installedPets.map((p) => (
@@ -150,7 +152,7 @@ export function FloatingPet() {
                       e.stopPropagation();
                       usePetStore.getState().remove(p.slug).catch(console.error);
                     }}
-                    title="删除"
+                    title={t("pet.removeTitle")}
                   >
                     ✕
                   </button>
@@ -168,7 +170,7 @@ export function FloatingPet() {
               <span className="toggle-track">
                 <span className="toggle-thumb" />
               </span>
-              显示宠物
+              {t("pet.showPet")}
             </div>
           </div>
         </div>
@@ -181,7 +183,7 @@ export function FloatingPet() {
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onClick={handleAvatarClick}
-        title="点击打开宠物面板，拖拽移动"
+        title={t("pet.avatarTitle")}
       >
         {enabled && current ? (
           <PetSprite spritesheetPath={current.spritesheetPath} anim={anim} size={96} />

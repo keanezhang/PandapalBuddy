@@ -7,9 +7,11 @@
  * 组件仅负责结构与数据驱动的 background 值，方便前端整体切换风格。
  */
 
+import { useTranslation } from "react-i18next";
 import { PRESET_WALLPAPERS, useWallpaperStore } from "../store/wallpaperStore";
 
 export function WallpaperPicker() {
+  const { t } = useTranslation();
   const activeId = useWallpaperStore((s) => s.activeId);
   const setWallpaper = useWallpaperStore((s) => s.setWallpaper);
 
@@ -23,13 +25,13 @@ export function WallpaperPicker() {
             type="button"
             className={`wallpaper-item${isActive ? " active" : ""}`}
             onClick={() => setWallpaper(w.id)}
-            title={w.name}
+            title={t(`wallpaper.${w.id}`)}
           >
             {/* 缩略图色块 — background 由壁纸数据动态注入 */}
             <div className="wallpaper-thumb" style={{ background: w.preview }} />
 
             {/* 名称 */}
-            <div className="wallpaper-name">{w.name}</div>
+            <div className="wallpaper-name">{t(`wallpaper.${w.id}`)}</div>
 
             {/* 选中标记 */}
             {isActive && <div className="wallpaper-check">✓</div>}

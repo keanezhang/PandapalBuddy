@@ -26,6 +26,7 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
 import { useWorkspaceStore } from "./workspaceStore";
+import i18n from "../i18n";
 
 // ── 配置 ─────────────────────────────────────────────────────────────────────
 
@@ -135,7 +136,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         error: null,
       });
     } catch {
-      set({ status: "unauthenticated", error: "自动登录失败，请重新登录" });
+      set({ status: "unauthenticated", error: i18n.t("auth.errAutoLoginFailed") });
     }
   },
 
@@ -195,7 +196,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   login: async (username: string, password: string) => {
     set({ error: null });
     if (!RELAY_AUTH_BASE_URL) {
-      set({ error: "未配置服务器地址，请使用本地模式" });
+      set({ error: i18n.t("auth.errNoServer") });
       return false;
     }
     try {
@@ -207,7 +208,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
       if (!response.ok) {
         const err: RelayAuthError = await response.json();
-        const message = err.detail?.error || `登录失败 (${response.status})`;
+        const message = err.detail?.error || i18n.t("auth.errLoginFailed", { status: response.status });
         set({ error: message });
         return false;
       }
@@ -233,7 +234,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       return true;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      set({ error: msg.includes("fetch") ? "无法连接服务器，请检查网络" : msg });
+      set({ error: msg.includes("fetch") ? i18n.t("auth.errNetwork") : msg });
       return false;
     }
   },
@@ -241,7 +242,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   register: async (username: string, password: string) => {
     set({ error: null });
     if (!RELAY_AUTH_BASE_URL) {
-      set({ error: "未配置服务器地址，请使用本地模式" });
+      set({ error: i18n.t("auth.errNoServer") });
       return false;
     }
     try {
@@ -253,7 +254,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
       if (!response.ok) {
         const err: RelayAuthError = await response.json();
-        const message = err.detail?.error || `注册失败 (${response.status})`;
+        const message = err.detail?.error || i18n.t("auth.errRegisterFailed", { status: response.status });
         set({ error: message });
         return false;
       }
@@ -278,7 +279,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       return true;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      set({ error: msg.includes("fetch") ? "无法连接服务器，请检查网络" : msg });
+      set({ error: msg.includes("fetch") ? i18n.t("auth.errNetwork") : msg });
       return false;
     }
   },

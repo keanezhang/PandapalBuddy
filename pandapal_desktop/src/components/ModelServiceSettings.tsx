@@ -14,6 +14,7 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { CredentialForm } from "./CredentialForm";
 import {
   useCredentialStore,
@@ -51,6 +52,7 @@ function rowNeedsKey(meta: RowMeta | undefined, cred: ProviderCredential): boole
 }
 
 export function ModelServiceSettings(_props: { onClose: () => void }) {
+  const { t } = useTranslation();
   const storedCredentials = useCredentialStore((s) => s.credentials);
   const saveLocal = useCredentialStore((s) => s.saveLocal);
   const verifyCredentials = useCredentialStore((s) => s.verifyCredentials);
@@ -134,10 +136,10 @@ export function ModelServiceSettings(_props: { onClose: () => void }) {
     //    重启实现。且即便重启了 sidecar 进程也不够，LLMRouter 在
     //    run_local._build_blueprint 里**只装配一次**，新增/改动的模型必须走完整
     //    启动流程才会进入路由表。改文案前先确认自动重启真的做出来了。
-    setSaveSuccess("配置已保存，请手动重启客户端以使新配置生效。");
+    setSaveSuccess(t("mss.savedRestart"));
     setTimeout(() => setSaveSuccess(null), 4000);
     // localCreds 进依赖是安全的：awaitingSave 守卫使非保存路径的重跑直接 return
-  }, [storeSaving, storeSaveError, localCreds]);
+  }, [storeSaving, storeSaveError, localCreds, t]);
 
   // 主键 = (provider, model_id)：同一 provider 可以配 N 个模型，
   // 所以「可添加的 provider」= 目录全量，不再排除已用过的（PRD G1）。
@@ -292,23 +294,22 @@ export function ModelServiceSettings(_props: { onClose: () => void }) {
       {/* ── 头部 ── */}
       <div className="mss-header">
         <span className="mss-header-title">
-          模型服务
+          {t("mss.title")}
           <span className="mss-header-count">
-            {localCreds.length > 0 ? `${localCreds.length} 个模型已配置` : "未配置"}
+            {localCreds.length > 0 ? t("mss.modelsConfigured", { count: localCreds.length }) : t("mss.notConfigured")}
           </span>
         </span>
       </div>
 
       <p className="mss-description">
-        配置模型服务商的 API 凭据。同一服务商下可配置多个模型，已配置的模型将出现在
-        对话页的下拉列表中。凭据仅存储在本机，不会上传。
+        {t("mss.description")}
       </p>
 
       {/* ── 空状态 ── */}
       {localCreds.length === 0 && !saving && (
         <div className="mss-empty">
           <div className="mss-empty-icon">🔑</div>
-          <p className="mss-empty-text">尚未配置任何模型服务</p>
+          <p className="mss-empty-text">{t("mss.empty")}</p>
         </div>
       )}
 
@@ -353,21 +354,21 @@ export function ModelServiceSettings(_props: { onClose: () => void }) {
           className="dashed-add-btn"
           onClick={() => handleAdd(availableToAdd[0])}
         >
-          + 添加模型
+          + {t("mss.addModel")}
         </button>
       )}
 
       {/* ── 保存区域 ── */}
       <div className="mss-save-area">
         {verifying && (
-          <div className="mss-status-text mss-status-text--muted">正在验证凭据…</div>
+          <div className="mss-status-text mss-status-text--muted">{t("mss.verifying")}</div>
         )}
         {verifyStatus === "failed" && (
-          <div className="mss-status-text mss-status-text--error">部分凭据验证未通过，详见各卡片内的错误提示</div>
+          <div className="mss-status-text mss-status-text--error">{t("mss.verifyFailed")}</div>
         )}
         {hasDuplicate && (
           <div className="mss-status-text mss-status-text--error">
-            存在重复的模型 ID —— 模型 ID 即路由键，重复会造成「装配了 A 却路由到 B」
+            {t("mss.duplicateHint")}
           </div>
         )}
         {/* 保存错误来自后端确认（store.saveError），不是本地猜测 */}
@@ -382,7 +383,7 @@ export function ModelServiceSettings(_props: { onClose: () => void }) {
           disabled={verifying || localCreds.length === 0}
           onClick={handleVerify}
         >
-          {verifying ? "验证中…" : "验证凭据连通性"}
+          {verifying ? t("mss.verifyInProgress") : t("mss.verifyConnectivity")}
         </button>
 
         <button
@@ -391,12 +392,12 @@ export function ModelServiceSettings(_props: { onClose: () => void }) {
           disabled={!canSave}
           onClick={handleSave}
         >
-          {saving ? "保存中…" : dirty ? "保存配置" : "已是最新配置"}
+          {saving ? t("mss.saving") : dirty ? t("mss.saveConfig") : t("mss.upToDate")}
         </button>
 
         {dirty && (
           <p className="mss-status-text mss-status-text--warning">
-            保存后请手动重启客户端，新配置才会生效
+            {t("mss.restartWarning")}
           </p>
         )}
       </div>

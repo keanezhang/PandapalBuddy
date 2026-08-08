@@ -13,6 +13,9 @@ import type { AgentMode } from "../types/api";
 
 export type SectionId = "task" | "skill" | "session" | "file" | "quick_apps";
 
+/** 界面语言（i18n），i18n/index.ts 导入期同步读取作为初始语言 */
+export type AppLocale = "zh-CN" | "en-US";
+
 interface PreferenceState {
   /** 深度思考开关 */
   deepThinking: boolean;
@@ -28,6 +31,8 @@ interface PreferenceState {
   sidebarWidth: number;
   /** 各 Section 折叠状态，文件 Section 默认折叠 */
   sectionCollapsed: Record<SectionId, boolean>;
+  /** 界面语言（默认中文） */
+  locale: AppLocale;
 
   /** 派生：查看器是否可见（splitRatio < 0.99） */
   viewerVisible: () => boolean;
@@ -40,6 +45,7 @@ interface PreferenceState {
   toggleSidebar: () => void;
   setSidebarWidth: (width: number) => void;
   toggleSection: (sectionId: SectionId) => void;
+  setLocale: (locale: AppLocale) => void;
 }
 
 export const usePreferenceStore = create<PreferenceState>()(
@@ -52,6 +58,7 @@ export const usePreferenceStore = create<PreferenceState>()(
       sidebarCollapsed: false,
       sidebarWidth: 260,
       sectionCollapsed: { task: false, skill: false, session: false, file: true, quick_apps: false },
+      locale: "zh-CN",
 
       viewerVisible: () => get().splitRatio < 0.99,
 
@@ -99,6 +106,11 @@ export const usePreferenceStore = create<PreferenceState>()(
             [sectionId]: !s.sectionCollapsed[sectionId],
           },
         })),
+
+      setLocale: (locale) => {
+        set({ locale });
+        console.debug("[pref] locale:", locale);
+      },
     }),
     { name: "pandapal-preference" }
   )

@@ -1,18 +1,21 @@
 /**
  * src/components/SettingsPanel.tsx — v2 重设计版
  *
- * 设置面板弹窗。支持 Tab 切换：壁纸 / 模型服务。
+ * 设置面板弹窗。支持 Tab 切换：壁纸 / 模型服务 / 语言。
  * 纯 v2 Token。
  */
 import { useRef, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { WallpaperPicker } from "./WallpaperPicker";
 import { ModelServiceSettings } from "./ModelServiceSettings";
+import { LanguageSettings } from "./LanguageSettings";
 
-type SettingsTab = "wallpaper" | "model";
+type SettingsTab = "wallpaper" | "model" | "language";
 
 interface Props { onClose: () => void }
 
 export function SettingsPanel({ onClose }: Props) {
+  const { t } = useTranslation();
   const panelRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState<SettingsTab>("wallpaper");
 
@@ -31,8 +34,9 @@ export function SettingsPanel({ onClose }: Props) {
   }, [onClose]);
 
   const tabs: { id: SettingsTab; label: string; icon: string }[] = [
-    { id: "wallpaper", label: "壁纸", icon: "🎨" },
-    { id: "model", label: "模型服务", icon: "🔑" },
+    { id: "wallpaper", label: t("settings.tab.wallpaper"), icon: "🎨" },
+    { id: "model", label: t("settings.tab.model"), icon: "🔑" },
+    { id: "language", label: t("settings.tab.language"), icon: "🌐" },
   ];
 
   return (
@@ -40,7 +44,7 @@ export function SettingsPanel({ onClose }: Props) {
       <div ref={panelRef} className="modal" style={{ width: 520, maxHeight: "85vh" }}>
         <div className="modal-header">
           <div style={{ display: "flex", alignItems: "center", gap: "var(--space-4)" }}>
-            <span className="modal-title">设置</span>
+            <span className="modal-title">{t("settings.title")}</span>
             {/* Tab 切换 */}
             <div style={{ display: "flex", gap: 2, marginLeft: "var(--space-4)" }}>
               {tabs.map((tab) => (
@@ -96,13 +100,16 @@ export function SettingsPanel({ onClose }: Props) {
                 textTransform: "uppercase", letterSpacing: "0.05em",
                 marginBottom: "var(--space-2)",
               }}>
-                壁纸
+                {t("settings.tab.wallpaper")}
               </div>
               <WallpaperPicker />
             </>
           )}
           {activeTab === "model" && (
             <ModelServiceSettings onClose={onClose} />
+          )}
+          {activeTab === "language" && (
+            <LanguageSettings />
           )}
         </div>
       </div>

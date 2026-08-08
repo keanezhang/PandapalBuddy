@@ -10,6 +10,7 @@
  * 全部使用 var(--xxx) v2 Token
  */
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useConnectionStore } from "../store/connectionStore";
 import { useIsStreaming, useIsStopping } from "../store/chatStore";
 import { usePreferenceStore } from "../store/preferenceStore";
@@ -24,6 +25,7 @@ interface InputBarProps {
 }
 
 export function InputBar({ value, onChange, onSend, onAttach, onStop }: InputBarProps) {
+  const { t } = useTranslation();
   const status = useConnectionStore((s) => s.status);
   const isStreaming = useIsStreaming();
   const isStopping = useIsStopping();
@@ -81,12 +83,12 @@ export function InputBar({ value, onChange, onSend, onAttach, onStop }: InputBar
   };
 
   const placeholder = !isConnected
-    ? "等待后端连接中…"
+    ? t("chat.input.waitingBackend")
     : isStopping
-      ? "正在停止…"
+      ? t("chat.input.stopping")
       : isStreaming
-        ? "AI 正在回复中…"
-        : "随心输入，Enter 发送，Shift+Enter 换行";
+        ? t("chat.input.replying")
+        : t("chat.input.placeholder");
 
   // 统一的三态胶囊按钮：rest（静默）→ hover（浅底高亮）→ active/selected（紫色底）
   const PILL_ACTIVE_BG = "color-mix(in srgb, var(--accent) 12%, transparent)";
@@ -166,9 +168,9 @@ export function InputBar({ value, onChange, onSend, onAttach, onStop }: InputBar
               }}
               onMouseEnter={(e) => { if (isConnected && !isStreaming) pillHover(e.currentTarget, false); }}
               onMouseLeave={(e) => pillRest(e.currentTarget, false)}
-              title="添加附件"
+              title={t("chat.input.attach")}
             >
-              Files
+              {t("chat.input.files")}
             </button>
 
             {/* 深度思考 */}
@@ -178,9 +180,9 @@ export function InputBar({ value, onChange, onSend, onAttach, onStop }: InputBar
               style={{ ...pillBtnStyle, ...pillActiveStyle(deepThinking) }}
               onMouseEnter={(e) => pillHover(e.currentTarget, deepThinking)}
               onMouseLeave={(e) => pillRest(e.currentTarget, deepThinking)}
-              title="深度思考模式"
+              title={t("chat.input.deepThinking")}
             >
-              DeepThinking
+              {t("chat.input.deepThinking")}
             </button>
 
             {/* 模型选择 */}
@@ -196,9 +198,9 @@ export function InputBar({ value, onChange, onSend, onAttach, onStop }: InputBar
                 }}
                 onMouseEnter={(e) => { if (availableModels.length > 0) pillHover(e.currentTarget, modelDropdownOpen); }}
                 onMouseLeave={(e) => pillRest(e.currentTarget, modelDropdownOpen)}
-                title="model"
+                title={t("chat.input.model")}
               >
-                {currentModel?.name || "No Model"}
+                {currentModel?.name || t("chat.input.noModel")}
                 {availableModels.length > 0 && <span style={{ fontSize: "var(--text-2xs)", opacity: 0.5 }}>▼</span>}
               </button>
 
@@ -213,16 +215,16 @@ export function InputBar({ value, onChange, onSend, onAttach, onStop }: InputBar
                       className={`dropdown-item${m.id === currentModelId ? " selected" : ""}`}
                       title={
                         m.priceSource === "missing"
-                          ? "该模型单价已失效，请到设置补填，期间消费不计入预算"
+                          ? t("chat.input.priceMissing")
                           : m.priceSource === "user"
-                            ? "使用你填写的单价核算"
-                            : "使用系统默认价核算"
+                            ? t("chat.input.priceUser")
+                            : t("chat.input.priceSystem")
                       }
                     >
                       {currentModelId === m.id && "✓ "}{m.name}
                       {m.priceSource === "missing" && (
                         <span style={{ marginLeft: 6, fontSize: "var(--text-2xs)", color: "var(--warning)" }}>
-                          待补价
+                          {t("chat.input.pricePending")}
                         </span>
                       )}
                     </div>
@@ -240,7 +242,7 @@ export function InputBar({ value, onChange, onSend, onAttach, onStop }: InputBar
                 <button
                   type="button"
                   disabled
-                  title="正在停止…"
+                  title={t("chat.input.stoppingTitle")}
                   className="stop-btn stopping"
                 >
                   <span className="stop-spinner" />
@@ -249,7 +251,7 @@ export function InputBar({ value, onChange, onSend, onAttach, onStop }: InputBar
                 <button
                   type="button"
                   onClick={onStop}
-                  title="停止生成"
+                  title={t("chat.input.stopGenerate")}
                   className="stop-btn"
                 >
                   ■
@@ -259,7 +261,7 @@ export function InputBar({ value, onChange, onSend, onAttach, onStop }: InputBar
               <button
                 onClick={canSend ? onSend : undefined}
                 disabled={!canSend}
-                title="发送 (Enter)"
+                title={t("chat.input.send")}
                 style={{
                   width: 32, height: 32,
                   borderRadius: "var(--radius-full)",
@@ -285,7 +287,7 @@ export function InputBar({ value, onChange, onSend, onAttach, onStop }: InputBar
           textAlign: "center", fontSize: "var(--text-2xs)", color: "var(--text-muted)",
           marginTop: "var(--space-2)",
         }}>
-          模型可能会产生错误信息，请核实重要信息。 <span style={{ color: "var(--text-tertiary)" }}>按 ⌘K 可以使用 PandaPal</span>
+          {t("chat.input.disclaimer")} <span style={{ color: "var(--text-tertiary)" }}>{t("chat.input.paletteHint")}</span>
         </div>
       </div>
     </div>

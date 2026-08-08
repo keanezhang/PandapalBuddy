@@ -15,6 +15,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useSkillStore } from "../store/skillStore";
 import { useBackend } from "../providers/BackendProvider";
 import { ask, save } from "@tauri-apps/plugin-dialog";
@@ -55,6 +56,7 @@ loader.init().then((monaco) => {
 });
 
 export function SkillEditorPage() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { skillName } = useParams<{ skillName?: string }>();
   const isNew = !skillName || skillName === "new";
@@ -159,7 +161,7 @@ export function SkillEditorPage() {
       description,
       when_to_use: whenToUse,
       content,
-      tags: tagsText.split(",").map((t) => t.trim()).filter(Boolean),
+      tags: tagsText.split(",").map((tag) => tag.trim()).filter(Boolean),
     };
     setDraft(d);
   }, [name, description, whenToUse, content, tagsText, isNew, detailSkill, skillName, setDraft]);
@@ -175,17 +177,17 @@ export function SkillEditorPage() {
     const errors: FieldErrors = {};
 
     if (!name.trim()) {
-      errors.name = "技能名称不能为空";
+      errors.name = t("skills.errNameRequired");
     } else if (!NAME_PATTERN.test(name.trim())) {
-      errors.name = "仅允许小写字母、数字、连字符、下划线";
+      errors.name = t("skills.errNamePattern");
     }
 
     if (description.length > MAX_DESCRIPTION_LEN) {
-      errors.description = `描述不能超过 ${MAX_DESCRIPTION_LEN} 字符`;
+      errors.description = t("skills.errDescTooLong", { n: MAX_DESCRIPTION_LEN });
     }
 
     if (!whenToUse.trim()) {
-      errors.when_to_use = "何时调用不能为空";
+      errors.when_to_use = t("skills.errWhenToUse");
     }
 
     setFieldErrors(errors);
@@ -198,7 +200,7 @@ export function SkillEditorPage() {
     setSaveMsg(null);
     setFieldErrors({});
     try {
-      const tags = tagsText.split(",").map((t) => t.trim()).filter(Boolean);
+      const tags = tagsText.split(",").map((tag) => tag.trim()).filter(Boolean);
       saveSkill(name.trim(), description.trim(), whenToUse.trim(), content, tags);
       // 清除草稿（新建 key + 编辑 key 都要清）
       localStorage.removeItem("skill_draft__new");
@@ -206,10 +208,10 @@ export function SkillEditorPage() {
         localStorage.removeItem(`skill_draft_${detailSkill.name}`);
       }
       clearDraft();
-      setSaveMsg("✅ 保存成功");
+      setSaveMsg(t("skills.saveSuccess"));
       setTimeout(() => navigate("/skills"), 800);
     } catch {
-      setSaveMsg("❌ 保存失败");
+      setSaveMsg(t("skills.saveFailed"));
     } finally {
       setSaving(false);
     }
@@ -217,7 +219,7 @@ export function SkillEditorPage() {
 
   const handleExport = async () => {
     if (!name.trim()) {
-      setSaveMsg("❌ 请先输入技能名称");
+      setSaveMsg(t("skills.errExportName"));
       return;
     }
     const filePath = await save({
@@ -227,10 +229,10 @@ export function SkillEditorPage() {
     if (!filePath) return;
     try {
       await writeTextFile(filePath, content);
-      setSaveMsg(`✅ 导出成功: ${filePath}`);
+      setSaveMsg(t("skills.exportSuccess", { path: filePath }));
     } catch (e) {
       console.error("[editor] export failed:", e);
-      setSaveMsg(`❌ 导出失败: ${e}`);
+      setSaveMsg(t("skills.exportFailed", { err: String(e) }));
     }
   };
 
@@ -238,7 +240,7 @@ export function SkillEditorPage() {
   if (!isNew && detailLoading && !detailSkill) {
     return (
       <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg-root)" }}>
-        <span style={{ color: "var(--text-muted)", fontSize: "var(--text-md)" }}>加载技能详情...</span>
+        <span style={{ color: "var(--text-muted)", fontSize: "var(--text-md)" }}>{t("skills.loadingDetail")}</span>
       </div>
     );
   }
@@ -247,14 +249,14 @@ export function SkillEditorPage() {
     return (
       <div style={{ height: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "var(--bg-root)" }}>
         <div style={{ fontSize: "var(--icon-empty-lg)", marginBottom: 12 }}>🔍</div>
-        <span style={{ fontSize: "var(--text-md)", color: "var(--text-muted)", marginBottom: 16 }}>技能 "{skillName}" 不存在</span>
+        <span style={{ fontSize: "var(--text-md)", color: "var(--text-muted)", marginBottom: 16 }}>{t("skills.notFoundEdit", { name: skillName })}</span>
         <button
           onClick={() => navigate("/skills")}
           style={{
             background: "var(--bg-elevated)", border: "1px solid var(--border-default)", borderRadius: 8,
             padding: "8px 20px", cursor: "pointer", fontSize: "var(--text-base)", color: "var(--text-secondary)",
           }}
-        >← 返回列表</button>
+        >{t("skills.backToList")}</button>
       </div>
     );
   }
@@ -273,8 +275,8 @@ export function SkillEditorPage() {
       }}>
         <button
           onClick={async () => {
-            const saveDraft = await ask("离开前是否保留草稿？", {
-              title: "离开编辑器",
+            const saveDraft = await ask(t("skills.askKeepDraft"), {
+              title: t("skills.leaveTitle"),
               kind: "warning",
             });
             if (saveDraft) {
@@ -298,10 +300,10 @@ export function SkillEditorPage() {
             padding: "7px 14px", cursor: "pointer", fontSize: "var(--text-base)", fontWeight: 500,
             color: "var(--text-secondary)",
           }}
-        >← 返回</button>
+        >{t("skills.back")}</button>
 
         <span style={{ fontWeight: 700, fontSize: "var(--text-lg)", color: "var(--text-primary)" }}>
-          {isNew ? "新建技能" : `编辑: ${skillName}`}
+          {isNew ? t("skills.newTitle") : t("skills.editTitle", { name: skillName })}
         </span>
 
         {/* Draft 标识 */}
@@ -310,7 +312,7 @@ export function SkillEditorPage() {
             fontSize: "var(--text-2xs)", fontWeight: 600, color: "var(--warning)",
             background: "color-mix(in srgb, var(--warning) 12%, transparent)", borderRadius: 4,
             padding: "2px 8px",
-          }}>草稿中</span>
+          }}>{t("skills.draftBadge")}</span>
         )}
 
         <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
@@ -318,7 +320,7 @@ export function SkillEditorPage() {
             background: "color-mix(in srgb, var(--accent) 10%, transparent)", color: "var(--accent-soft)",
             border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)", borderRadius: 8,
             padding: "7px 16px", cursor: "pointer", fontSize: "var(--text-sm)", fontWeight: 500,
-          }}>📤 导出</button>
+          }}>{t("skills.export")}</button>
 
           <button
             onClick={handleSave}
@@ -330,7 +332,7 @@ export function SkillEditorPage() {
               borderRadius: 8, padding: "7px 20px", cursor: saving ? "not-allowed" : "pointer",
               fontSize: "var(--text-base)", fontWeight: 600,
             }}
-          >{saving ? "保存中..." : "💾 保存"}</button>
+          >{saving ? t("skills.saving") : t("skills.save")}</button>
         </div>
       </div>
 
@@ -358,31 +360,31 @@ export function SkillEditorPage() {
           display: "flex", flexDirection: "column", gap: 16,
         }}>
           {/* 名称 */}
-          <Field label="技能名称" required error={fieldErrors.name}>
+          <Field label={t("skills.fieldName")} required error={fieldErrors.name}>
             <input
               type="text"
               value={name}
               onChange={(e) => { setName(e.target.value); if (fieldErrors.name) setFieldErrors((prev) => ({ ...prev, name: undefined })); }}
-              placeholder="例如: code-reviewer"
+              placeholder={t("skills.placeholderName")}
               disabled={!isNew}
               style={inputStyle(!isNew, !!fieldErrors.name)}
             />
           </Field>
 
           {/* 类型 */}
-          <Field label="技能类型">
+          <Field label={t("skills.fieldType")}>
             <select
               value={skillType}
               onChange={(e) => setSkillType(e.target.value as "KNOWLEDGE" | "ACTION")}
               style={inputStyle(false)}
             >
-              <option value="KNOWLEDGE">📋 知识 (KNOWLEDGE)</option>
-              <option value="ACTION">⚡ 动作 (ACTION)</option>
+              <option value="KNOWLEDGE">{t("skills.typeKnowledge")}</option>
+              <option value="ACTION">{t("skills.typeAction")}</option>
             </select>
           </Field>
 
           {/* 自动触发 */}
-          <Field label="自动触发">
+          <Field label={t("skills.fieldAutoTrigger")}>
             <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "var(--text-base)", color: "var(--text-secondary)", cursor: "pointer" }}>
               <input
                 type="checkbox"
@@ -390,16 +392,16 @@ export function SkillEditorPage() {
                 onChange={(e) => setAllowAutoTrigger(e.target.checked)}
                 style={{ accentColor: "var(--success)" }}
               />
-              允许 AI 自动触发此技能
+              {t("skills.allowAutoTrigger")}
             </label>
           </Field>
 
           {/* 描述 */}
-          <Field label="描述" error={fieldErrors.description}>
+          <Field label={t("skills.fieldDesc")} error={fieldErrors.description}>
             <textarea
               value={description}
               onChange={(e) => { setDescription(e.target.value); if (fieldErrors.description) setFieldErrors((prev) => ({ ...prev, description: undefined })); }}
-              placeholder="描述这个技能做什么..."
+              placeholder={t("skills.placeholderDesc")}
               rows={3}
               style={{ ...inputStyle(false, !!fieldErrors.description), resize: "vertical", minHeight: 60 }}
             />
@@ -409,23 +411,23 @@ export function SkillEditorPage() {
           </Field>
 
           {/* 触发时机 */}
-          <Field label="何时调用 (when_to_use)" required error={fieldErrors.when_to_use}>
+          <Field label={t("skills.fieldWhenToUse")} required error={fieldErrors.when_to_use}>
             <textarea
               value={whenToUse}
               onChange={(e) => { setWhenToUse(e.target.value); if (fieldErrors.when_to_use) setFieldErrors((prev) => ({ ...prev, when_to_use: undefined })); }}
-              placeholder="描述什么场景下AI应该调用这个技能..."
+              placeholder={t("skills.placeholderWhenToUse")}
               rows={3}
               style={{ ...inputStyle(false, !!fieldErrors.when_to_use), resize: "vertical", minHeight: 60 }}
             />
           </Field>
 
           {/* 标签 */}
-          <Field label="标签（逗号分隔）">
+          <Field label={t("skills.fieldTags")}>
             <input
               type="text"
               value={tagsText}
               onChange={(e) => setTagsText(e.target.value)}
-              placeholder="例如: code, review, quality"
+              placeholder={t("skills.placeholderTags")}
               style={inputStyle(false)}
             />
           </Field>
@@ -433,11 +435,11 @@ export function SkillEditorPage() {
           {/* 元信息（编辑模式） */}
           {!isNew && detailSkill && (
             <div style={{ marginTop: 8, padding: "12px", background: "var(--bg-card-subtle)", borderRadius: 8, border: "1px solid var(--border-default)" }}>
-              <div style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", marginBottom: 4 }}>元信息</div>
+              <div style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", marginBottom: 4 }}>{t("skills.metaInfo")}</div>
               <div style={{ fontSize: "var(--text-sm)", color: "var(--text-secondary)", lineHeight: 1.8 }}>
-                <div>来源: {detailSkill.source === "system" ? "系统内置（只读）" : "用户自定义"}</div>
-                <div>大小: {(detailSkill.size / 1024).toFixed(1)} KB</div>
-                <div>修改: {detailSkill.modified_at || "未知"}</div>
+                <div>{t("skills.source", { src: detailSkill.source === "system" ? t("skills.sourceSystem") : t("skills.sourceUser") })}</div>
+                <div>{t("skills.metaSize", { size: (detailSkill.size / 1024).toFixed(1) })}</div>
+                <div>{t("skills.metaModified", { time: detailSkill.modified_at || t("skills.unknown") })}</div>
               </div>
             </div>
           )}
@@ -457,9 +459,9 @@ export function SkillEditorPage() {
               alignItems: "center",
               gap: 8,
             }}>
-              <span>📝 技能内容 (Markdown)</span>
+              <span>{t("skills.editorTitle")}</span>
               <span style={{ marginLeft: "auto" }}>
-                {content.length.toLocaleString()} 字符
+                {t("skills.charCount", { n: content.length.toLocaleString() })}
               </span>
             </div>
             <Editor
@@ -501,7 +503,7 @@ export function SkillEditorPage() {
               gap: 8,
               flexShrink: 0,
             }}>
-              <span>👁 实时预览</span>
+              <span>{t("skills.livePreview")}</span>
             </div>
             <MarkdownPreview content={content} />
           </div>
@@ -514,14 +516,15 @@ export function SkillEditorPage() {
 // ── Markdown 预览组件 ────────────────────────────────────────────────────
 
 function MarkdownPreview({ content }: { content: string }) {
+  const { t } = useTranslation();
   const html = useMemo(() => {
     if (!content.trim()) return "";
     try {
       return marked.parse(content, { async: false }) as string;
     } catch {
-      return "<p style='color:var(--danger)'>Markdown 解析错误</p>";
+      return `<p style='color:var(--danger)'>${t("skills.markdownError")}</p>`;
     }
-  }, [content]);
+  }, [content, t]);
 
   return (
     <div
@@ -532,7 +535,7 @@ function MarkdownPreview({ content }: { content: string }) {
       }}
     >
       {!content.trim() ? (
-        <p style={{ fontSize: "var(--text-base)", color: "var(--text-muted)", fontStyle: "italic" }}>输入 Markdown 内容后此处将实时预览...</p>
+        <p style={{ fontSize: "var(--text-base)", color: "var(--text-muted)", fontStyle: "italic" }}>{t("skills.previewPlaceholder")}</p>
       ) : (
         <div
           className="markdown-preview"

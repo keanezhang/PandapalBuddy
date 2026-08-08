@@ -7,12 +7,10 @@
 
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useTaskSchedulerStore } from "../store/taskSchedulerStore";
 import { useBackend } from "../providers/BackendProvider";
 import type { ScheduledTaskItem } from "../types/api";
-
-/* ── 星期映射 ────────────────────────────────────────────────── */
-const DOW_NAMES = ["日", "一", "二", "三", "四", "五", "六"];
 
 /* ── 帮助函数 ────────────────────────────────────────────────── */
 function formatDateTime(isoStr: string): string {
@@ -28,67 +26,7 @@ function formatDate(isoStr: string): string {
   catch { return ""; }
 }
 
-/**
- * 将 cron 表达式转为人类可读的"下次触发时间"。
- * 返回 { text: string, isSoon: boolean }
- * isSoon = 24 小时内触发（用于加亮颜色）
- */
-function nextTriggerText(cron: string): { text: string; isSoon: boolean } {
-  if (!cron) return { text: "—", isSoon: false };
-  const parts = cron.trim().split(/\s+/);
-  if (parts.length < 5) return { text: cron, isSoon: false };
-
-  const [min, hour, dom, mon, dow] = parts;
-  const hh = String(parseInt(hour)).padStart(2, "0");
-  const mm = String(parseInt(min)).padStart(2, "0");
-  const now = new Date();
-
-  // 每天：M H * * *
-  if (hour !== "*" && min !== "*" && dom === "*" && mon === "*" && dow === "*") {
-    const triggerTime = new Date(now);
-    triggerTime.setHours(parseInt(hour), parseInt(min), 0, 0);
-    if (triggerTime <= now) triggerTime.setDate(triggerTime.getDate() + 1);
-    const diffMs = triggerTime.getTime() - now.getTime();
-    const diffHours = diffMs / 3600000;
-    const isToday = triggerTime.toDateString() === now.toDateString();
-    if (isToday) return { text: `今天 ${hh}:${mm}`, isSoon: true };
-    if (diffHours <= 24) return { text: `明天 ${hh}:${mm}`, isSoon: true };
-    return { text: `每天 ${hh}:${mm}`, isSoon: false };
-  }
-
-  // 每周：M H * * DOW
-  if (hour !== "*" && min !== "*" && dom === "*" && mon === "*" && dow !== "*") {
-    const targetDow = parseInt(dow);
-    const currentDow = now.getDay();
-    let daysUntil = targetDow - currentDow;
-    if (daysUntil <= 0) daysUntil += 7;
-    const nextDate = new Date(now);
-    nextDate.setDate(nextDate.getDate() + daysUntil);
-    nextDate.setHours(parseInt(hour), parseInt(min), 0, 0);
-    if (nextDate <= now) nextDate.setDate(nextDate.getDate() + 7);
-    const diffMs = nextDate.getTime() - now.getTime();
-    return { text: `周${DOW_NAMES[targetDow]} ${hh}:${mm}`, isSoon: diffMs <= 86400000 };
-  }
-
-  // 每月：M H D * *  (D = day of month)
-  if (hour !== "*" && min !== "*" && dom !== "*" && mon === "*" && dow === "*") {
-    const d = parseInt(dom);
-    return { text: `每月 ${d} 日 ${hh}:${mm}`, isSoon: false };
-  }
-
-  // 每年 / 一次性：M H D M *
-  if (hour !== "*" && min !== "*" && dom !== "*" && mon !== "*" && dow === "*") {
-    const d = parseInt(dom);
-    const m = parseInt(mon);
-    return { text: `${m}月${d}日 ${hh}:${mm}`, isSoon: false };
-  }
-
-  // 兜底
-  return { text: cron, isSoon: false };
-}
-
 const TRIGGER_ICONS: Record<string, string> = { recurring: "⏱", oneshot: "📌", event: "📡", manual: "👆" };
-const TRIGGER_LABELS: Record<string, string> = { recurring: "重复任务", oneshot: "单次任务", event: "事件触发", manual: "手动执行" };
 const TRIGGER_BADGE: Record<string, { bg: string; color: string }> = {
   recurring: { bg: "color-mix(in srgb, var(--accent) 12%, transparent)", color: "var(--accent-soft)" },
   oneshot: { bg: "color-mix(in srgb, var(--accent-2) 12%, transparent)", color: "var(--accent-2)" },
@@ -97,6 +35,7 @@ const TRIGGER_BADGE: Record<string, { bg: string; color: string }> = {
 };
 
 export function TasksPage() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { tasks, loading, removeTask } = useTaskSchedulerStore();
   const { requestScheduledTasks, deleteScheduledTask, createSession } = useBackend();
@@ -131,6 +70,8 @@ export function TasksPage() {
     navigate("/");
   };
 
+  const tips = t("tasks.tips", { returnObjects: true }) as string[];
+
   return (
     <div className="page-root">
       {/* 标题行 */}
@@ -138,7 +79,7 @@ export function TasksPage() {
         <div style={{ flex: 1 }}>
           <h1 className="page-title">
             <span style={{ width: 34, height: 34, fontSize: "var(--text-lg)", display: "flex", alignItems: "center", justifyContent: "center" }}>📋</span>
-            任务安排
+            {t("tasks.title")}
             {validTasks.length > 0 && (
               <span style={{ fontSize: "var(--text-base)", fontWeight: 500, color: "var(--text-tertiary)" }}>· {validTasks.length}</span>
             )}
@@ -148,15 +89,15 @@ export function TasksPage() {
           <button onClick={handleCreateTask} className="btn btn-sm" style={{
             background: "color-mix(in srgb, var(--accent-2) 10%, transparent)", color: "var(--accent-2)",
             border: "1px solid color-mix(in srgb, var(--accent-2) 20%, transparent)",
-          }}>＋ 创建任务</button>
+          }}>{t("tasks.createTask")}</button>
         )}
-        {loading && <span className="skills-loading-dot" title="刷新中..." />}
+        {loading && <span className="skills-loading-dot" title={t("tasks.refreshing")} />}
       </div>
 
       {/* 内容区：自适应卡片网格 */}
       <div style={{ flex: 1, overflowY: "auto" }}>
         {loading && validTasks.length === 0 ? (
-          <div className="skills-loading" style={{ padding: 40 }}><span className="skills-loading-dot" /> 加载中…</div>
+          <div className="skills-loading" style={{ padding: 40 }}><span className="skills-loading-dot" /> {t("common.loading")}</div>
         ) : validTasks.length === 0 ? (
           /* ── 空状态 ── */
           <div style={{
@@ -169,9 +110,9 @@ export function TasksPage() {
               display: "flex", alignItems: "center", justifyContent: "center",
               fontSize: "var(--icon-empty)", marginBottom: 20,
             }}>⏰</div>
-            <div style={{ fontSize: "var(--text-lg)", fontWeight: 600, color: "var(--text-primary)", marginBottom: 6 }}>还没有定时任务</div>
+            <div style={{ fontSize: "var(--text-lg)", fontWeight: 600, color: "var(--text-primary)", marginBottom: 6 }}>{t("tasks.emptyTitle")}</div>
             <div style={{ fontSize: "var(--text-base)", color: "var(--text-tertiary)", lineHeight: 1.7, marginBottom: 20, maxWidth: 260 }}>
-              在聊天中对 Agent 说出你想定时做的事情，<br />AI 会自动为你创建定时任务
+              {t("tasks.emptyDescLine1")}<br />{t("tasks.emptyDescLine2")}
             </div>
             <div style={{
               background: "var(--bg-elevated)", borderRadius: "var(--radius-md)",
@@ -179,15 +120,15 @@ export function TasksPage() {
               padding: "var(--space-3) var(--space-4)", marginBottom: 24,
               width: "100%", maxWidth: 280, textAlign: "left",
             }}>
-              <div style={{ fontSize: "var(--text-2xs)", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 10 }}>试试这样说</div>
-              {["每天早上 8 点提醒我背单词", "每周五下午 5 点生成周报", "每天 18 点检查代码并推送"].map((tip) => (
+              <div style={{ fontSize: "var(--text-2xs)", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 10 }}>{t("tasks.trySay")}</div>
+              {tips.map((tip) => (
                 <div key={tip} style={{ fontSize: "var(--text-sm)", color: "var(--text-secondary)", lineHeight: 1.7, padding: "4px 0", display: "flex", alignItems: "center", gap: 6 }}>
                   <span style={{ color: "var(--text-muted)", fontSize: "var(--text-xs)" }}>💬</span>{tip}
                 </div>
               ))}
             </div>
             <button onClick={handleCreateTask} className="btn btn-primary" style={{ fontSize: "var(--text-base)", fontWeight: 600, padding: "10px 28px", borderRadius: "var(--radius-md)" }}>
-              💬 去创建任务
+              💬 {t("tasks.goCreate")}
             </button>
           </div>
         ) : (
@@ -231,8 +172,10 @@ function TaskCard({
   onCancelDelete: () => void;
   onConfirmDelete: () => void;
 }) {
-  const nt = task.cron_expression ? nextTriggerText(task.cron_expression) : { text: "", isSoon: false };
+  const { t } = useTranslation();
+  const nt = task.cron_expression ? nextTriggerText(task.cron_expression, t) : { text: "", isSoon: false };
   const badge = TRIGGER_BADGE[task.trigger_type] ?? TRIGGER_BADGE.manual;
+  const triggerLabel = t(`tasks.trigger.${task.trigger_type}`, { defaultValue: task.trigger_type });
 
   return (
     <div style={{
@@ -262,7 +205,7 @@ function TaskCard({
                 {task.name}
               </h2>
               <span className="badge" style={{ background: badge.bg, color: badge.color, flexShrink: 0 }}>
-                {TRIGGER_LABELS[task.trigger_type] || task.trigger_type}
+                {triggerLabel}
               </span>
             </div>
           </div>
@@ -283,7 +226,7 @@ function TaskCard({
             borderRadius: "var(--radius-sm)",
             border: `1px solid ${nt.isSoon ? "color-mix(in srgb, var(--accent) 20%, transparent)" : "var(--border-subtle)"}`,
           }}>
-            <span style={{ fontSize: "var(--text-sm)", color: "var(--text-tertiary)" }}>提醒 @</span>
+            <span style={{ fontSize: "var(--text-sm)", color: "var(--text-tertiary)" }}>{t("tasks.remindAt")}</span>
             <span style={{ fontSize: "var(--text-md)", fontWeight: 700, color: nt.isSoon ? "var(--accent)" : "var(--text-primary)" }}>
               {nt.text}
             </span>
@@ -307,23 +250,23 @@ function TaskCard({
               borderBottom: "1px solid var(--border-subtle)",
               fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--text-muted)",
               textTransform: "uppercase", letterSpacing: "0.04em",
-            }}>任务指令</div>
+            }}>{t("tasks.promptLabel")}</div>
             <div style={{
               fontSize: "var(--text-base)", color: "var(--text-secondary)", lineHeight: 1.75,
               padding: "var(--space-4)",
               fontFamily: "var(--font-mono)", whiteSpace: "pre-wrap",
               maxHeight: 300, overflowY: "auto",
             }}>
-              {task.task_prompt || "（无指令）"}
+              {task.task_prompt || t("tasks.noPrompt")}
             </div>
           </div>
 
           {/* 元信息 */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
-            <InfoTile label="敏感度" value={task.sensitivity} />
-            <InfoTile label="创建时间" value={formatDate(task.created_at)} />
-            <InfoTile label="最近执行" value={<StatusText task={task} />} />
-            <InfoTile label="会话" value={task.session_id ? task.session_id.slice(0, 12) + "…" : "—"} />
+            <InfoTile label={t("tasks.sensitivity")} value={task.sensitivity} />
+            <InfoTile label={t("tasks.createdAt")} value={formatDate(task.created_at)} />
+            <InfoTile label={t("tasks.lastRun")} value={<StatusText task={task} />} />
+            <InfoTile label={t("tasks.session")} value={task.session_id ? task.session_id.slice(0, 12) + "…" : "—"} />
           </div>
 
           {/* 删除：二次确认，防误删 */}
@@ -332,7 +275,7 @@ function TaskCard({
               onClick={onRequestDelete}
               style={{ width: "100%", justifyContent: "center", padding: "10px 0" }}
             >
-              🗑 删除任务
+              🗑 {t("tasks.deleteTask")}
             </button>
           ) : (
             <div style={{ display: "flex", gap: 10 }}>
@@ -340,13 +283,13 @@ function TaskCard({
                 onClick={onCancelDelete}
                 style={{ flex: 1, justifyContent: "center", padding: "10px 0" }}
               >
-                取消
+                {t("common.cancel")}
               </button>
               <button className="btn btn-danger-solid"
                 onClick={onConfirmDelete}
                 style={{ flex: 2, justifyContent: "center", padding: "10px 0" }}
               >
-                确认删除
+                {t("tasks.confirmDelete")}
               </button>
             </div>
           )}
@@ -359,21 +302,23 @@ function TaskCard({
 /* ── 状态组件 ────────────────────────────────────────────────── */
 
 function StatusBadge({ task }: { task: ScheduledTaskItem }) {
+  const { t } = useTranslation();
   const ls = task.last_status;
-  if (ls === "running") return <span className="badge badge-blue" style={{ fontSize: "var(--text-2xs)" }}>⏳ 运行中</span>;
-  if (ls === "completed") return <span className="badge badge-green" style={{ fontSize: "var(--text-2xs)" }}>✓ 已完成</span>;
-  if (ls === "failed") return <span className="badge badge-red" style={{ fontSize: "var(--text-2xs)" }}>⚠ 失败</span>;
+  if (ls === "running") return <span className="badge badge-blue" style={{ fontSize: "var(--text-2xs)" }}>⏳ {t("tasks.statusRunning")}</span>;
+  if (ls === "completed") return <span className="badge badge-green" style={{ fontSize: "var(--text-2xs)" }}>✓ {t("tasks.statusCompleted")}</span>;
+  if (ls === "failed") return <span className="badge badge-red" style={{ fontSize: "var(--text-2xs)" }}>⚠ {t("tasks.statusFailed")}</span>;
   // 待触发 — 紫色高亮（最常见状态，醒目标记）
-  return <span className="badge" style={{ fontSize: "var(--text-2xs)", background: "color-mix(in srgb, var(--accent) 15%, transparent)", color: "var(--accent-soft)", border: "1px solid color-mix(in srgb, var(--accent) 25%, transparent)" }}>⏱ 待触发</span>;
+  return <span className="badge" style={{ fontSize: "var(--text-2xs)", background: "color-mix(in srgb, var(--accent) 15%, transparent)", color: "var(--accent-soft)", border: "1px solid color-mix(in srgb, var(--accent) 25%, transparent)" }}>⏱ {t("tasks.statusPending")}</span>;
 }
 
 function StatusText({ task }: { task: ScheduledTaskItem }) {
+  const { t } = useTranslation();
   const ls = task.last_status, lr = task.last_run_at;
-  if (ls === "running") return <span style={{ color: "var(--accent-soft)", fontWeight: 500 }}>执行中…</span>;
+  if (ls === "running") return <span style={{ color: "var(--accent-soft)", fontWeight: 500 }}>{t("tasks.executing")}</span>;
   if (ls === "completed" && lr) return <span style={{ color: "var(--success)", fontWeight: 500 }}>{formatDateTime(lr)}</span>;
   if (ls === "failed" && lr) return <span style={{ color: "var(--danger)", fontWeight: 500 }}>{formatDateTime(lr)}</span>;
   // 待触发 — 紫色（最常见状态）
-  return <span style={{ color: "var(--accent)", fontWeight: 600 }}>⏱ 待触发</span>;
+  return <span style={{ color: "var(--accent)", fontWeight: 600 }}>⏱ {t("tasks.statusPending")}</span>;
 }
 
 function InfoTile({ label, value }: { label: string; value: React.ReactNode }) {
@@ -392,4 +337,64 @@ function InfoTile({ label, value }: { label: string; value: React.ReactNode }) {
       </div>
     </div>
   );
+}
+
+/**
+ * 将 cron 表达式转为人类可读的"下次触发时间"。
+ * 返回 { text: string, isSoon: boolean }
+ * isSoon = 24 小时内触发（用于加亮颜色）
+ */
+function nextTriggerText(cron: string, t: (key: string, opts?: Record<string, unknown>) => string): { text: string; isSoon: boolean } {
+  const DOW_NAMES = (t("tasks.dow", { defaultValue: "日,一,二,三,四,五,六" }) as unknown as string).split(",");
+  if (!cron) return { text: "—", isSoon: false };
+  const parts = cron.trim().split(/\s+/);
+  if (parts.length < 5) return { text: cron, isSoon: false };
+
+  const [min, hour, dom, mon, dow] = parts;
+  const hh = String(parseInt(hour)).padStart(2, "0");
+  const mm = String(parseInt(min)).padStart(2, "0");
+  const now = new Date();
+
+  // 每天：M H * * *
+  if (hour !== "*" && min !== "*" && dom === "*" && mon === "*" && dow === "*") {
+    const triggerTime = new Date(now);
+    triggerTime.setHours(parseInt(hour), parseInt(min), 0, 0);
+    if (triggerTime <= now) triggerTime.setDate(triggerTime.getDate() + 1);
+    const diffMs = triggerTime.getTime() - now.getTime();
+    const diffHours = diffMs / 3600000;
+    const isToday = triggerTime.toDateString() === now.toDateString();
+    if (isToday) return { text: t("tasks.today", { time: `${hh}:${mm}` }), isSoon: true };
+    if (diffHours <= 24) return { text: t("tasks.tomorrow", { time: `${hh}:${mm}` }), isSoon: true };
+    return { text: t("tasks.everyDay", { time: `${hh}:${mm}` }), isSoon: false };
+  }
+
+  // 每周：M H * * DOW
+  if (hour !== "*" && min !== "*" && dom === "*" && mon === "*" && dow !== "*") {
+    const targetDow = parseInt(dow);
+    const currentDow = now.getDay();
+    let daysUntil = targetDow - currentDow;
+    if (daysUntil <= 0) daysUntil += 7;
+    const nextDate = new Date(now);
+    nextDate.setDate(nextDate.getDate() + daysUntil);
+    nextDate.setHours(parseInt(hour), parseInt(min), 0, 0);
+    if (nextDate <= now) nextDate.setDate(nextDate.getDate() + 7);
+    const diffMs = nextDate.getTime() - now.getTime();
+    return { text: t("tasks.weekly", { dow: DOW_NAMES[targetDow] ?? "", time: `${hh}:${mm}` }), isSoon: diffMs <= 86400000 };
+  }
+
+  // 每月：M H D * *  (D = day of month)
+  if (hour !== "*" && min !== "*" && dom !== "*" && mon === "*" && dow === "*") {
+    const d = parseInt(dom);
+    return { text: t("tasks.monthly", { day: d, time: `${hh}:${mm}` }), isSoon: false };
+  }
+
+  // 每年 / 一次性：M H D M *
+  if (hour !== "*" && min !== "*" && dom !== "*" && mon !== "*" && dow === "*") {
+    const d = parseInt(dom);
+    const m = parseInt(mon);
+    return { text: t("tasks.annual", { month: m, day: d, time: `${hh}:${mm}` }), isSoon: false };
+  }
+
+  // 兜底
+  return { text: cron, isSoon: false };
 }

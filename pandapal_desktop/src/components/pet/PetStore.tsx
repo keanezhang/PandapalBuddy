@@ -11,6 +11,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { usePetStore } from "../../store/petStore";
 import { FRAME_H, FRAME_W, type CatalogEntry } from "../../types/pet";
 import { Modal } from "../ui";
@@ -19,13 +20,15 @@ const PAGE_SIZE = 24;
 const THUMB = 72;
 
 export function PetStore({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation();
   const catalog = usePetStore((s) => s.catalog);
   const catalogLoading = usePetStore((s) => s.catalogLoading);
   const installedPets = usePetStore((s) => s.installedPets);
   const installing = usePetStore((s) => s.installing);
 
   const [query, setQuery] = useState("");
-  const [kind, setKind] = useState("全部");
+  // kind 为空串表示「全部」（哨兵值，避免硬编码「全部」参与筛选比较被翻译破坏）
+  const [kind, setKind] = useState("");
   const [page, setPage] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,13 +40,13 @@ export function PetStore({ onClose }: { onClose: () => void }) {
   const kinds = useMemo(() => {
     const set = new Set<string>();
     catalog.forEach((p) => p.kind && set.add(p.kind));
-    return ["全部", ...Array.from(set).sort()];
+    return ["", ...Array.from(set).sort()];
   }, [catalog]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return catalog.filter((p) => {
-      if (kind !== "全部" && p.kind !== kind) return false;
+      if (kind !== "" && p.kind !== kind) return false;
       if (!q) return true;
       return (
         p.displayName.toLowerCase().includes(q) ||
@@ -73,10 +76,10 @@ export function PetStore({ onClose }: { onClose: () => void }) {
 
   return (
     <Modal
-      title="🐾 宠物商店"
+      title={`🐾 ${t("pet.storeTitle")}`}
       headerExtra={
         <span className="pet-store-count">
-          {catalogLoading ? "加载中…" : `共 ${catalog.length} 只`}
+          {catalogLoading ? t("common.loading") : t("pet.storeCount", { count: catalog.length })}
         </span>
       }
       onClose={onClose}
@@ -86,7 +89,7 @@ export function PetStore({ onClose }: { onClose: () => void }) {
 
         {/* 版权免责声明 */}
         <div className="pet-store-disclaimer">
-          ⚠️ 宠物为 petdex 上的第三方同人内容，安装即表示你自行承担相应责任。
+          {t("pet.disclaimer")}
         </div>
 
         {/* 搜索 + 分类 */}
@@ -95,7 +98,7 @@ export function PetStore({ onClose }: { onClose: () => void }) {
             className="pet-input"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="搜索名字或 slug…"
+            placeholder={t("pet.searchPlaceholder")}
             style={{ flex: 1, minWidth: 160 }}
           />
           <select
@@ -105,7 +108,7 @@ export function PetStore({ onClose }: { onClose: () => void }) {
             style={{ flex: "0 0 auto", cursor: "pointer" }}
           >
             {kinds.map((k) => (
-              <option key={k} value={k}>{k}</option>
+              <option key={k} value={k}>{k === "" ? t("pet.allKinds") : k}</option>
             ))}
           </select>
         </div>
@@ -119,9 +122,9 @@ export function PetStore({ onClose }: { onClose: () => void }) {
         {/* 网格 */}
         <div className="pet-store-body">
           {catalogLoading && catalog.length === 0 ? (
-            <div className="pet-store-empty">正在拉取宠物清单…</div>
+            <div className="pet-store-empty">{t("pet.fetchingCatalog")}</div>
           ) : filtered.length === 0 ? (
-            <div className="pet-store-empty">没有匹配的宠物</div>
+            <div className="pet-store-empty">{t("pet.noMatch")}</div>
           ) : (
             <div className="pet-store-grid">
               {pageItems.map((p) => {
@@ -143,7 +146,7 @@ export function PetStore({ onClose }: { onClose: () => void }) {
                       onClick={() => handleInstall(p)}
                       disabled={installed || !!installing}
                     >
-                      {installed ? "已安装" : busy ? "安装中…" : "安装"}
+                      {installed ? t("pet.installed") : busy ? t("pet.installing") : t("pet.install")}
                     </button>
                   </div>
                 );
@@ -160,7 +163,7 @@ export function PetStore({ onClose }: { onClose: () => void }) {
               onClick={() => setPage((p) => Math.max(0, p - 1))}
               disabled={page === 0}
             >
-              ‹ 上一页
+              ‹ {t("pet.prevPage")}
             </button>
             <span className="pet-store-page-info">{page + 1} / {pageCount}</span>
             <button
@@ -168,7 +171,7 @@ export function PetStore({ onClose }: { onClose: () => void }) {
               onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
               disabled={page >= pageCount - 1}
             >
-              下一页 ›
+              {t("pet.nextPage")} ›
             </button>
           </div>
         )}

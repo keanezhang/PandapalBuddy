@@ -20,7 +20,7 @@ export default defineConfig(({ mode }) => {
 
     clearScreen: false,
     server: {
-      hmr: false,
+      hmr: true,
       port: 5173,
       strictPort: true,
       watch: {

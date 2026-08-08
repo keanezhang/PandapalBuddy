@@ -9,6 +9,7 @@
  */
 import "./styles.css";
 import { useRef, useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import Editor from "@monaco-editor/react";
 import type monaco from "monaco-editor";
 
@@ -55,6 +56,7 @@ export function InlineDiffEditor({
   onPartialSave,
   initialAppliedKeys,
 }: InlineDiffEditorProps) {
+  const { t } = useTranslation();
   /* ── Refs ──────────────────────────────────────────────────────────── */
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<typeof monaco | null>(null);
@@ -430,20 +432,20 @@ export function InlineDiffEditor({
               fontSize: 13,
             }}
           >
-            加载编辑器...
+            {t("common.loadingEditor")}
           </div>
         }
       />
       {/* 底部全局操作栏 —— 仅在有未处理 hunk 时显示 */}
       {hasPending && (
         <div className="mid-float-bar">
-          <span className="mid-float-label">AI Suggested Changes</span>
+          <span className="mid-float-label">{t("fileViewer.suggestionLabel")}</span>
           <div className="mid-float-actions">
             <button className="mid-btn-all mid-btn-reject-all" onClick={rejectAll}>
-              Reject All
+              {t("fileViewer.rejectAll")}
             </button>
             <button className="mid-btn-all mid-btn-apply-all" onClick={applyAll}>
-              Apply All
+              {t("fileViewer.acceptAll")}
             </button>
           </div>
         </div>

@@ -7,6 +7,7 @@
 
 import type { DegradationStat, SessionData, Turn, TurnLLM } from "../../types/dashboard";
 import { HIGH_STAKES_CATEGORIES, LATENCY_BUCKETS, PERF_MIN_SAMPLE_SIZE } from "./constants";
+import i18n from "../../i18n";
 
 /* ── 费用取数口径（全部只读后端 cost_of_call 算好的值，前端从不重算）───────────
  * 费用真相源只有一个：应用层价格表（APP_PRICE_TABLE），后端 cost_of_call 一处算清
@@ -57,8 +58,8 @@ export function flattenFacts(sessions: SessionData[]): CallFact[] {
       const netCost = callNetCost(t.llm); // 净费用（源头算好，此处仅取）；inCost+outCost==netCost
       facts.push({
         sessionId: s.id,
-        title: s.title || "未命名会话",
-        model: t.llm.model || s.model || "未知模型",
+        title: s.title || i18n.t("dashboard.unnamedSession"),
+        model: t.llm.model || s.model || i18n.t("dashboard.unknownModel"),
         step: t.llm.step,
         turn: t.turn,
         inTokens: t.llm.input_tokens,
@@ -321,7 +322,7 @@ export function buildSpans(run: RunGroup, session: SessionData, p99ThresholdMs: 
         over,
         unknown: false,
         meta:
-          `llm_call · in ${t.llm.input_tokens} out ${t.llm.output_tokens} · 净$${callNetCost(t.llm).toFixed(4)}（全价$${callFullCost(t.llm).toFixed(4)}）· ` +
+          `llm_call · in ${t.llm.input_tokens} out ${t.llm.output_tokens} · ${i18n.t("dashboard.net")}$${callNetCost(t.llm).toFixed(4)} (${i18n.t("dashboard.fullPrice", { cost: `$${callFullCost(t.llm).toFixed(4)}` })}) · ` +
           `${Math.round(t.llm.duration_ms)}ms` +
           (t.llm.cache_hit_ratio != null ? ` · 🎯${t.llm.cache_hit_ratio.toFixed(1)}%` : ""),
       });
@@ -335,7 +336,7 @@ export function buildSpans(run: RunGroup, session: SessionData, p99ThresholdMs: 
         kind: "tool",
         over: false,
         unknown: x.unknown,
-        meta: x.unknown ? `tool_call · 耗时未知（无 trace span）` : `tool_call · ${Math.round(x.d)}ms`,
+        meta: x.unknown ? `tool_call · ${i18n.t("dashboard.unknownDuration")} (no trace span)` : `tool_call · ${Math.round(x.d)}ms`,
       });
       cursor += x.d; // unknown → +0，不推进（避免用假值占位）
     }
@@ -358,10 +359,10 @@ export function flattenToolCalls(sessions: SessionData[]): ToolCallFact[] {
   const out: ToolCallFact[] = [];
   for (const s of sessions) {
     for (const t of s.turns) {
-      const model = t.llm?.model || s.model || "未知模型";
+      const model = t.llm?.model || s.model || i18n.t("dashboard.unknownModel");
       for (const ts of t.tool_spans ?? []) {
         out.push({
-          sessionId: s.id, title: s.title || "未命名会话", turn: t.turn,
+          sessionId: s.id, title: s.title || i18n.t("dashboard.unnamedSession"), turn: t.turn,
           name: ts.name, durationMs: ts.duration_ms,
           model, status: ts.status ?? null,
         });
@@ -439,15 +440,15 @@ export interface CtxMsg {
   text: string;
   isSystemRef?: boolean;
 }
-export const SYSTEM_PROMPT_PLACEHOLDER =
-  "系统提示词未在数据层落盘 —— P1 由数据层直供真值。";
+export const SYSTEM_PROMPT_PLACEHOLDER = (): string =>
+  i18n.t("dashboard.sysPromptNotPersisted");
 
 export function buildContext(runTurns: Turn[], idxInRun: number): CtxMsg[] {
-  const msgs: CtxMsg[] = [{ role: "system", text: SYSTEM_PROMPT_PLACEHOLDER, isSystemRef: true }];
+  const msgs: CtxMsg[] = [{ role: "system", text: SYSTEM_PROMPT_PLACEHOLDER(), isSystemRef: true }];
   for (let i = 0; i < idxInRun; i++) {
     const t = runTurns[i];
     let text = t.content || "";
-    if (!text && t.tool_calls?.length) text = `[调用工具 ${t.tool_calls.map((x) => x.name).join(", ")}]`;
+    if (!text && t.tool_calls?.length) text = `[${i18n.t("dashboard.callTool")}${t.tool_calls.map((x) => x.name).join(", ")}]`;
     msgs.push({ role: t.role, text });
   }
   return msgs;
