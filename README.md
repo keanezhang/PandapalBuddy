@@ -36,6 +36,90 @@ The repository contains **four sub-projects** that work together:
 
 ---
 
+## 🚀 Installation
+
+> New here? Follow this section. Each sub-project also has its own Quick Start below.
+
+### 0. Prerequisites
+
+| Tool | Version | Install |
+|------|---------|---------|
+| Python | ≥ 3.12 | [python.org](https://www.python.org/downloads/) / `brew install python` |
+| Node.js | ≥ 18 | [nodejs.org](https://nodejs.org/) / `brew install node` |
+| pnpm | latest | `npm install -g pnpm` |
+| Rust | stable | [rustup.rs](https://rustup.rs/) |
+
+Platform extras:
+
+- **macOS**: Xcode Command Line Tools (`xcode-select --install`); distribution additionally requires an Apple Developer ID for signing
+- **Windows**: Microsoft C++ Build Tools ("Desktop development with C++") + `rustup default stable-msvc`; WebView2 runtime ships with Win11
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/keanezhang/PandapalBuddy.git
+cd PandapalBuddy
+```
+
+### 2. Python backend — `pandaren` / `pandapal` / `pandapal_relay`
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+python -m pip install -U pip
+pip install -e ".[all]"          # one-shot: base deps + all optional features
+```
+
+> `pandaren` is installed as an editable package. `pandapal` / `pandapal_relay` are launched from the repo root (`python -m pandapal.local`, `python -m pandapal_relay`), so they need no separate install.
+>
+> Only need the minimum? Use `pip install -e ".[desktop]"` instead of `[all]`.
+
+### 3. Desktop frontend — `pandapal_desktop`
+
+```bash
+cd pandapal_desktop
+pnpm install
+```
+
+Rust/Tauri crates are compiled on first launch. To prefetch them upfront:
+
+```bash
+cd src-tauri && cargo fetch
+```
+
+### 4. Configure environment
+
+```bash
+cp .env.example .env.development                        # backend env (repo root)
+cp pandapal_desktop/.env.example pandapal_desktop/.env.development
+cp pandapal_relay/.env.example pandapal_relay/.env      # optional — relay secrets only
+```
+
+Fill in the API keys in `.env.development` (`WEB_SEARCH_PROVIDER`, `BOCHA_API_KEY`, `TAVILY_API_KEY`, …). The desktop app is fully usable **locally** without the relay — it supports local login.
+
+### 5. Verify the installation
+
+```bash
+python -c "import pandaren, pandapal, pandapal_relay"   # backend imports OK
+cd pandapal_desktop && pnpm typecheck                   # frontend types OK
+pytest                                                  # optional: run the test suite
+```
+
+### 6. Run
+
+```bash
+cd pandapal_desktop
+pnpm tauri:dev    # builds the Python sidecar, then launches the full desktop app (recommended)
+```
+
+To run the backend alone (the desktop client normally launches it automatically):
+
+```bash
+python -m pandapal.local --workdir <workspace_dir> --app-data-dir <app_data_dir>
+```
+
+---
+
 ## 🎯 Why PandaPal Buddy?
 
 Most Agent projects hand you a library or a demo. PandaPal Buddy hands you **a desktop AI assistant you can use today** — and opens the source of every layer underneath it. Above all, it lives by one conviction:

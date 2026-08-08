@@ -36,6 +36,90 @@ PandaPal Buddy 是一个面向生产环境的 Agent 开发框架，覆盖 **核�
 
 ---
 
+## 🚀 安装指引
+
+> 从零开始？按本小节操作即可。每个子项目下文还有各自的快速开始。
+
+### 0. 前置条件
+
+| 工具 | 版本要求 | 安装方式 |
+|------|---------|---------|
+| Python | ≥ 3.12 | [python.org](https://www.python.org/downloads/) / `brew install python` |
+| Node.js | ≥ 18 | [nodejs.org](https://nodejs.org/) / `brew install node` |
+| pnpm | 最新 | `npm install -g pnpm` |
+| Rust | stable | [rustup.rs](https://rustup.rs/) |
+
+平台补充：
+
+- **macOS**：需 Xcode Command Line Tools（`xcode-select --install`）；对外分发另需 Apple Developer ID 代码签名
+- **Windows**：需 Microsoft C++ Build Tools（勾选 "Desktop development with C++"）并执行 `rustup default stable-msvc`；WebView2 运行时 Win11 自带
+
+### 1. 克隆仓库
+
+```bash
+git clone https://github.com/keanezhang/PandapalBuddy.git
+cd PandapalBuddy
+```
+
+### 2. 安装 Python 后端（`pandaren` / `pandapal` / `pandapal_relay`）
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+python -m pip install -U pip
+pip install -e ".[all]"          # 一键安装全部基础依赖 + 可选功能
+```
+
+> `pandaren` 以 editable 方式安装为 Python 包；`pandapal` / `pandapal_relay` 直接从仓库根目录以 `python -m` 方式运行（如 `python -m pandapal.local`），无需单独安装。
+>
+> 只想装最小依赖，可用 `pip install -e ".[desktop]"` 替代 `[all]`。
+
+### 3. 安装桌面前端（`pandapal_desktop`）
+
+```bash
+cd pandapal_desktop
+pnpm install
+```
+
+Rust/Tauri 依赖在首次启动时编译。想提前预取依赖：
+
+```bash
+cd src-tauri && cargo fetch
+```
+
+### 4. 配置环境变量
+
+```bash
+cp .env.example .env.development                        # 后端环境变量（仓库根目录）
+cp pandapal_desktop/.env.example pandapal_desktop/.env.development
+cp pandapal_relay/.env.example pandapal_relay/.env      # 可选 —— 仅部署 Relay 时需要
+```
+
+在 `.env.development` 中填入真实 API Key（`WEB_SEARCH_PROVIDER`、`BOCHA_API_KEY`、`TAVILY_API_KEY` 等）。桌面应用**完全本地可用**，无需 Relay 也能运行（支持本地登录）。
+
+### 5. 验证安装
+
+```bash
+python -c "import pandaren, pandapal, pandapal_relay"   # 后端导入 OK
+cd pandapal_desktop && pnpm typecheck                   # 前端类型检查 OK
+pytest                                                  # 可选：运行测试套件
+```
+
+### 6. 启动
+
+```bash
+cd pandapal_desktop
+pnpm tauri:dev    # 构建 Python sidecar 并启动完整桌面应用（推荐）
+```
+
+单独运行后端（桌面客户端通常会自动拉起它）：
+
+```bash
+python -m pandapal.local --workdir <workspace_dir> --app-data-dir <app_data_dir>
+```
+
+---
+
 ## 🎯 为什么是 PandaPal Buddy？
 
 大多数 Agent 项目只给你一个库或一个 demo。PandaPal Buddy 给你**一台今天就能开箱即用的桌面 AI 智能助手**，并把支撑它的每一层源码都摊开在阳光下。我们始终坚守一个信念：
