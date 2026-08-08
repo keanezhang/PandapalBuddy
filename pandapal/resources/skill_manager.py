@@ -398,8 +398,30 @@ class SkillManager:
                 error_message=str(e),
             )
 
-    # 导入时仅允许的文件后缀（.md 技能定义 + .py 脚本）
-    _ALLOWED_IMPORT_EXTENSIONS: frozenset[str] = frozenset({".md", ".py"})
+    # 导入时允许的文件后缀（技能定义 + 脚本 + 资源文件）
+    _ALLOWED_IMPORT_EXTENSIONS: frozenset[str] = frozenset({
+        ".md", ".py",                          # 技能定义 + Python 脚本
+        ".html", ".htm", ".js", ".mjs", ".css", # Web 模板/脚本
+        ".json", ".yaml", ".yml", ".txt",       # 数据/配置/文本
+        ".webp", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico",  # 图片
+    })
+    # 导入时允许的无后缀文件名（常见配置文件）
+    _ALLOWED_IMPORT_FILENAMES: frozenset[str] = frozenset({
+        ".gitignore", ".gitattributes",
+        "README", "LICENSE",
+    })
+
+    @staticmethod
+    def _is_macos_system_file(filename: str) -> bool:
+        """判断是否为 macOS 系统自动生成的冗余文件，导入时应静默跳过。"""
+        parts = filename.replace("\\", "/").split("/")
+        if any(p.startswith("._") for p in parts):
+            return True
+        if any(p == ".DS_Store" for p in parts):
+            return True
+        if any(p == "__MACOSX" for p in parts):
+            return True
+        return False
 
     async def import_and_build_event(
         self, content: str = "", fmt: str = "folder", overwrite: bool = False,
@@ -494,17 +516,24 @@ class SkillManager:
 
         with tempfile.TemporaryDirectory(prefix="skill_import_") as tmp_dir:
             with zipfile.ZipFile(zip_path_obj, "r") as zf:
-                # 解压前校验：仅允许 .md 和 .py
+                # 解压前校验：仅允许白名单内的文件类型，静默跳过 macOS 系统文件
                 invalid_entries: list[str] = []
                 for info in zf.infolist():
                     if info.is_dir():
                         continue
-                    ext = Path(info.filename).suffix.lower()
-                    if ext not in self._ALLOWED_IMPORT_EXTENSIONS:
+                    if self._is_macos_system_file(info.filename):
+                        continue
+                    p = Path(info.filename)
+                    ext = p.suffix.lower()
+                    name = p.name
+                    if ext not in self._ALLOWED_IMPORT_EXTENSIONS and name not in self._ALLOWED_IMPORT_FILENAMES:
                         invalid_entries.append(info.filename)
                 if invalid_entries:
+                    allowed = sorted(self._ALLOWED_IMPORT_EXTENSIONS | self._ALLOWED_IMPORT_FILENAMES)
                     raise ValueError(
-                        "ZIP 中包含不支持的文件格式，仅支持 .md / .py：\n" +
+                        "ZIP 中包含不支持的文件格式，仅支持以下文件类型：\n" +
+                        "  " + ", ".join(allowed) + "\n" +
+                        "不支持的文件：\n" +
                         "\n".join(f"  - {f}" for f in invalid_entries)
                     )
                 zf.extractall(tmp_dir)
@@ -573,14 +602,21 @@ class SkillManager:
         if not folder_path_obj.is_dir():
             raise ValueError(f"文件夹不存在: {folder_path}")
 
-        # 校验：仅允许 .md 和 .py 文件
+        # 校验：仅允许白名单内的文件类型，静默跳过 macOS 系统文件
         invalid_files: list[str] = []
         for item in folder_path_obj.rglob("*"):
-            if item.is_file() and item.suffix.lower() not in self._ALLOWED_IMPORT_EXTENSIONS:
-                invalid_files.append(str(item.relative_to(folder_path_obj)))
+            if item.is_file():
+                rel_path = str(item.relative_to(folder_path_obj))
+                if self._is_macos_system_file(rel_path):
+                    continue
+                if item.suffix.lower() not in self._ALLOWED_IMPORT_EXTENSIONS and item.name not in self._ALLOWED_IMPORT_FILENAMES:
+                    invalid_files.append(rel_path)
         if invalid_files:
+            allowed = sorted(self._ALLOWED_IMPORT_EXTENSIONS | self._ALLOWED_IMPORT_FILENAMES)
             raise ValueError(
-                "文件夹中包含不支持的文件格式，仅支持 .md / .py：\n" +
+                "文件夹中包含不支持的文件格式，仅支持以下文件类型：\n" +
+                "  " + ", ".join(allowed) + "\n" +
+                "不支持的文件：\n" +
                 "\n".join(f"  - {f}" for f in invalid_files)
             )
 

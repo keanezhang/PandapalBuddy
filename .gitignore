@@ -70,3 +70,6 @@ pandapal_desktop/docs/
 
 # 版权来源待确认的素材（PRD 文档与 demo 保留）
 docs/prd/pets/*.webp
+
+#忽略docs
+knowledge/

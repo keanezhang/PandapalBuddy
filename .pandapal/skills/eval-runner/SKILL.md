@@ -236,8 +236,8 @@ python <eval-runner-dir>/scripts/aggregate.py <target-skill-dir>
 - 边界输入和恶意输入通过、异常场景失败 → 基础可靠，异常处理待加强
 - 恶意输入未通过 → **Blocker**，必须堵住注入攻击路径
 
-### 与 auding-skills H 维度的关系
+### 与 auditing-skills A 维度的关系
 
 - `eval-runner` 通过边界用例**动态验证** skill 的安全性
-- `auditing-skills` 的 H 维度通过代码审查**静态检查** skill 的安全性
+- `auditing-skills` 的 A 维度通过代码审查**静态检查** skill 的安全性
 - 两者互补：静态查权限声明和硬编码密钥；动态查 prompt injection 和边界行为
