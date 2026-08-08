@@ -89,7 +89,7 @@ export function InputBar({ value, onChange, onSend, onAttach, onStop }: InputBar
         : "随心输入，Enter 发送，Shift+Enter 换行";
 
   // 统一的三态胶囊按钮：rest（静默）→ hover（浅底高亮）→ active/selected（紫色底）
-  const PILL_ACTIVE_BG = "rgba(124,58,237,0.12)";
+  const PILL_ACTIVE_BG = "color-mix(in srgb, var(--accent) 12%, transparent)";
   const PILL_ACTIVE_COLOR = "var(--accent-soft)";
   const pillBtnStyle: React.CSSProperties = {
     display: "inline-flex", alignItems: "center", gap: 6,
@@ -146,7 +146,7 @@ export function InputBar({ value, onChange, onSend, onAttach, onStop }: InputBar
               width: "100%", padding: "4px 6px",
               border: "none", background: "transparent",
               color: isConnected ? "var(--text-primary)" : "var(--text-muted)",
-              fontFamily: "var(--font-sans)", fontSize: 15, lineHeight: 1.6,
+              fontFamily: "var(--font-sans)", fontSize: "var(--text-md)", lineHeight: 1.6,
               resize: "none", outline: "none", boxShadow: "none",
               minHeight: 52,
             }}
@@ -199,7 +199,7 @@ export function InputBar({ value, onChange, onSend, onAttach, onStop }: InputBar
                 title="model"
               >
                 {currentModel?.name || "No Model"}
-                {availableModels.length > 0 && <span style={{ fontSize: 7, opacity: 0.5 }}>▼</span>}
+                {availableModels.length > 0 && <span style={{ fontSize: "var(--text-2xs)", opacity: 0.5 }}>▼</span>}
               </button>
 
               {modelDropdownOpen && availableModels.length > 0 && (
@@ -221,7 +221,7 @@ export function InputBar({ value, onChange, onSend, onAttach, onStop }: InputBar
                     >
                       {currentModelId === m.id && "✓ "}{m.name}
                       {m.priceSource === "missing" && (
-                        <span style={{ marginLeft: 6, fontSize: 9.5, color: "var(--warning)" }}>
+                        <span style={{ marginLeft: 6, fontSize: "var(--text-2xs)", color: "var(--warning)" }}>
                           待补价
                         </span>
                       )}
@@ -264,9 +264,9 @@ export function InputBar({ value, onChange, onSend, onAttach, onStop }: InputBar
                   width: 32, height: 32,
                   borderRadius: "var(--radius-full)",
                   border: "none",
-                  background: canSend ? "var(--accent)" : "rgba(255,255,255,0.08)",
-                  color: canSend ? "#fff" : "var(--text-muted)",
-                  fontSize: 16,
+                  background: canSend ? "var(--accent)" : "var(--bg-hover)",
+                  color: canSend ? "var(--text-on-accent)" : "var(--text-muted)",
+                  fontSize: "var(--text-lg)",
                   cursor: canSend ? "pointer" : "not-allowed",
                   display: "flex", alignItems: "center", justifyContent: "center",
                   flexShrink: 0,
@@ -282,7 +282,7 @@ export function InputBar({ value, onChange, onSend, onAttach, onStop }: InputBar
         </div>
 
         <div style={{
-          textAlign: "center", fontSize: 10, color: "var(--text-muted)",
+          textAlign: "center", fontSize: "var(--text-2xs)", color: "var(--text-muted)",
           marginTop: "var(--space-2)",
         }}>
           模型可能会产生错误信息，请核实重要信息。 <span style={{ color: "var(--text-tertiary)" }}>按 ⌘K 可以使用 PandaPal</span>

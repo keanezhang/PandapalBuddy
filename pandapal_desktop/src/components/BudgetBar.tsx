@@ -53,11 +53,11 @@ function BudgetRow({
         (b.state === "exhausted" ? "（已耗尽·停机）" : b.state === "near" ? "（临近）" : "")
       }
     >
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 4 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "var(--text-xs)", marginBottom: 4 }}>
         <span style={{ color: "var(--text-secondary)", fontWeight: 600, display: "flex", alignItems: "center", gap: 5 }}>
           {displayNameOf(b.provider, catalog)}
           {current && (
-            <span style={{ fontSize: 9.5, fontWeight: 600, padding: "0 5px", borderRadius: 20, background: "rgba(124,58,237,0.14)", color: "var(--accent-soft)" }}>
+            <span style={{ fontSize: "var(--text-2xs)", fontWeight: 600, padding: "0 5px", borderRadius: 20, background: "color-mix(in srgb, var(--accent) 14%, transparent)", color: "var(--accent-soft)" }}>
               使用中
             </span>
           )}
@@ -68,7 +68,7 @@ function BudgetRow({
           {s}{b.spent_native.toFixed(2)} / {s}{b.limit_native ?? 0}
         </span>
       </div>
-      <div style={{ height: 6, borderRadius: 4, background: "rgba(127,127,127,0.15)", overflow: "hidden" }}>
+      <div style={{ height: 6, borderRadius: 4, background: "var(--bg-track)", overflow: "hidden" }}>
         <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: 4, transition: "width 0.3s" }} />
       </div>
     </div>
@@ -111,12 +111,12 @@ export function BudgetBar() {
         border: "1px solid var(--border-subtle)",
       }}
     >
-      <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-        💳 预算额度<span style={{ fontWeight: 400, color: "var(--text-muted)", fontSize: 11 }}>按厂家分账</span>
+      <span style={{ fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+        💳 预算额度<span style={{ fontWeight: 400, color: "var(--text-muted)", fontSize: "var(--text-xs)" }}>按厂家分账</span>
       </span>
 
       {budgets.length === 0 ? (
-        <span style={{ flex: 1, fontSize: 12, color: "var(--text-muted)" }}>
+        <span style={{ flex: 1, fontSize: "var(--text-sm)", color: "var(--text-muted)" }}>
           未设额度 —— 点「设置」为各厂家设充值上限，超额自动停该厂家
         </span>
       ) : (
@@ -134,7 +134,7 @@ export function BudgetBar() {
             <button
               onClick={() => setExpanded((v) => !v)}
               style={{
-                fontSize: 11, padding: "3px 10px", borderRadius: 8, cursor: "pointer",
+                fontSize: "var(--text-xs)", padding: "3px 10px", borderRadius: 8, cursor: "pointer",
                 border: "1px solid var(--border-subtle)", background: "transparent",
                 color: "var(--text-tertiary)", flexShrink: 0, whiteSpace: "nowrap",
               }}
@@ -149,7 +149,7 @@ export function BudgetBar() {
       <button
         onClick={() => setOpen(true)}
         style={{
-          fontSize: 12, padding: "5px 12px", borderRadius: 8, cursor: "pointer",
+          fontSize: "var(--text-sm)", padding: "5px 12px", borderRadius: 8, cursor: "pointer",
           border: "1px solid var(--border-subtle)", background: "transparent",
           color: "var(--accent-soft)", flexShrink: 0,
         }}

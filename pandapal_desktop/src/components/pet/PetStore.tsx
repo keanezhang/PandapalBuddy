@@ -13,6 +13,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { usePetStore } from "../../store/petStore";
 import { FRAME_H, FRAME_W, type CatalogEntry } from "../../types/pet";
+import { Modal } from "../ui";
 
 const PAGE_SIZE = 24;
 const THUMB = 72;
@@ -71,24 +72,17 @@ export function PetStore({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="pet-store-overlay" onClick={onClose}>
-      <div className="pet-store" onClick={(e) => e.stopPropagation()}>
-        {/* 头部 */}
-        <div className="pet-store-header">
-          <span className="pet-store-title">🐾 宠物商店</span>
-          <span className="pet-store-count">
-            {catalogLoading ? "加载中…" : `共 ${catalog.length} 只`}
-          </span>
-          <div style={{ flex: 1 }} />
-          <button
-            className="btn btn-ghost btn-sm"
-            onClick={onClose}
-            title="关闭"
-            style={{ color: "var(--accent)", fontWeight: "var(--weight-semibold)" }}
-          >
-            回
-          </button>
-        </div>
+    <Modal
+      title="🐾 宠物商店"
+      headerExtra={
+        <span className="pet-store-count">
+          {catalogLoading ? "加载中…" : `共 ${catalog.length} 只`}
+        </span>
+      }
+      onClose={onClose}
+      className="pet-store"
+      bare
+    >
 
         {/* 版权免责声明 */}
         <div className="pet-store-disclaimer">
@@ -178,8 +172,7 @@ export function PetStore({ onClose }: { onClose: () => void }) {
             </button>
           </div>
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }
 

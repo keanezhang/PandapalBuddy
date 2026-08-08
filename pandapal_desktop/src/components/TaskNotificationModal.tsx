@@ -8,7 +8,7 @@ import React from "react";
 import { useBackend } from "../providers/BackendProvider";
 
 const LEVEL_INFO: Record<string, { icon: string; color: string; bg: string }> = {
-  info: { icon: "ℹ️", color: "var(--accent-soft)", bg: "rgba(124,58,237,0.08)" },
+  info: { icon: "ℹ️", color: "var(--accent-soft)", bg: "var(--bg-selected)" },
   warning: { icon: "⚠️", color: "var(--warning)", bg: "rgba(245,158,11,0.08)" },
   error: { icon: "❌", color: "var(--danger)", bg: "rgba(239,68,68,0.08)" },
 };
@@ -33,7 +33,7 @@ export function TaskNotificationModal() {
         </div>
         <div className="modal-body">
           {pendingTaskNotification.body && (
-            <div style={{ fontSize: 13, lineHeight: 1.6, color: "var(--text-secondary)" }}>
+            <div style={{ fontSize: "var(--text-base)", lineHeight: 1.6, color: "var(--text-secondary)" }}>
               {pendingTaskNotification.body}
             </div>
           )}

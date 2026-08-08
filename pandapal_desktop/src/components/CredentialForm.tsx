@@ -72,350 +72,14 @@ interface CredentialFormProps {
 }
 
 // ── 样式 ─────────────────────────────────────────────────────────────────
+// 样式类定义在 global-v2.css SECTION 31（.cred-*）。
+// ⚠️ 覆盖态（--error/--default）一律用整组 border 简写的修饰类叠加：
+//    基础类（.cred-card/.cred-select/.cred-input）用 border 简写，修饰类
+//    也用 border 简写 → CSS 层叠天然生效，不存在 JS 对象合并时的
+//    shorthand/longhand diff 冲突告警。
 
-const S = {
-  card: {
-    background: "var(--bg-elevated)",
-    border: "1px solid var(--border-default)",
-    borderRadius: "var(--radius-md)",
-    padding: "var(--space-4) var(--space-5)",
-    marginBottom: "var(--space-3)",
-    transition: "border-color var(--duration-fast)",
-    position: "relative" as const,
-  } as React.CSSProperties,
-
-  // ⚠️ 覆盖态一律用 border 简写：基础样式（card/select/input）用的是 border 简写，
-  //    这里若只写 borderColor，条件展开时 React 会在"移除 borderColor 但保留 border"
-  //    之间来回 diff → 控制台 shorthand 冲突告警 + 边框颜色可能不还原。
-  cardError: {
-    border: "1px solid var(--danger)",
-  } as React.CSSProperties,
-
-  cardDefault: {
-    border: "1px solid var(--accent)",
-  } as React.CSSProperties,
-
-  cardHeader: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: "var(--space-3)",
-  } as React.CSSProperties,
-
-  providerLabel: {
-    fontSize: "var(--text-sm)",
-    fontWeight: 600,
-    color: "var(--text-primary)",
-    display: "flex",
-    alignItems: "center",
-    gap: "var(--space-2)",
-  } as React.CSSProperties,
-
-  providerBadge: {
-    display: "inline-flex",
-    alignItems: "center",
-    padding: "2px 8px",
-    borderRadius: "var(--radius-xs)",
-    fontSize: "var(--text-2xs)",
-    fontWeight: 600,
-    background: "rgba(124,58,237,0.12)",
-    color: "var(--accent-soft)",
-  } as React.CSSProperties,
-
-  defaultBadge: {
-    display: "inline-flex",
-    alignItems: "center",
-    padding: "2px 8px",
-    borderRadius: "var(--radius-xs)",
-    fontSize: "var(--text-2xs)",
-    fontWeight: 600,
-    background: "rgba(34,197,94,0.12)",
-    color: "var(--success)",
-  } as React.CSSProperties,
-
-  fieldGroup: {
-    marginBottom: "var(--space-3)",
-  } as React.CSSProperties,
-
-  label: {
-    display: "block",
-    fontSize: "var(--text-xs)",
-    fontWeight: 500,
-    color: "var(--text-secondary)",
-    marginBottom: "var(--space-1)",
-  } as React.CSSProperties,
-
-  select: {
-    width: "100%",
-    padding: "8px 12px",
-    fontSize: "var(--text-base)",
-    fontFamily: "inherit",
-    background: "var(--bg-panel)",
-    border: "1px solid var(--border-default)",
-    borderRadius: "var(--radius-sm)",
-    color: "var(--text-primary)",
-    outline: "none",
-    cursor: "pointer",
-    transition: "border-color var(--duration-fast)",
-    appearance: "none" as const,
-    WebkitAppearance: "none" as const,
-  } as React.CSSProperties,
-
-  selectFocus: {
-    border: "1px solid var(--border-focus)",
-    boxShadow: "0 0 0 3px rgba(124,58,237,0.10)",
-  } as React.CSSProperties,
-
-  inputWrap: {
-    position: "relative" as const,
-  } as React.CSSProperties,
-
-  input: {
-    width: "100%",
-    padding: "8px 12px",
-    fontSize: "var(--text-base)",
-    fontFamily: "inherit",
-    background: "var(--bg-panel)",
-    border: "1px solid var(--border-default)",
-    borderRadius: "var(--radius-sm)",
-    color: "var(--text-primary)",
-    outline: "none",
-    transition: "border-color var(--duration-fast)",
-  } as React.CSSProperties,
-
-  inputError: {
-    border: "1px solid var(--danger)",
-  } as React.CSSProperties,
-
-  inputRight: {
-    position: "absolute" as const,
-    right: 4,
-    top: "50%",
-    transform: "translateY(-50%)",
-    display: "flex",
-    alignItems: "center",
-    gap: 4,
-  } as React.CSSProperties,
-
-  toggleBtn: {
-    padding: "3px 8px",
-    fontSize: "var(--text-2xs)",
-    color: "var(--text-tertiary)",
-    background: "transparent",
-    border: "1px solid var(--border-default)",
-    borderRadius: "var(--radius-xs)",
-    cursor: "pointer",
-    fontFamily: "inherit",
-    transition: "color var(--duration-fast), border-color var(--duration-fast)",
-  } as React.CSSProperties,
-
-  placeholder: {
-    fontSize: "var(--text-2xs)",
-    color: "var(--text-muted)",
-    marginTop: "var(--space-1)",
-  } as React.CSSProperties,
-
-  errorText: {
-    fontSize: "var(--text-xs)",
-    color: "var(--danger)",
-    marginTop: "var(--space-1)",
-    display: "flex",
-    alignItems: "center",
-    gap: 4,
-  } as React.CSSProperties,
-
-  verifyingText: {
-    fontSize: "var(--text-xs)",
-    color: "var(--accent-soft)",
-    marginTop: "var(--space-1)",
-  } as React.CSSProperties,
-
-  footer: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: "var(--space-4)",
-    paddingTop: "var(--space-3)",
-    borderTop: "1px solid var(--border-subtle)",
-  } as React.CSSProperties,
-
-  footerActions: {
-    display: "flex",
-    alignItems: "center",
-    gap: "var(--space-2)",
-  } as React.CSSProperties,
-
-  actionBtn: {
-    padding: "4px 12px",
-    fontSize: "var(--text-xs)",
-    fontFamily: "inherit",
-    borderRadius: "var(--radius-sm)",
-    border: "1px solid var(--border-default)",
-    background: "transparent",
-    color: "var(--text-secondary)",
-    cursor: "pointer",
-    transition: "all var(--duration-fast)",
-  } as React.CSSProperties,
-
-  defaultBtn: {
-    padding: "4px 12px",
-    fontSize: "var(--text-xs)",
-    fontFamily: "inherit",
-    borderRadius: "var(--radius-sm)",
-    border: "1px solid var(--success)",
-    background: "rgba(34,197,94,0.08)",
-    color: "var(--success)",
-    cursor: "pointer",
-    fontWeight: 500,
-    transition: "all var(--duration-fast)",
-  } as React.CSSProperties,
-
-  deleteBtn: {
-    padding: "4px 12px",
-    fontSize: "var(--text-xs)",
-    fontFamily: "inherit",
-    borderRadius: "var(--radius-sm)",
-    border: "1px solid rgba(239,68,68,0.25)",
-    background: "transparent",
-    color: "var(--danger)",
-    cursor: "pointer",
-    transition: "all var(--duration-fast)",
-  } as React.CSSProperties,
-
-  guideLink: {
-    fontSize: "var(--text-2xs)",
-    color: "var(--accent)",
-    textDecoration: "none",
-    cursor: "pointer",
-    marginLeft: "auto",
-  } as React.CSSProperties,
-
-  // ── model_id combobox ──
-  comboWrap: {
-    position: "relative" as const,
-  } as React.CSSProperties,
-
-  comboList: {
-    position: "absolute" as const,
-    top: "calc(100% + 2px)",
-    left: 0,
-    right: 0,
-    zIndex: 20,
-    maxHeight: 220,
-    overflowY: "auto" as const,
-    background: "var(--bg-elevated)",
-    border: "1px solid var(--border-default)",
-    borderRadius: "var(--radius-sm)",
-    boxShadow: "0 8px 24px rgba(0,0,0,0.28)",
-    padding: "4px 0",
-  } as React.CSSProperties,
-
-  comboItem: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: "var(--space-2)",
-    padding: "6px 12px",
-    fontSize: "var(--text-xs)",
-    color: "var(--text-primary)",
-    cursor: "pointer",
-  } as React.CSSProperties,
-
-  comboItemPrice: {
-    fontSize: "var(--text-2xs)",
-    color: "var(--text-muted)",
-    whiteSpace: "nowrap" as const,
-  } as React.CSSProperties,
-
-  comboHint: {
-    padding: "6px 12px",
-    fontSize: "var(--text-2xs)",
-    color: "var(--text-muted)",
-    borderTop: "1px solid var(--border-subtle)",
-  } as React.CSSProperties,
-
-  // ── 计费设置区 ──
-  priceSection: {
-    marginBottom: "var(--space-3)",
-    padding: "var(--space-3)",
-    borderRadius: "var(--radius-sm)",
-    background: "var(--bg-panel)",
-    border: "1px solid var(--border-subtle)",
-  } as React.CSSProperties,
-
-  priceHeader: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: "var(--space-2)",
-    marginBottom: "var(--space-2)",
-  } as React.CSSProperties,
-
-  priceRow: {
-    display: "flex",
-    gap: "var(--space-2)",
-  } as React.CSSProperties,
-
-  priceCell: {
-    flex: 1,
-    minWidth: 0,
-  } as React.CSSProperties,
-
-  sourceBadgeSystem: {
-    display: "inline-flex",
-    alignItems: "center",
-    padding: "2px 8px",
-    borderRadius: "var(--radius-xs)",
-    fontSize: "var(--text-2xs)",
-    fontWeight: 600,
-    background: "rgba(127,127,127,0.14)",
-    color: "var(--text-tertiary)",
-  } as React.CSSProperties,
-
-  sourceBadgeUser: {
-    display: "inline-flex",
-    alignItems: "center",
-    padding: "2px 8px",
-    borderRadius: "var(--radius-xs)",
-    fontSize: "var(--text-2xs)",
-    fontWeight: 600,
-    background: "rgba(124,58,237,0.12)",
-    color: "var(--accent-soft)",
-  } as React.CSSProperties,
-
-  sourceBadgeMissing: {
-    display: "inline-flex",
-    alignItems: "center",
-    padding: "2px 8px",
-    borderRadius: "var(--radius-xs)",
-    fontSize: "var(--text-2xs)",
-    fontWeight: 600,
-    background: "rgba(245,158,11,0.14)",
-    color: "var(--warning)",
-  } as React.CSSProperties,
-
-  linkBtn: {
-    padding: 0,
-    fontSize: "var(--text-2xs)",
-    fontFamily: "inherit",
-    color: "var(--accent)",
-    background: "transparent",
-    border: "none",
-    cursor: "pointer",
-  } as React.CSSProperties,
-
-  maskedKey: {
-    flex: 1,
-    padding: "8px 12px",
-    fontSize: "var(--text-base)",
-    fontFamily: "var(--font-mono, monospace)",
-    background: "rgba(127,127,127,0.08)",
-    border: "1px dashed var(--border-default)",
-    borderRadius: "var(--radius-sm)",
-    color: "var(--text-tertiary)",
-    letterSpacing: "0.04em",
-  } as React.CSSProperties,
-};
+const CX = (...parts: Array<string | false | null | undefined>) =>
+  parts.filter(Boolean).join(" ");
 
 // ── 组件 ─────────────────────────────────────────────────────────────────
 
@@ -436,7 +100,6 @@ export function CredentialForm({
   onKeyChangedToggle,
 }: CredentialFormProps) {
   const [showKey, setShowKey] = useState(false);
-  const [selectFocused, setSelectFocused] = useState(false);
   const [comboOpen, setComboOpen] = useState(false);
 
   // ⚠️ Hook 必须无条件调用（Rules of Hooks）。
@@ -578,11 +241,11 @@ export function CredentialForm({
   ].some((v) => v != null && v < 0);
 
   // 确定卡片的视觉状态
-  const cardStyle: React.CSSProperties = {
-    ...S.card,
-    ...(error ? S.cardError : {}),
-    ...(isDefault && !error ? S.cardDefault : {}),
-  };
+  const cardClass = CX(
+    "cred-card",
+    error && "cred-card--error",
+    isDefault && !error && "cred-card--default",
+  );
 
   // base_url placeholder：catalog 拉到时显示对应 provider 的 default_base_url
   const defaultBaseUrl = meta?.default_base_url ?? "";
@@ -592,10 +255,10 @@ export function CredentialForm({
   const providerDisplayName = meta?.display_name ?? credential.provider;
 
   return (
-    <div style={cardStyle}>
+    <div className={cardClass}>
       {/* ── 卡片头部：provider 标签 + 状态徽章 ── */}
-      <div style={S.cardHeader}>
-        <div style={S.providerLabel}>
+      <div className="cred-header">
+        <div className="cred-provider-label">
           {index !== undefined && (
             <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>
               #{index + 1}
@@ -606,20 +269,17 @@ export function CredentialForm({
               value={credential.provider}
               onChange={(e) => handleProviderChange(e.target.value as LLMProvider)}
               disabled={disabled}
+              className="cred-select"
               style={{
-                ...S.select,
-                ...(selectFocused ? S.selectFocus : {}),
                 width: "auto",
                 minWidth: 180,
                 paddingRight: 28,
                 backgroundImage:
-                  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='rgba(255,255,255,0.35)'/%3E%3C/svg%3E\")",
+                  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='rgba(255,255,255,0.35)'/%3E%3C/svg%3E\")", // ui-lint-ok: 内联 SVG data URI 箭头图标色（非 UI 颜色）
                 backgroundRepeat: "no-repeat",
                 backgroundPosition: "right 10px center",
                 backgroundSize: "8px 5px",
               }}
-              onFocus={() => setSelectFocused(true)}
-              onBlur={() => setSelectFocused(false)}
             >
               {availableProviders.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -630,18 +290,18 @@ export function CredentialForm({
           ) : (
             <>
               <span>{providerDisplayName}</span>
-              <span style={S.providerBadge}>{credential.provider}</span>
+              <span className="cred-badge cred-badge--accent">{credential.provider}</span>
             </>
           )}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
-          {isDefault && <span style={S.defaultBadge}>默认</span>}
+          {isDefault && <span className="cred-badge cred-badge--success">默认</span>}
           {guideUrl && (
             <a
               href={guideUrl}
               target="_blank"
               rel="noopener noreferrer"
-              style={S.guideLink}
+              className="cred-guide-link"
               onClick={(e) => e.stopPropagation()}
             >
               获取密钥 →
@@ -655,14 +315,14 @@ export function CredentialForm({
           这不只是 UI 偏好：可编辑就意味着脱敏值可能被当成用户输入回写，
           从而把真 key 永久覆盖掉（PRD R2/R3 · AC-07 的事故原型）。
           真正的保证在提交侧——toSubmittable() 此时**整个省略** api_key 字段。 */}
-      <div style={S.fieldGroup}>
-        <label style={S.label}>API Key *</label>
+      <div className="cred-field">
+        <label className="cred-label">API Key *</label>
         {isSaved && !keyChanged ? (
           <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
-            <div style={S.maskedKey}>{credential.api_key || "••••••••"}</div>
+            <div className="cred-masked-key">{credential.api_key || "••••••••"}</div>
             <button
               type="button"
-              style={S.actionBtn}
+              className="cred-action-btn"
               disabled={disabled}
               onClick={() => {
                 // 进入「更换密钥」态：清空输入框，要求重新填完整 key。
@@ -678,23 +338,23 @@ export function CredentialForm({
           </div>
         ) : (
           <>
-            <div style={S.inputWrap}>
+            <div className="cred-input-wrap">
               <input
                 type={showKey ? "text" : "password"}
                 value={credential.api_key ?? ""}
                 onChange={(e) => updateField("api_key", e.target.value)}
                 placeholder="sk-..."
                 disabled={disabled}
-                style={{
-                  ...S.input,
-                  ...(error && !(credential.api_key ?? "").trim() ? S.inputError : {}),
-                  paddingRight: 56,
-                }}
+                className={CX(
+                  "cred-input",
+                  error && !(credential.api_key ?? "").trim() && "cred-input--error",
+                )}
+                style={{ paddingRight: 56 }}
               />
-              <div style={S.inputRight}>
+              <div className="cred-input-right">
                 <button
                   type="button"
-                  style={S.toggleBtn}
+                  className="cred-toggle-btn"
                   onClick={() => setShowKey((v) => !v)}
                   tabIndex={-1}
                 >
@@ -703,11 +363,11 @@ export function CredentialForm({
               </div>
             </div>
             {isSaved && keyChanged && (
-              <div style={S.placeholder}>
+              <div className="cred-placeholder">
                 请填写完整的新密钥；
                 <button
                   type="button"
-                  style={S.linkBtn}
+                  className="cred-link-btn"
                   onClick={() => {
                     // 取消更换：恢复「不提交 api_key」语义，旧 key 保持不动
                     onKeyChangedToggle?.(false);
@@ -719,7 +379,7 @@ export function CredentialForm({
               </div>
             )}
             {isMaskedKey(credential.api_key) && (
-              <div style={S.errorText}>
+              <div className="cred-error-text">
                 ⚠ 这看起来是脱敏值，不能作为密钥保存，请填写完整的真实密钥
               </div>
             )}
@@ -736,9 +396,9 @@ export function CredentialForm({
           ║   任何「不在推荐清单内就不让填 / 不让存」的改动，都是已删除的      ║
           ║   _DECLARED_MODELS 白名单换马甲复活，明令禁止。                   ║
           ╚══════════════════════════════════════════════════════════════════╝ */}
-      <div style={S.fieldGroup}>
-        <label style={S.label}>模型 ID *</label>
-        <div style={S.comboWrap}>
+      <div className="cred-field">
+        <label className="cred-label">模型 ID *</label>
+        <div className="cred-combo-wrap">
           <input
             type="text"
             value={credential.model_id}
@@ -752,40 +412,31 @@ export function CredentialForm({
             // 占位文案不举具体 model_id 例子：代码内不留任何模型字面量（PRD G2 上线检查清单）
             placeholder="输入或从下拉推荐中选择模型 ID"
             disabled={disabled}
-            style={{
-              ...S.input,
-              ...(duplicateKey ? S.inputError : {}),
-            }}
+            className={CX("cred-input", duplicateKey && "cred-input--error")}
             role="combobox"
             aria-expanded={comboOpen}
             aria-autocomplete="list"
           />
           {comboOpen && hasRecommendations && (
-            <div style={S.comboList}>
+            <div className="cred-combo-list">
               {comboCandidates.map((m) => (
                 <div
                   key={m.model_id}
-                  style={S.comboItem}
+                  className="cred-combo-item"
                   // 用 mouseDown：input 的 blur 会先于 click 触发
                   onMouseDown={(e) => {
                     e.preventDefault();
                     handlePickRecommended(m);
                   }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "rgba(124,58,237,0.10)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "transparent";
-                  }}
                 >
                   <span>{m.model_id}</span>
-                  <span style={S.comboItemPrice}>
+                  <span className="cred-combo-price">
                     ¥{m.input_price_per_1k} / ¥{m.output_price_per_1k}
                   </span>
                 </div>
               ))}
               {/* 无匹配项也**不阻塞输入**：明确告诉用户手填是受支持的路径 */}
-              <div style={S.comboHint}>
+              <div className="cred-combo-hint">
                 {comboCandidates.length === 0
                   ? "无匹配的推荐模型 —— 可直接手填任意模型 ID，填写单价后即可保存"
                   : "以上仅为推荐，可直接手填任意模型 ID"}
@@ -794,17 +445,17 @@ export function CredentialForm({
           )}
         </div>
         {duplicateKey && (
-          <div style={S.errorText}>⚠ 该模型已配置，请勿重复添加</div>
+          <div className="cred-error-text">⚠ 该模型已配置，请勿重复添加</div>
         )}
-        <div style={S.placeholder}>
+        <div className="cred-placeholder">
           可手填服务商支持的任意模型 ID；下拉仅为常见模型的推荐，不构成限制
         </div>
       </div>
 
       {/* ── 计费设置（单价三级回落 R5：用户填写值 > 系统默认表 > 拒绝保存）── */}
-      <div style={S.priceSection}>
-        <div style={S.priceHeader}>
-          <span style={S.label as React.CSSProperties}>
+      <div className="cred-price-section">
+        <div className="cred-price-header">
+          <span className="cred-label">
             计费设置{" "}
             <span style={{ fontWeight: 400, color: "var(--text-muted)" }}>
               CNY / 1k token
@@ -812,19 +463,19 @@ export function CredentialForm({
           </span>
           <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
             {priceSource === "system" && (
-              <span style={S.sourceBadgeSystem}>系统默认价</span>
+              <span className="cred-badge cred-badge--muted">系统默认价</span>
             )}
             {priceSource === "user" && (
-              <span style={S.sourceBadgeUser}>我填的价</span>
+              <span className="cred-badge cred-badge--accent">我填的价</span>
             )}
             {priceSource === "missing" && (
-              <span style={S.sourceBadgeMissing}>待补价</span>
+              <span className="cred-badge cred-badge--warning">待补价</span>
             )}
             {/* 「我要自己填」：仅在正用系统默认价时有意义 */}
             {priceSource === "system" && (
               <button
                 type="button"
-                style={S.linkBtn}
+                className="cred-link-btn"
                 onClick={handleOverridePrice}
                 disabled={disabled}
               >
@@ -835,7 +486,7 @@ export function CredentialForm({
             {priceSource === "user" && systemPrice && (
               <button
                 type="button"
-                style={S.linkBtn}
+                className="cred-link-btn"
                 onClick={handleRestoreDefaultPrice}
                 disabled={disabled}
               >
@@ -847,7 +498,7 @@ export function CredentialForm({
 
         {!priceEditable && systemPrice ? (
           // 命中系统默认表且用户未覆盖：只读展示，用户零输入（PRD Story 2）
-          <div style={S.placeholder}>
+          <div className="cred-placeholder">
             输入 ¥{systemPrice.input_price_per_1k} · 输出 ¥
             {systemPrice.output_price_per_1k}
             {systemPrice.cache_read_price_per_1k != null && (
@@ -858,9 +509,9 @@ export function CredentialForm({
           </div>
         ) : (
           <>
-            <div style={S.priceRow}>
-              <div style={S.priceCell}>
-                <label style={S.label}>输入价 *</label>
+            <div className="cred-price-row">
+              <div className="cred-price-cell">
+                <label className="cred-label">输入价 *</label>
                 <input
                   type="number"
                   min={0}
@@ -869,14 +520,11 @@ export function CredentialForm({
                   onChange={(e) => handlePriceInput("input_price_per_1k", e.target.value)}
                   placeholder="0.0112"
                   disabled={disabled}
-                  style={{
-                    ...S.input,
-                    ...(priceHalfFilled || priceNegative ? S.inputError : {}),
-                  }}
+                  className={CX("cred-input", (priceHalfFilled || priceNegative) && "cred-input--error")}
                 />
               </div>
-              <div style={S.priceCell}>
-                <label style={S.label}>输出价 *</label>
+              <div className="cred-price-cell">
+                <label className="cred-label">输出价 *</label>
                 <input
                   type="number"
                   min={0}
@@ -885,14 +533,11 @@ export function CredentialForm({
                   onChange={(e) => handlePriceInput("output_price_per_1k", e.target.value)}
                   placeholder="0.0448"
                   disabled={disabled}
-                  style={{
-                    ...S.input,
-                    ...(priceHalfFilled || priceNegative ? S.inputError : {}),
-                  }}
+                  className={CX("cred-input", (priceHalfFilled || priceNegative) && "cred-input--error")}
                 />
               </div>
-              <div style={S.priceCell}>
-                <label style={S.label}>
+              <div className="cred-price-cell">
+                <label className="cred-label">
                   缓存命中价{" "}
                   <span style={{ fontWeight: 400, color: "var(--text-muted)" }}>
                     （可选）
@@ -908,37 +553,34 @@ export function CredentialForm({
                   }
                   placeholder="留空 = 按输入价计"
                   disabled={disabled}
-                  style={{
-                    ...S.input,
-                    ...(priceNegative ? S.inputError : {}),
-                  }}
+                  className={CX("cred-input", priceNegative && "cred-input--error")}
                 />
               </div>
             </div>
             {priceSource === "missing" && (
-              <div style={S.placeholder}>
+              <div className="cred-placeholder">
                 该模型无系统默认价，请填写你的实际单价后再保存
               </div>
             )}
             {priceHalfFilled && (
-              <div style={S.errorText}>⚠ 输入价与输出价需同时填写</div>
+              <div className="cred-error-text">⚠ 输入价与输出价需同时填写</div>
             )}
             {priceNegative && (
-              <div style={S.errorText}>⚠ 单价必须是不小于 0 的数字</div>
+              <div className="cred-error-text">⚠ 单价必须是不小于 0 的数字</div>
             )}
-            <div style={S.placeholder}>
+            <div className="cred-placeholder">
               缓存命中价留空时按**生效的输入价**计（保守估高，绝不低估费用）
             </div>
           </>
         )}
 
         {/* 默认价表拉取失败必须让用户看见：否则用户会误以为「这模型本来就没默认价」 */}
-        {pricesError && <div style={S.errorText}>⚠ {pricesError}</div>}
+        {pricesError && <div className="cred-error-text">⚠ {pricesError}</div>}
       </div>
 
       {/* ── Base URL ── */}
-      <div style={S.fieldGroup}>
-        <label style={S.label}>
+      <div className="cred-field">
+        <label className="cred-label">
           API 地址{" "}
           <span style={{ fontWeight: 400, color: "var(--text-muted)" }}>
             （可选）
@@ -950,10 +592,10 @@ export function CredentialForm({
           onChange={(e) => updateField("base_url", e.target.value || undefined)}
           placeholder={defaultBaseUrl || "留空使用官方默认地址"}
           disabled={disabled}
-          style={S.input}
+          className="cred-input"
         />
         {defaultBaseUrl && (
-          <div style={S.placeholder}>
+          <div className="cred-placeholder">
             留空使用官方默认地址：{defaultBaseUrl}
           </div>
         )}
@@ -961,21 +603,21 @@ export function CredentialForm({
 
       {/* ── 校验状态 ── */}
       {isVerifying && (
-        <div style={S.verifyingText}>⏳ 正在验证 {providerDisplayName}…</div>
+        <div className="verify-progress" style={{ marginTop: "var(--space-1)" }}>⏳ 正在验证 {providerDisplayName}…</div>
       )}
       {error && (
-        <div style={S.errorText}>
+        <div className="cred-error-text">
           ⚠ {error}
         </div>
       )}
 
       {/* ── 底部操作栏 ── */}
-      <div style={S.footer}>
-        <div style={S.footerActions}>
+      <div className="cred-footer">
+        <div className="cred-footer-actions">
           {onSetDefault && !isDefault && (
             <button
               type="button"
-              style={S.actionBtn}
+              className="cred-action-btn"
               onClick={onSetDefault}
               disabled={disabled}
               title="设为默认模型（对应 toml 的 default_model_id）"
@@ -989,11 +631,11 @@ export function CredentialForm({
             </span>
           )}
         </div>
-        <div style={S.footerActions}>
+        <div className="cred-footer-actions">
           {onDelete && (
             <button
               type="button"
-              style={S.deleteBtn}
+              className="cred-action-btn cred-action-btn--danger"
               onClick={onDelete}
               disabled={disabled}
               title="删除此服务商凭据"

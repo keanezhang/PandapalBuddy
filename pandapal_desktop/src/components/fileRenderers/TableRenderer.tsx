@@ -88,7 +88,7 @@ export function TableRenderer({ content }: TableRendererProps) {
     return (
       <div style={{
         flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
-        color: "var(--text-muted)", fontSize: 13,
+        color: "var(--text-muted)", fontSize: "var(--text-base)",
       }}>
         无法解析表格
       </div>
@@ -136,7 +136,7 @@ export function TableRenderer({ content }: TableRendererProps) {
           return (
             <div key={ri} style={{
               display: "grid", gridTemplateColumns: gridCols,
-              background: ri % 2 === 0 ? "transparent" : "rgba(255,255,255,0.02)",
+              background: ri % 2 === 0 ? "transparent" : "var(--bg-card-subtle)",
             }}>
               <div style={{ ...cellStyle, color: "var(--text-muted)", opacity: 0.6, userSelect: "none" }}>
                 {ri + 1}

@@ -48,6 +48,23 @@ pytest                       # 运行全部测试（pandapal/、pandaren/、scri
 3. 确保 `ruff check .` 与 `pytest` 通过
 4. 发起 Pull Request，描述变更动机与影响面
 
+## 桌面端 UI 约定（pandapal_desktop）
+
+改动 `pandapal_desktop/src` 下的页面/组件样式时，请先阅读
+[`pandapal_desktop/docs/ui-guidelines.md`](pandapal_desktop/docs/ui-guidelines.md)，核心约定：
+
+- **颜色/字号只允许用设计 token**（`global-v2.css` SECTION 1 的 CSS 变量），禁止字面量；
+  透明度变体用 `color-mix(in srgb, var(--x) P%, transparent)`。
+- 优先复用 `src/components/ui/` 组件（Button/Modal/Badge/Dropdown/Toast/Gate…），
+  页面骨架用 `.page-root` / `.page-header` / `.page-title`。
+- 一次性布局值可内联 `style={{...}}`，但颜色/字号仍必须走 token。
+- 提交前在 `pandapal_desktop/` 下跑：
+  ```bash
+  pnpm lint:ui     # TSX 内联样式字面量检查
+  pnpm lint:css    # stylelint（CSS 禁 hex / 非 token 字号）
+  pnpm typecheck
+  ```
+
 ## 目录结构速查
 
 | 你想改什么 | 从哪里开始 |

@@ -141,8 +141,8 @@ function QuestionCard({
       <div className="interaction-q-label">
         {question.header && (
           <span className="badge" style={{
-            background: freeSelected ? "rgba(34,197,94,0.12)" : multiSelect ? "rgba(234,179,8,0.12)" : "rgba(59,130,246,0.12)",
-            color: freeSelected ? "var(--success)" : multiSelect ? "var(--accent-2)" : "#60A5FA",
+            background: freeSelected ? "color-mix(in srgb, var(--success) 12%, transparent)" : multiSelect ? "color-mix(in srgb, var(--accent-2) 12%, transparent)" : "color-mix(in srgb, var(--info) 12%, transparent)",
+            color: freeSelected ? "var(--success)" : multiSelect ? "var(--accent-2)" : "var(--info)",
             marginRight: "var(--space-1)",
           }}>
             {question.header}{multiSelect ? " (多选)" : ""}
@@ -150,7 +150,7 @@ function QuestionCard({
         )}
         <span style={{ color: "var(--text-tertiary)", fontSize: "var(--text-2xs)" }}>第{index + 1}题</span>
       </div>
-      <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text-primary)", marginBottom: "var(--space-2)", lineHeight: 1.5 }}>
+      <div style={{ fontSize: "var(--text-base)", fontWeight: 500, color: "var(--text-primary)", marginBottom: "var(--space-2)", lineHeight: 1.5 }}>
         {question.question}
       </div>
 
@@ -168,7 +168,7 @@ function QuestionCard({
                 <span style={{ flex: 1 }}>
                   <span style={{ fontWeight: 500 }}>{opt.label}</span>
                   {opt.description && (
-                    <span style={{ color: "var(--text-muted)", marginLeft: 6, fontSize: "0.92em" }}>
+                    <span style={{ color: "var(--text-muted)", marginLeft: 6, fontSize: "var(--text-sm)" }}>
                       — {opt.description}
                     </span>
                   )}
@@ -194,7 +194,7 @@ function QuestionCard({
               borderRadius: "var(--radius-sm)",
               border: freeText.trim() ? "1px solid var(--accent)" : "1px solid var(--border-default)",
               background: "var(--bg-elevated)", color: "var(--text-primary)",
-              fontFamily: "var(--font-sans)", fontSize: 12, resize: "vertical",
+              fontFamily: "var(--font-sans)", fontSize: "var(--text-sm)", resize: "vertical",
               outline: "none", lineHeight: 1.5,
             }}
           />

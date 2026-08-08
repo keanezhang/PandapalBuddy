@@ -14,7 +14,7 @@ export function EditRenderer({ tc }: { tc: ToolCallState }) {
   const { add, del } = diffStat(oldStr, newStr);
 
   const meta = !isError && (add > 0 || del > 0) ? (
-    <span style={{ fontSize: 10, fontFamily: "var(--font-mono)" }}>
+    <span style={{ fontSize: "var(--text-2xs)", fontFamily: "var(--font-mono)" }}>
       {add > 0 && <span style={{ color: "var(--success)" }}>+{add} </span>}
       {del > 0 && <span style={{ color: "var(--danger)" }}>-{del}</span>}
     </span>

@@ -60,7 +60,7 @@ export function ReasoningBlock({ tokens, isStreaming, durationMs }: ReasoningBlo
         {isStreaming && <span className="spinner" />}
         {isStreaming ? "思考中…" : "思考"}
         {!isStreaming && durationMs != null && (
-          <span style={{ marginLeft: 6, fontSize: 10, color: "var(--text-muted)", fontWeight: 400 }}>
+          <span style={{ marginLeft: 6, fontSize: "var(--text-2xs)", color: "var(--text-muted)", fontWeight: 400 }}>
             {formatThinkDuration(durationMs)}
           </span>
         )}

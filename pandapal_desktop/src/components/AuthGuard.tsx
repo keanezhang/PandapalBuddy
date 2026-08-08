@@ -25,6 +25,7 @@ import { Navigate } from "react-router-dom";
 import { useAuthStore } from "../store/authStore";
 import { WorkspaceGate } from "./WorkspaceGate";
 import { CredentialGate } from "./CredentialGate";
+import { GateLoading } from "./ui";
 
 interface AuthGuardProps {
   children: React.ReactNode;
@@ -37,12 +38,7 @@ export function AuthGuard({ children, bypassCredentialCheck = false }: AuthGuard
 
   // 1. 登录态加载中
   if (status === "loading") {
-    return (
-      <div style={styles.loadingContainer}>
-        <div style={styles.spinner}>🐼</div>
-        <p style={styles.loadingText}>正在启动...</p>
-      </div>
-    );
+    return <GateLoading text="正在启动..." />;
   }
 
   // 2. 未登录 → 跳登录页
@@ -60,23 +56,3 @@ export function AuthGuard({ children, bypassCredentialCheck = false }: AuthGuard
     </WorkspaceGate>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  loadingContainer: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    height: "100vh",
-    background: "var(--bg-page)",
-    gap: 16,
-  },
-  spinner: {
-    fontSize: 48,
-    animation: "thinking-pulse 1.2s ease-in-out infinite",
-  },
-  loadingText: {
-    fontSize: 14,
-    color: "var(--text-secondary)",
-  },
-};

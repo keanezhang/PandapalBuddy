@@ -22,7 +22,7 @@ export function SearchResultBlock({ resultSummary, collapsed }: Props) {
       background: "var(--bg-elevated)",
       border: "1px solid var(--border-default)",
       borderRadius: "var(--radius-md)",
-      borderLeft: "2px solid #60A5FA",
+      borderLeft: "2px solid var(--info)",
     }}>
       <div
         onClick={() => collapsed && setExpanded(!expanded)}
@@ -32,19 +32,19 @@ export function SearchResultBlock({ resultSummary, collapsed }: Props) {
           marginBottom: expanded ? "var(--space-2)" : 0,
         }}
       >
-        <span style={{ fontSize: 12 }}>🔍</span>
-        <span style={{ fontSize: 12, fontWeight: 600, color: "#60A5FA" }}>
+        <span style={{ fontSize: "var(--text-sm)" }}>🔍</span>
+        <span style={{ fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--info)" }}>
           web_search 结果
         </span>
         {collapsed && (
-          <span style={{ fontSize: 9, color: "var(--text-muted)", marginLeft: "auto" }}>
+          <span style={{ fontSize: "var(--text-2xs)", color: "var(--text-muted)", marginLeft: "auto" }}>
             {expanded ? "▾" : "▸"}
           </span>
         )}
       </div>
       {expanded && (
         <div style={{
-          fontFamily: "var(--font-mono)", fontSize: 11, lineHeight: 1.6,
+          fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)", lineHeight: 1.6,
           color: "var(--text-secondary)", whiteSpace: "pre-wrap", wordBreak: "break-word",
           maxHeight: 200, overflowY: "auto",
         }}>

@@ -41,7 +41,7 @@ export function WebFetchRenderer({ tc }: { tc: ToolCallState }) {
       summary={url}
       meta={
         status ? (
-          <span style={{ color: "var(--text-muted)", fontSize: 10, fontFamily: "var(--font-mono)" }}>
+          <span style={{ color: "var(--text-muted)", fontSize: "var(--text-2xs)", fontFamily: "var(--font-mono)" }}>
             {status}
           </span>
         ) : undefined

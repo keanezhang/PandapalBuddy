@@ -16,7 +16,7 @@ marked.setOptions({ gfm: true, breaks: false });
 export function MessageContent({ content }: { content: string }) {
   const blocks = parseBlocks(content);
   return (
-    <div style={{ fontSize: 14, lineHeight: 1.7, color: "var(--text-primary)", wordBreak: "break-word" }}>
+    <div style={{ fontSize: "var(--text-md)", lineHeight: 1.7, color: "var(--text-primary)", wordBreak: "break-word" }}>
       {blocks.map((block, i) =>
         block.type === "code" ? (
           <CodeBlock key={i} lang={block.lang} code={block.content} />
@@ -80,11 +80,11 @@ function CodeBlock({ lang, code }: { lang: string; code: string }) {
         borderBottom: "1px solid var(--border-default)",
         display: "flex", alignItems: "center", justifyContent: "space-between",
       }}>
-        <span style={{ fontSize: 11, color: "var(--text-tertiary)", fontFamily: "var(--font-mono)" }}>
+        <span style={{ fontSize: "var(--text-xs)", color: "var(--text-tertiary)", fontFamily: "var(--font-mono)" }}>
           {lang || "code"}
         </span>
         <button onClick={handleCopy} style={{
-          fontSize: 10, color: "var(--text-tertiary)", background: "none",
+          fontSize: "var(--text-2xs)", color: "var(--text-tertiary)", background: "none",
           border: "none", cursor: "pointer", padding: "2px 6px", borderRadius: 4,
           fontFamily: "inherit",
         }}>
@@ -93,8 +93,8 @@ function CodeBlock({ lang, code }: { lang: string; code: string }) {
       </div>
       <pre style={{
         margin: 0, padding: "var(--space-3) var(--space-4)",
-        background: "#121212", color: "rgba(255,255,255,0.8)",
-        fontFamily: "var(--font-mono)", fontSize: 12, lineHeight: 1.6,
+        background: "var(--color-code-bg)", color: "var(--color-code-text)",
+        fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)", lineHeight: 1.6,
         overflowX: "auto", whiteSpace: "pre",
       }}>
         <code>{code}</code>

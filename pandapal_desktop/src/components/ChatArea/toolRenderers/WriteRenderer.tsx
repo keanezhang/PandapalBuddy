@@ -12,7 +12,7 @@ export function WriteRenderer({ tc }: { tc: ToolCallState }) {
   const lines = lineCount(content);
 
   const meta = !isError && lines > 0
-    ? <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>{lines} lines</span>
+    ? <span style={{ fontSize: "var(--text-2xs)", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>{lines} lines</span>
     : undefined;
 
   return (

@@ -20,7 +20,7 @@ import {
 
 const STATUS_META: Record<AgentTaskStatus, { icon: string; color: string; label: string }> = {
   pending:     { icon: "○", color: "var(--text-muted)",   label: "待处理" },
-  in_progress: { icon: "◔", color: "#60A5FA",             label: "进行中" },
+  in_progress: { icon: "◔", color: "var(--info)",          label: "进行中" },
   completed:   { icon: "●", color: "var(--success)",      label: "已完成" },
   failed:      { icon: "✕", color: "var(--danger)",       label: "失败" },
   cancelled:   { icon: "⊘", color: "var(--text-muted)",   label: "已取消" },
@@ -106,7 +106,7 @@ function TaskListCard({ tasks }: { tasks: AgentTaskData[] }) {
         style={{
           display: "flex", alignItems: "center", gap: "var(--space-2)",
           padding: "8px var(--space-3)", cursor: "pointer",
-          fontSize: 12, lineHeight: 1.4, userSelect: "none",
+          fontSize: "var(--text-sm)", lineHeight: 1.4, userSelect: "none",
         }}
       >
         <span style={{ flexShrink: 0 }}>📋</span>
@@ -120,7 +120,7 @@ function TaskListCard({ tasks }: { tasks: AgentTaskData[] }) {
         }}>
           {summary}
         </span>
-        <span style={{ color: "var(--text-muted)", fontSize: 10, flexShrink: 0 }}>
+        <span style={{ color: "var(--text-muted)", fontSize: "var(--text-2xs)", flexShrink: 0 }}>
           {expanded ? "▾" : "▸"}
         </span>
       </div>
@@ -163,7 +163,7 @@ function TaskRow({ task }: { task: AgentTaskData }) {
   return (
     <div style={{
       display: "flex", alignItems: "baseline", gap: "var(--space-2)",
-      padding: "5px var(--space-3)", fontSize: 12, lineHeight: 1.4,
+      padding: "5px var(--space-3)", fontSize: "var(--text-sm)", lineHeight: 1.4,
     }}>
       <span style={{ color: meta.color, flexShrink: 0, width: 14, textAlign: "center" }}>
         {meta.icon}
@@ -176,7 +176,7 @@ function TaskRow({ task }: { task: AgentTaskData }) {
       }}>
         {text}
       </span>
-      <span style={{ color: meta.color, fontSize: 10, flexShrink: 0 }}>
+      <span style={{ color: meta.color, fontSize: "var(--text-2xs)", flexShrink: 0 }}>
         {meta.label}
       </span>
     </div>

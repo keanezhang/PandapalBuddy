@@ -105,7 +105,7 @@ export function BudgetSettingsModal({ onClose, budgets }: Props) {
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <div style={{ fontSize: 11.5, color: "var(--text-tertiary)", lineHeight: 1.5 }}>
+          <div style={{ fontSize: "var(--text-sm)", color: "var(--text-tertiary)", lineHeight: 1.5 }}>
             为每个 LLM 厂家分别设置总额度（各家充值独立）。累计净费用达额度即
             <b>只停该厂家</b>，其余照常；可随时上调。
           </div>
@@ -123,7 +123,7 @@ export function BudgetSettingsModal({ onClose, budgets }: Props) {
               ))}
             </select>
             {providerCatalog.length === 0 && (
-              <div style={{ fontSize: 11, color: "var(--danger)", marginTop: 6 }}>
+              <div style={{ fontSize: "var(--text-xs)", color: "var(--danger)", marginTop: 6 }}>
                 系统 provider 目录未加载，暂时无法设置预算
               </div>
             )}
@@ -148,7 +148,7 @@ export function BudgetSettingsModal({ onClose, budgets }: Props) {
           </div>
 
           {byProvider.get(provider)?.limit_native != null && (
-            <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+            <div style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>
               当前已用 {symbol}{(byProvider.get(provider)!.spent_native).toFixed(2)}
               {" · "}设 0 或低于已用将立即进入「耗尽」拦截。
             </div>

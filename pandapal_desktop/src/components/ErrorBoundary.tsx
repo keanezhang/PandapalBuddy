@@ -78,33 +78,33 @@ export class ErrorBoundary extends React.Component<React.PropsWithChildren, Boun
     return (
       <div style={{
         position: "fixed", inset: 0, zIndex: 99999,
-        background: "var(--bg-root, #0b0b0f)",
+        background: "var(--bg-root, #0F0F0F)",
         display: "flex", alignItems: "center", justifyContent: "center",
         padding: 24,
       }}>
         <div style={{
           maxWidth: 720, width: "100%",
-          background: "var(--bg-panel, #16161c)",
-          border: "1px solid var(--border-strong, #2a2a33)",
+          background: "var(--bg-panel, #151515)",
+          border: "1px solid var(--border-strong, rgba(255,255,255,0.10))",
           borderRadius: 12,
           padding: 24,
           fontFamily: "var(--font-sans, system-ui, sans-serif)",
-          color: "var(--text-primary, #e6e6ea)",
+          color: "var(--text-primary, rgba(255,255,255,0.95))",
         }}>
-          <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>
+          <div style={{ fontSize: "var(--text-lg)", fontWeight: 600, marginBottom: 8 }}>
             ⚠ 界面渲染出错（已拦截，无需重启进程）
           </div>
           <div style={{
-            fontSize: 12, lineHeight: 1.6, color: "var(--text-secondary, #a3a3ad)",
+            fontSize: "var(--text-sm)", lineHeight: 1.6, color: "var(--text-secondary, #a3a3ad)",
             marginBottom: 12,
           }}>
             请点击「重新加载」恢复界面，并把下面的错误信息发给开发排查根因。
           </div>
           <pre style={{
             margin: 0, marginBottom: 16, padding: 12,
-            background: "#121212", borderRadius: 8,
-            fontFamily: "var(--font-mono, monospace)", fontSize: 11, lineHeight: 1.55,
-            color: "#F87171",
+            background: "var(--color-code-bg)", borderRadius: 8,
+            fontFamily: "var(--font-mono, monospace)", fontSize: "var(--text-xs)", lineHeight: 1.55,
+            color: "var(--diff-remove, #F87171)",
             whiteSpace: "pre-wrap", wordBreak: "break-word",
             maxHeight: "40vh", overflowY: "auto",
           }}>
@@ -116,9 +116,9 @@ export class ErrorBoundary extends React.Component<React.PropsWithChildren, Boun
             <button
               onClick={this.handleCopy}
               style={{
-                padding: "6px 14px", fontSize: 12, cursor: "pointer",
-                border: "1px solid var(--border-subtle, #2a2a33)", borderRadius: 6,
-                background: "transparent", color: "var(--text-secondary, #a3a3ad)",
+                padding: "6px 14px", fontSize: "var(--text-sm)", cursor: "pointer",
+                border: "1px solid var(--border-subtle, rgba(255,255,255,0.05))", borderRadius: 6,
+                background: "transparent", color: "var(--text-secondary, rgba(255,255,255,0.55))",
               }}
             >
               复制错误信息
@@ -126,9 +126,9 @@ export class ErrorBoundary extends React.Component<React.PropsWithChildren, Boun
             <button
               onClick={this.handleReload}
               style={{
-                padding: "6px 14px", fontSize: 12, cursor: "pointer",
+                padding: "6px 14px", fontSize: "var(--text-sm)", cursor: "pointer",
                 border: "none", borderRadius: 6,
-                background: "var(--accent, #7c3aed)", color: "#fff", fontWeight: 600,
+                background: "var(--accent, #7C3AED)", color: "var(--text-on-accent)", fontWeight: 600,
               }}
             >
               重新加载

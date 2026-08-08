@@ -237,22 +237,22 @@ export function SkillEditorPage() {
   // ── 编辑模式加载中 ───────────────────────────────────────────────────
   if (!isNew && detailLoading && !detailSkill) {
     return (
-      <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg-page)" }}>
-        <span style={{ color: "var(--text-muted)", fontSize: 14 }}>加载技能详情...</span>
+      <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg-root)" }}>
+        <span style={{ color: "var(--text-muted)", fontSize: "var(--text-md)" }}>加载技能详情...</span>
       </div>
     );
   }
 
   if (!isNew && !detailLoading && !detailSkill) {
     return (
-      <div style={{ height: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "var(--bg-page)" }}>
-        <div style={{ fontSize: 48, marginBottom: 12 }}>🔍</div>
-        <span style={{ fontSize: 15, color: "var(--text-muted)", marginBottom: 16 }}>技能 "{skillName}" 不存在</span>
+      <div style={{ height: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "var(--bg-root)" }}>
+        <div style={{ fontSize: "var(--icon-empty-lg)", marginBottom: 12 }}>🔍</div>
+        <span style={{ fontSize: "var(--text-md)", color: "var(--text-muted)", marginBottom: 16 }}>技能 "{skillName}" 不存在</span>
         <button
           onClick={() => navigate("/skills")}
           style={{
-            background: "var(--bg-surface)", border: "1px solid var(--border-default)", borderRadius: 8,
-            padding: "8px 20px", cursor: "pointer", fontSize: 13, color: "var(--text-secondary)",
+            background: "var(--bg-elevated)", border: "1px solid var(--border-default)", borderRadius: 8,
+            padding: "8px 20px", cursor: "pointer", fontSize: "var(--text-base)", color: "var(--text-secondary)",
           }}
         >← 返回列表</button>
       </div>
@@ -261,11 +261,11 @@ export function SkillEditorPage() {
 
   // ── 渲染 ──────────────────────────────────────────────────────────────
   return (
-    <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: "var(--bg-page)" }}>
+    <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: "var(--bg-root)" }}>
       {/* 顶部工具栏 */}
       <div style={{
         padding: "12px 20px",
-        background: "var(--bg-surface)",
+        background: "var(--bg-panel)",
         borderBottom: "1px solid var(--border-default)",
         display: "flex",
         alignItems: "center",
@@ -295,40 +295,40 @@ export function SkillEditorPage() {
           }}
           style={{
             background: "none", border: "1px solid var(--border-default)", borderRadius: 8,
-            padding: "7px 14px", cursor: "pointer", fontSize: 13, fontWeight: 500,
+            padding: "7px 14px", cursor: "pointer", fontSize: "var(--text-base)", fontWeight: 500,
             color: "var(--text-secondary)",
           }}
         >← 返回</button>
 
-        <span style={{ fontWeight: 700, fontSize: 16, color: "var(--text-primary)" }}>
+        <span style={{ fontWeight: 700, fontSize: "var(--text-lg)", color: "var(--text-primary)" }}>
           {isNew ? "新建技能" : `编辑: ${skillName}`}
         </span>
 
         {/* Draft 标识 */}
         {draft && (
           <span style={{
-            fontSize: 10, fontWeight: 600, color: "#f59e0b",
-            background: "rgba(245,158,11,0.12)", borderRadius: 4,
+            fontSize: "var(--text-2xs)", fontWeight: 600, color: "var(--warning)",
+            background: "color-mix(in srgb, var(--warning) 12%, transparent)", borderRadius: 4,
             padding: "2px 8px",
           }}>草稿中</span>
         )}
 
         <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
           <button onClick={handleExport} style={{
-            background: "rgba(99,102,241,0.1)", color: "#a5b4fc",
-            border: "1px solid rgba(99,102,241,0.2)", borderRadius: 8,
-            padding: "7px 16px", cursor: "pointer", fontSize: 12, fontWeight: 500,
+            background: "color-mix(in srgb, var(--accent) 10%, transparent)", color: "var(--accent-soft)",
+            border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)", borderRadius: 8,
+            padding: "7px 16px", cursor: "pointer", fontSize: "var(--text-sm)", fontWeight: 500,
           }}>📤 导出</button>
 
           <button
             onClick={handleSave}
             disabled={saving}
             style={{
-              background: saving ? "rgba(16,185,129,0.2)" : "rgba(16,185,129,0.15)",
-              color: "#6ee7b7",
-              border: "1px solid rgba(16,185,129,0.3)",
+              background: saving ? "color-mix(in srgb, var(--success) 20%, transparent)" : "color-mix(in srgb, var(--success) 15%, transparent)",
+              color: "var(--success)",
+              border: "1px solid color-mix(in srgb, var(--success) 30%, transparent)",
               borderRadius: 8, padding: "7px 20px", cursor: saving ? "not-allowed" : "pointer",
-              fontSize: 13, fontWeight: 600,
+              fontSize: "var(--text-base)", fontWeight: 600,
             }}
           >{saving ? "保存中..." : "💾 保存"}</button>
         </div>
@@ -338,9 +338,9 @@ export function SkillEditorPage() {
       {saveMsg && (
         <div style={{
           padding: "8px 20px",
-          fontSize: 12,
-          color: saveMsg.startsWith("✅") ? "#34d399" : "#fca5a5",
-          background: saveMsg.startsWith("✅") ? "rgba(16,185,129,0.08)" : "rgba(239,68,68,0.08)",
+          fontSize: "var(--text-sm)",
+          color: saveMsg.startsWith("✅") ? "var(--success)" : "var(--danger)",
+          background: saveMsg.startsWith("✅") ? "color-mix(in srgb, var(--success) 8%, transparent)" : "color-mix(in srgb, var(--danger) 8%, transparent)",
           borderBottom: "1px solid var(--border-default)",
         }}>
           {saveMsg}
@@ -383,12 +383,12 @@ export function SkillEditorPage() {
 
           {/* 自动触发 */}
           <Field label="自动触发">
-            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--text-secondary)", cursor: "pointer" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "var(--text-base)", color: "var(--text-secondary)", cursor: "pointer" }}>
               <input
                 type="checkbox"
                 checked={allowAutoTrigger}
                 onChange={(e) => setAllowAutoTrigger(e.target.checked)}
-                style={{ accentColor: "#10b981" }}
+                style={{ accentColor: "var(--success)" }}
               />
               允许 AI 自动触发此技能
             </label>
@@ -403,7 +403,7 @@ export function SkillEditorPage() {
               rows={3}
               style={{ ...inputStyle(false, !!fieldErrors.description), resize: "vertical", minHeight: 60 }}
             />
-            <div style={{ fontSize: 10, color: description.length > MAX_DESCRIPTION_LEN ? "#ef4444" : "var(--text-muted)", textAlign: "right", marginTop: 2 }}>
+            <div style={{ fontSize: "var(--text-2xs)", color: description.length > MAX_DESCRIPTION_LEN ? "var(--danger)" : "var(--text-muted)", textAlign: "right", marginTop: 2 }}>
               {description.length}/{MAX_DESCRIPTION_LEN}
             </div>
           </Field>
@@ -432,9 +432,9 @@ export function SkillEditorPage() {
 
           {/* 元信息（编辑模式） */}
           {!isNew && detailSkill && (
-            <div style={{ marginTop: 8, padding: "12px", background: "rgba(255,255,255,0.02)", borderRadius: 8, border: "1px solid var(--border-default)" }}>
-              <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>元信息</div>
-              <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.8 }}>
+            <div style={{ marginTop: 8, padding: "12px", background: "var(--bg-card-subtle)", borderRadius: 8, border: "1px solid var(--border-default)" }}>
+              <div style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", marginBottom: 4 }}>元信息</div>
+              <div style={{ fontSize: "var(--text-sm)", color: "var(--text-secondary)", lineHeight: 1.8 }}>
                 <div>来源: {detailSkill.source === "system" ? "系统内置（只读）" : "用户自定义"}</div>
                 <div>大小: {(detailSkill.size / 1024).toFixed(1)} KB</div>
                 <div>修改: {detailSkill.modified_at || "未知"}</div>
@@ -449,9 +449,9 @@ export function SkillEditorPage() {
           <div style={{ flex: "0 0 55%", display: "flex", flexDirection: "column", minHeight: 0 }}>
             <div style={{
               padding: "8px 16px",
-              fontSize: 11,
+              fontSize: "var(--text-xs)",
               color: "var(--text-muted)",
-              background: "var(--bg-surface)",
+              background: "var(--bg-panel)",
               borderBottom: "1px solid var(--border-default)",
               display: "flex",
               alignItems: "center",
@@ -492,9 +492,9 @@ export function SkillEditorPage() {
           <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
             <div style={{
               padding: "8px 16px",
-              fontSize: 11,
+              fontSize: "var(--text-xs)",
               color: "var(--text-muted)",
-              background: "var(--bg-surface)",
+              background: "var(--bg-panel)",
               borderBottom: "1px solid var(--border-default)",
               display: "flex",
               alignItems: "center",
@@ -519,7 +519,7 @@ function MarkdownPreview({ content }: { content: string }) {
     try {
       return marked.parse(content, { async: false }) as string;
     } catch {
-      return "<p style='color:#ef4444'>Markdown 解析错误</p>";
+      return "<p style='color:var(--danger)'>Markdown 解析错误</p>";
     }
   }, [content]);
 
@@ -532,13 +532,13 @@ function MarkdownPreview({ content }: { content: string }) {
       }}
     >
       {!content.trim() ? (
-        <p style={{ fontSize: 13, color: "var(--text-muted)", fontStyle: "italic" }}>输入 Markdown 内容后此处将实时预览...</p>
+        <p style={{ fontSize: "var(--text-base)", color: "var(--text-muted)", fontStyle: "italic" }}>输入 Markdown 内容后此处将实时预览...</p>
       ) : (
         <div
           className="markdown-preview"
           dangerouslySetInnerHTML={{ __html: html }}
           style={{
-            fontSize: 14,
+            fontSize: "var(--text-md)",
             color: "var(--text-primary)",
             lineHeight: 1.75,
           }}
@@ -564,7 +564,7 @@ function Field({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
       <label style={{
-        fontSize: 12,
+        fontSize: "var(--text-sm)",
         fontWeight: 600,
         color: "var(--text-secondary)",
         display: "flex",
@@ -572,11 +572,11 @@ function Field({
         gap: 4,
       }}>
         {label}
-        {required && <span style={{ color: "#ef4444" }}>*</span>}
+        {required && <span style={{ color: "var(--danger)" }}>*</span>}
       </label>
       {children}
       {error && (
-        <span style={{ fontSize: 11, color: "#ef4444", lineHeight: 1.4 }}>{error}</span>
+        <span style={{ fontSize: "var(--text-xs)", color: "var(--danger)", lineHeight: 1.4 }}>{error}</span>
       )}
     </div>
   );
@@ -588,8 +588,8 @@ function inputStyle(disabled: boolean, hasError?: boolean): React.CSSProperties 
   return {
     padding: "8px 12px",
     fontSize: 13,
-    background: disabled ? "rgba(255,255,255,0.02)" : "var(--bg-surface)",
-    border: hasError ? "1px solid #ef4444" : "1px solid var(--border-default)",
+    background: disabled ? "rgba(255,255,255,0.02)" : "var(--bg-elevated)",
+    border: hasError ? "1px solid var(--danger)" : "1px solid var(--border-default)",
     borderRadius: 8,
     color: "var(--text-primary)",
     outline: "none",

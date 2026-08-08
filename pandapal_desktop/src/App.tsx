@@ -28,6 +28,7 @@ import { SessionGroupPage } from "./pages/SessionGroupPage";
 import { AuthGuard } from "./components/AuthGuard";
 import { ChatLayout } from "./components/ChatLayout";
 import { CommandPalette } from "./components/CommandPalette";
+import { ToastHost } from "./components/ui";
 import { useAuthStore } from "./store/authStore";
 import "./styles/global-v2.css";
 
@@ -41,8 +42,9 @@ export default function App() {
 
   return (
     <>
-    {/* 全局命令面板（⌘K）—— 仅登录后可用 */}
+    {/* 全局命令面板（⌘K）与全局 Toast —— 仅登录后可用 */}
     {authStatus === "authenticated" && <CommandPalette />}
+    {authStatus === "authenticated" && <ToastHost />}
     <Routes>
       {/* 公开路由 */}
       <Route path="/login" element={<LoginPage />} />

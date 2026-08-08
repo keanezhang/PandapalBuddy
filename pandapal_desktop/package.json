@@ -8,6 +8,8 @@
     "dev": "pnpm monaco:copy && vite",
     "sidecar:build": "node -e \"const p=process.platform;const s=p==='win32'?'build_sidecar_windows.py':'build_sidecar_macos.py';require('child_process').execSync('python '+s,{stdio:'inherit'})\"",
     "typecheck": "tsc --noEmit",
+    "lint:css": "stylelint \"src/**/*.css\"",
+    "lint:ui": "node scripts/lint-ui.mjs",
     "test": "vitest run",
     "build": "pnpm monaco:copy && tsc && vite build",
     "preview": "vite preview",
@@ -33,6 +35,8 @@
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
     "monaco-editor": "^0.55.1",
+    "stylelint": "^17.14.1",
+    "stylelint-config-standard": "^40.0.0",
     "typescript": "^5.5.3",
     "vite": "^5.3.4",
     "vitest": "^2.1.9"

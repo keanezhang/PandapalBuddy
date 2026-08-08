@@ -42,7 +42,7 @@ export function AskUserRenderer({ tc }: { tc: ToolCallState }) {
       background: "var(--bg-panel)",
       overflow: "hidden",
     }}>
-      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", padding: "6px var(--space-3)", fontSize: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", padding: "6px var(--space-3)", fontSize: "var(--text-sm)" }}>
         <span style={{ flexShrink: 0 }}>🙋</span>
         <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>ask_user</span>
         <span
@@ -59,7 +59,7 @@ export function AskUserRenderer({ tc }: { tc: ToolCallState }) {
           display: "flex", flexDirection: "column", gap: 4,
         }}>
           {qas.map((qa, i) => (
-            <div key={i} style={{ fontSize: 12, display: "flex", gap: "var(--space-2)", lineHeight: 1.5 }}>
+            <div key={i} style={{ fontSize: "var(--text-sm)", display: "flex", gap: "var(--space-2)", lineHeight: 1.5 }}>
               <span style={{ color: "var(--text-tertiary)", flexShrink: 0 }}>{qa.header}</span>
               <span style={{ color: "var(--text-primary)", fontWeight: 500, wordBreak: "break-word" }}>{qa.answer}</span>
             </div>
@@ -68,7 +68,7 @@ export function AskUserRenderer({ tc }: { tc: ToolCallState }) {
       ) : resultText ? (
         <div style={{
           borderTop: "1px solid var(--border-subtle)", padding: "var(--space-2) var(--space-3)",
-          fontSize: 11, color: "var(--danger)", whiteSpace: "pre-wrap", wordBreak: "break-word",
+          fontSize: "var(--text-xs)", color: "var(--danger)", whiteSpace: "pre-wrap", wordBreak: "break-word",
         }}>
           {resultText}
         </div>

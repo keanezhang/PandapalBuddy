@@ -3,11 +3,14 @@
  *
  * 注册页面：用户名 + 密码 + 确认密码表单。
  * 注册成功后自动跳转到登录页。
+ *
+ * 布局与样式：components/auth/AuthLayout + global-v2.css SECTION 29（.auth-*）。
  */
 
 import { useState, type FormEvent } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../store/authStore";
+import { AuthLayout, AuthError, AuthField, AuthFooter } from "../components/auth/AuthLayout";
 
 export function RegisterPage() {
   const [username, setUsername] = useState("");
@@ -61,221 +64,64 @@ export function RegisterPage() {
   const displayError = localError || error;
 
   return (
-    <div style={styles.container}>
-      <div style={styles.card}>
-        {/* Logo / 标题 */}
-        <div style={styles.header}>
-          <div style={styles.logo}>🐼</div>
-          <h1 style={styles.title}>PandaPal</h1>
-          <p style={styles.subtitle}>创建新账号</p>
-        </div>
+    <AuthLayout subtitle="创建新账号">
+      {/* 错误提示 */}
+      {displayError && (
+        <AuthError
+          message={displayError}
+          onClose={() => {
+            setLocalError(null);
+            clearError();
+          }}
+        />
+      )}
 
-        {/* 错误提示 */}
-        {displayError && (
-          <div style={styles.errorBox}>
-            <span style={styles.errorIcon}>⚠️</span>
-            <span style={styles.errorText}>{displayError}</span>
-            <button
-              style={styles.errorClose}
-              onClick={() => {
-                setLocalError(null);
-                clearError();
-              }}
-              aria-label="关闭"
-            >
-              ×
-            </button>
-          </div>
-        )}
-
-        {/* 表单 */}
-        <form onSubmit={handleSubmit} style={styles.form}>
-          <div style={styles.field}>
-            <label style={styles.label}>用户名</label>
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="至少 3 个字符"
-              style={styles.input}
-              autoFocus
-              disabled={loading}
-            />
-            <p style={styles.hint}>
-              💡 如需与企业微信/飞书数据互通，请使用对应平台的账号名作为用户名
-            </p>
-          </div>
-
-          <div style={styles.field}>
-            <label style={styles.label}>密码</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="至少 8 位"
-              style={styles.input}
-              disabled={loading}
-            />
-          </div>
-
-          <div style={styles.field}>
-            <label style={styles.label}>确认密码</label>
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="再次输入密码"
-              style={styles.input}
-              disabled={loading}
-            />
-          </div>
-
-          <button
-            type="submit"
-            style={{
-              ...styles.submitBtn,
-              opacity: loading ? 0.7 : 1,
-              cursor: loading ? "not-allowed" : "pointer",
-            }}
+      {/* 表单 */}
+      <form onSubmit={handleSubmit} className="auth-form">
+        <AuthField label="用户名">
+          <input
+            type="text"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="至少 3 个字符"
+            className="auth-input"
+            autoFocus
             disabled={loading}
-          >
-            {loading ? "注册中..." : "注 册"}
-          </button>
-        </form>
+          />
+          <p className="auth-hint">
+            💡 如需与企业微信/飞书数据互通，请使用对应平台的账号名作为用户名
+          </p>
+        </AuthField>
 
-        {/* 底部链接 */}
-        <div style={styles.footer}>
-          <span style={styles.footerText}>已有账号？</span>
-          <Link to="/login" style={styles.link}>
-            返回登录
-          </Link>
-        </div>
-      </div>
-    </div>
+        <AuthField label="密码">
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="至少 8 位"
+            className="auth-input"
+            disabled={loading}
+          />
+        </AuthField>
+
+        <AuthField label="确认密码">
+          <input
+            type="password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            placeholder="再次输入密码"
+            className="auth-input"
+            disabled={loading}
+          />
+        </AuthField>
+
+        <button type="submit" className="auth-submit" disabled={loading}>
+          {loading ? "注册中..." : "注 册"}
+        </button>
+      </form>
+
+      {/* 底部链接 */}
+      <AuthFooter text="已有账号？" linkTo="/login" linkText="返回登录" />
+    </AuthLayout>
   );
 }
-
-// ── 样式 ──────────────────────────────────────────────────────────────────────
-
-const styles: Record<string, React.CSSProperties> = {
-  container: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    height: "100vh",
-    background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-    padding: 20,
-  },
-  card: {
-    width: "100%",
-    maxWidth: 400,
-    background: "#ffffff",
-    borderRadius: 16,
-    padding: "40px 32px",
-    boxShadow: "0 20px 60px rgba(0, 0, 0, 0.15)",
-  },
-  header: {
-    textAlign: "center" as const,
-    marginBottom: 32,
-  },
-  logo: {
-    fontSize: 48,
-    marginBottom: 8,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 700,
-    color: "#1e293b",
-    margin: "0 0 4px 0",
-  },
-  subtitle: {
-    fontSize: 14,
-    color: "#64748b",
-    margin: 0,
-  },
-  errorBox: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    padding: "10px 12px",
-    background: "#fef2f2",
-    border: "1px solid #fecaca",
-    borderRadius: 8,
-    marginBottom: 20,
-  },
-  errorIcon: {
-    fontSize: 14,
-    flexShrink: 0,
-  },
-  errorText: {
-    flex: 1,
-    fontSize: 13,
-    color: "#dc2626",
-  },
-  errorClose: {
-    background: "none",
-    border: "none",
-    fontSize: 18,
-    color: "#dc2626",
-    cursor: "pointer",
-    padding: "0 4px",
-    lineHeight: 1,
-  },
-  form: {
-    display: "flex",
-    flexDirection: "column" as const,
-    gap: 18,
-  },
-  field: {
-    display: "flex",
-    flexDirection: "column" as const,
-    gap: 6,
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: 500,
-    color: "#374151",
-  },
-  hint: {
-    fontSize: 12,
-    color: "#94a3b8",
-    margin: "4px 0 0 0",
-    lineHeight: 1.4,
-  },
-  input: {
-    padding: "10px 14px",
-    fontSize: 14,
-    border: "1px solid #d1d5db",
-    borderRadius: 8,
-    outline: "none",
-    transition: "border-color 0.2s, box-shadow 0.2s",
-    width: "100%",
-    boxSizing: "border-box" as const,
-  },
-  submitBtn: {
-    marginTop: 8,
-    padding: "12px 0",
-    fontSize: 15,
-    fontWeight: 600,
-    color: "#ffffff",
-    background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-    border: "none",
-    borderRadius: 8,
-    transition: "opacity 0.2s, transform 0.1s",
-  },
-  footer: {
-    textAlign: "center" as const,
-    marginTop: 24,
-  },
-  footerText: {
-    fontSize: 13,
-    color: "#64748b",
-  },
-  link: {
-    fontSize: 13,
-    color: "#6366f1",
-    textDecoration: "none",
-    fontWeight: 500,
-    marginLeft: 4,
-  },
-};

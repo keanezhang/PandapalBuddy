@@ -61,12 +61,12 @@ export function LogRenderer(props: LogRendererProps) {
       style={{
         flex: 1, overflow: "auto", padding: "8px 0",
         fontFamily: "'SF Mono','Cascadia Code','Fira Code',monospace",
-        fontSize: 12, lineHeight: 1.5, background: "var(--bg-root)",
+        fontSize: "var(--text-sm)", lineHeight: 1.5, background: "var(--bg-root)",
       }}
     >
       {truncated && (
         <div style={{
-          padding: "4px 12px", fontSize: 11, color: "var(--text-muted)",
+          padding: "4px 12px", fontSize: "var(--text-xs)", color: "var(--text-muted)",
           borderBottom: "1px solid var(--border-subtle)", marginBottom: 4,
         }}>
           仅显示末尾 {MAX_LINES} 行（共 {total} 行）

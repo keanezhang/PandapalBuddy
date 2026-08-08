@@ -51,17 +51,17 @@ export function MessageBubble({ message }: MessageBubbleProps) {
           onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = "var(--bg-hover)"; }}
           onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = "var(--bg-panel)"; }}
         >
-          <div style={{ fontSize: 14, lineHeight: 1.7, color: "var(--text-primary)", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+          <div style={{ fontSize: "var(--text-md)", lineHeight: 1.7, color: "var(--text-primary)", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
             {message.text}
           </div>
-          <div style={{ marginTop: "var(--space-1)", fontSize: 10, color: "var(--text-muted)", textAlign: "right" }}>
+          <div style={{ marginTop: "var(--space-1)", fontSize: "var(--text-2xs)", color: "var(--text-muted)", textAlign: "right" }}>
             {formatTime(message.timestamp)}
           </div>
         </div>
         <div style={{
           width: 24, height: 24, borderRadius: "var(--radius-full)",
           background: "var(--bg-hover)", display: "flex", alignItems: "center",
-          justifyContent: "center", fontSize: 12, flexShrink: 0,
+          justifyContent: "center", fontSize: "var(--text-sm)", flexShrink: 0,
           marginLeft: "var(--space-3)", marginTop: 1,
         }}>
           👤
@@ -85,15 +85,15 @@ export function MessageBubble({ message }: MessageBubbleProps) {
     >
       <div style={{
         width: 24, height: 24, borderRadius: "var(--radius-full)",
-        background: "linear-gradient(135deg, var(--accent), #5B21B6)",
+        background: "var(--gradient-avatar)",
         display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: 12, flexShrink: 0, marginTop: 1, color: "#fff",
+        fontSize: "var(--text-sm)", flexShrink: 0, marginTop: 1, color: "var(--text-on-accent)",
       }}>
         🐼
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         {isResume && (
-          <div style={{ fontSize: 10, fontWeight: 500, color: "var(--accent-soft)", marginBottom: "var(--space-2)", display: "flex", alignItems: "center", gap: 4 }}>
+          <div style={{ fontSize: "var(--text-2xs)", fontWeight: 500, color: "var(--accent-soft)", marginBottom: "var(--space-2)", display: "flex", alignItems: "center", gap: 4 }}>
             👌🏻 go on baby
           </div>
         )}
@@ -110,7 +110,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
           </div>
         )}
 
-        <div style={{ marginTop: "var(--space-1)", fontSize: 10, color: "var(--text-muted)" }}>
+        <div style={{ marginTop: "var(--space-1)", fontSize: "var(--text-2xs)", color: "var(--text-muted)" }}>
           {formatTime(message.timestamp)}
         </div>
         {/* 本轮对话消耗（后端 CostBudgetGuard.summary 精算，前端只展示不重算）；缺省则不显示 */}
@@ -125,7 +125,7 @@ function UsageFooter({ usage: u }: { usage: ReplyUsage }) {
   return (
     <div
       style={{
-        marginTop: "var(--space-2)", fontSize: 10, lineHeight: 1.7,
+        marginTop: "var(--space-2)", fontSize: "var(--text-2xs)", lineHeight: 1.7,
         color: "var(--text-tertiary)", display: "flex", flexWrap: "wrap",
         alignItems: "center", gap: "4px 12px",
         borderTop: "1px solid var(--border-subtle, rgba(127,127,127,0.15))",

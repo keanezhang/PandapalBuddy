@@ -26,188 +26,10 @@ import {
 } from "../store/credentialStore";
 import { useAuthStore } from "../store/authStore";
 
-// ── 样式常量 ─────────────────────────────────────────────────────────────
-
-const S = {
-  // body 全局 overflow:hidden，本页必须自己成为滚动容器：
-  // 固定 height（而非 minHeight）才能产生滚动条
-  page: {
-    height: "100vh",
-    background: "var(--bg-root)",
-    padding: "40px 24px 80px",
-    boxSizing: "border-box" as const,
-    overflowY: "auto" as const,
-  } as React.CSSProperties,
-
-  container: {
-    width: "100%",
-    maxWidth: 600,
-    margin: "0 auto",
-  } as React.CSSProperties,
-
-  header: {
-    textAlign: "center" as const,
-    marginBottom: "var(--space-8)",
-  } as React.CSSProperties,
-
-  logo: {
-    fontSize: 48,
-    marginBottom: "var(--space-3)",
-  } as React.CSSProperties,
-
-  title: {
-    fontSize: "var(--text-2xl)",
-    fontWeight: 600,
-    color: "var(--text-primary)",
-    margin: "0 0 var(--space-2)",
-  } as React.CSSProperties,
-
-  subtitle: {
-    fontSize: "var(--text-md)",
-    color: "var(--text-secondary)",
-    lineHeight: 1.6,
-    margin: 0,
-  } as React.CSSProperties,
-
-  stepIndicator: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "var(--space-2)",
-    marginBottom: "var(--space-6)",
-  } as React.CSSProperties,
-
-  stepDot: {
-    width: 8,
-    height: 8,
-    borderRadius: "50%",
-    background: "var(--border-default)",
-    transition: "background var(--duration-fast)",
-  } as React.CSSProperties,
-
-  stepDotActive: {
-    background: "var(--accent)",
-    boxShadow: "0 0 0 3px rgba(124,58,237,0.15)",
-  } as React.CSSProperties,
-
-  stepDotDone: {
-    background: "var(--success)",
-  } as React.CSSProperties,
-
-  addBtn: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "var(--space-2)",
-    width: "100%",
-    padding: "10px 16px",
-    fontSize: "var(--text-sm)",
-    fontFamily: "inherit",
-    fontWeight: 500,
-    color: "var(--text-secondary)",
-    background: "transparent",
-    border: "1px dashed var(--border-default)",
-    borderRadius: "var(--radius-md)",
-    cursor: "pointer",
-    marginTop: "var(--space-2)",
-    marginBottom: "var(--space-5)",
-    transition: "border-color var(--duration-fast), color var(--duration-fast)",
-  } as React.CSSProperties,
-
-  addBtnDisabled: {
-    opacity: 0.35,
-    cursor: "not-allowed",
-  } as React.CSSProperties,
-
-  submitArea: {
-    display: "flex",
-    flexDirection: "column" as const,
-    alignItems: "center",
-    gap: "var(--space-3)",
-    marginTop: "var(--space-6)",
-  } as React.CSSProperties,
-
-  submitBtn: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "var(--space-2)",
-    width: "100%",
-    maxWidth: 320,
-    padding: "14px 28px",
-    fontSize: "var(--text-md)",
-    fontFamily: "inherit",
-    fontWeight: 600,
-    color: "#fff",
-    background: "var(--accent)",
-    border: "none",
-    borderRadius: "var(--radius-md)",
-    cursor: "pointer",
-    transition: "all var(--duration-fast)",
-  } as React.CSSProperties,
-
-  submitBtnDisabled: {
-    opacity: 0.5,
-    cursor: "not-allowed",
-  } as React.CSSProperties,
-
-  submitBtnLoading: {
-    opacity: 0.7,
-    cursor: "wait",
-  } as React.CSSProperties,
-
-  hint: {
-    fontSize: "var(--text-xs)",
-    color: "var(--text-tertiary)",
-    textAlign: "center" as const,
-    lineHeight: 1.5,
-    maxWidth: 400,
-  } as React.CSSProperties,
-
-  logoutBtn: {
-    marginTop: "var(--space-8)",
-    padding: "6px 16px",
-    fontSize: "var(--text-xs)",
-    fontFamily: "inherit",
-    color: "var(--text-tertiary)",
-    background: "transparent",
-    border: "1px solid var(--border-default)",
-    borderRadius: "var(--radius-sm)",
-    cursor: "pointer",
-    transition: "all var(--duration-fast)",
-  } as React.CSSProperties,
-
-  globalError: {
-    fontSize: "var(--text-sm)",
-    color: "var(--danger)",
-    textAlign: "center" as const,
-    marginBottom: "var(--space-3)",
-  } as React.CSSProperties,
-
-  userInfo: {
-    position: "fixed" as const,
-    top: 16,
-    right: 20,
-    display: "flex",
-    alignItems: "center",
-    gap: "var(--space-2)",
-    fontSize: "var(--text-sm)",
-    color: "var(--text-tertiary)",
-  } as React.CSSProperties,
-
-  avatar: {
-    width: 28,
-    height: 28,
-    borderRadius: "var(--radius-full)",
-    background: "linear-gradient(135deg, var(--accent), #5B21B6)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: 12,
-    fontWeight: 700,
-    color: "#fff",
-  } as React.CSSProperties,
-};
+// 样式类定义在 global-v2.css SECTION 31（.wizard-* / .dashed-add-btn）。
+// body 全局 overflow:hidden，本页 .wizard-page 必须自己成为滚动容器：
+// 固定 height（而非 minHeight）才能产生滚动条。
+// 原 JS hover 效果（提交/退出/添加按钮）已全部改为 CSS :hover 伪类。
 
 // ── 组件 ─────────────────────────────────────────────────────────────────
 
@@ -368,21 +190,21 @@ export function ModelConfigWizard() {
   }, [localCreds, saveLocal, navigate]);
 
   return (
-    <div style={S.page}>
+    <div className="wizard-page">
       {/* 右上角用户信息 */}
       {username && (
-        <div style={S.userInfo}>
-          <div style={S.avatar}>{(username ?? "?")[0].toUpperCase()}</div>
+        <div className="wizard-user-info">
+          <div className="wizard-avatar">{(username ?? "?")[0].toUpperCase()}</div>
           <span>{username}</span>
         </div>
       )}
 
-      <div style={S.container}>
+      <div className="wizard-container">
         {/* ── 头部 ── */}
-        <div style={S.header}>
-          <div style={S.logo}>🔑</div>
-          <h1 style={S.title}>配置模型服务</h1>
-          <p style={S.subtitle}>
+        <div className="wizard-header">
+          <div className="wizard-logo">🔑</div>
+          <h1 className="wizard-title">配置模型服务</h1>
+          <p className="wizard-subtitle">
             PandaPal 需要您的模型服务凭据才能运行。
             <br />
             请输入您的 API Key，凭据将安全存储在本机，不会上传。
@@ -390,11 +212,11 @@ export function ModelConfigWizard() {
         </div>
 
         {/* ── 全局错误 ── */}
-        {globalError && <div style={S.globalError}>{globalError}</div>}
+        {globalError && <div className="wizard-global-error">{globalError}</div>}
 
         {/* ── 系统目录未就绪：fail-closed 且可感知，不静默灰化（PRD AC-09）── */}
         {providerCatalog.length === 0 && (
-          <div style={S.globalError}>
+          <div className="wizard-global-error">
             系统配置加载中或已损坏。若持续如此，请重新安装以修复
             provider_catalog.toml。
           </div>
@@ -425,23 +247,12 @@ export function ModelConfigWizard() {
           <div style={{ position: "relative" }}>
             <button
               type="button"
-              style={{
-                ...S.addBtn,
-                ...(availableToAdd.length === 0 ? S.addBtnDisabled : {}),
-              }}
+              className="dashed-add-btn dashed-add-btn--lg"
               disabled={availableToAdd.length === 0}
               onClick={() => {
                 if (availableToAdd.length > 0) {
                   handleAdd(availableToAdd[0]);
                 }
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = "var(--accent)";
-                e.currentTarget.style.color = "var(--accent)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = "var(--border-default)";
-                e.currentTarget.style.color = "var(--text-secondary)";
               }}
             >
               + 添加模型
@@ -450,26 +261,12 @@ export function ModelConfigWizard() {
         )}
 
         {/* ── 提交区域 ── */}
-        <div style={S.submitArea}>
+        <div className="wizard-submit-area">
           <button
             type="button"
-            style={{
-              ...S.submitBtn,
-              ...(!canSubmit ? S.submitBtnDisabled : {}),
-              ...(saving ? S.submitBtnLoading : {}),
-            }}
+            className={saving ? "wizard-submit-btn wizard-submit-btn--loading" : "wizard-submit-btn"}
             disabled={!canSubmit}
             onClick={() => void handleSubmit()}
-            onMouseEnter={(e) => {
-              if (canSubmit) {
-                e.currentTarget.style.background = "var(--accent-soft)";
-                e.currentTarget.style.transform = "translateY(-1px)";
-              }
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "var(--accent)";
-              e.currentTarget.style.transform = "none";
-            }}
           >
             {saving
               ? "正在保存…"
@@ -477,17 +274,17 @@ export function ModelConfigWizard() {
           </button>
 
           {!allFilled && (
-            <p style={S.hint}>
+            <p className="wizard-hint">
               请填写所有必填字段（API Key、模型 ID）；无系统默认价的模型还需填写单价
             </p>
           )}
           {hasDuplicate && (
-            <p style={{ ...S.hint, color: "var(--danger)" }}>
+            <p className="wizard-hint wizard-hint--danger">
               存在重复的模型 ID —— 模型 ID 即路由键，重复会导致路由错配
             </p>
           )}
           {(saveError || globalError) && (
-            <p style={{ ...S.hint, color: "var(--danger)" }}>
+            <p className="wizard-hint wizard-hint--danger">
               保存失败：{saveError || globalError}
             </p>
           )}
@@ -497,16 +294,8 @@ export function ModelConfigWizard() {
         <div style={{ textAlign: "center" }}>
           <button
             type="button"
-            style={S.logoutBtn}
+            className="wizard-logout-btn"
             onClick={() => logout()}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = "var(--danger)";
-              e.currentTarget.style.color = "var(--danger)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = "var(--border-default)";
-              e.currentTarget.style.color = "var(--text-tertiary)";
-            }}
           >
             退出登录
           </button>

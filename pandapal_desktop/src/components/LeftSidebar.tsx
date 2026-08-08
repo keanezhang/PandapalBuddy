@@ -61,14 +61,14 @@ function SidebarHeader() {
     }}>
       <div style={{
         width: 32, height: 32, borderRadius: "var(--radius-md)",
-        background: "linear-gradient(135deg, var(--accent), #5B21B6)",
+        background: "var(--gradient-avatar)",
         display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: 16, flexShrink: 0,
+        fontSize: "var(--text-lg)", flexShrink: 0,
       }}>
         🐼
       </div>
       <span style={{
-        fontSize: 16, fontWeight: 600, color: "var(--text-primary)",
+        fontSize: "var(--text-lg)", fontWeight: 600, color: "var(--text-primary)",
         flex: 1, letterSpacing: "-0.01em",
       }}>
         PandaPal
@@ -116,7 +116,7 @@ function ModeSwitcher() {
                 background: active ? "var(--bg-elevated)" : "transparent",
                 color: active ? "var(--text-primary)" : "var(--text-tertiary)",
                 boxShadow: active ? "0 1px 2px rgba(0,0,0,0.25)" : "none",
-                fontSize: 12, fontWeight: active ? 600 : 500, cursor: "pointer",
+                fontSize: "var(--text-sm)", fontWeight: active ? 600 : 500, cursor: "pointer",
                 fontFamily: "inherit", whiteSpace: "nowrap", overflow: "hidden",
                 transition: "background var(--duration-fast), color var(--duration-fast)",
               }}
@@ -230,7 +230,7 @@ function SidebarDock() {
           style={{
             width: 30, height: 30, borderRadius: "var(--radius-md)",
             border: "1px solid var(--border-default)", background: "transparent",
-            color: "var(--text-tertiary)", fontSize: 16, cursor: "pointer",
+            color: "var(--text-tertiary)", fontSize: "var(--text-lg)", cursor: "pointer",
             display: "flex", alignItems: "center", justifyContent: "center",
             transition: "background var(--duration-fast), color var(--duration-fast)",
           }}
@@ -242,15 +242,15 @@ function SidebarDock() {
 
         <div style={{
           width: 30, height: 30, borderRadius: "var(--radius-full)",
-          background: "linear-gradient(135deg, var(--accent), #5B21B6)",
+          background: "var(--gradient-avatar)",
           display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 12, fontWeight: 700, color: "#fff", flexShrink: 0,
+          fontSize: "var(--text-sm)", fontWeight: 700, color: "var(--text-on-accent)", flexShrink: 0,
         }}>
           {avatarLetter}
         </div>
 
         <span style={{
-          fontSize: 14, fontWeight: 500, color: "var(--text-primary)",
+          fontSize: "var(--text-md)", fontWeight: 500, color: "var(--text-primary)",
           flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
         }}>
           {username ?? "—"}
@@ -259,7 +259,7 @@ function SidebarDock() {
         <button
           onClick={() => logout()}
           style={{
-            fontSize: 11, padding: "4px 12px", borderRadius: "var(--radius-full)",
+            fontSize: "var(--text-xs)", padding: "4px 12px", borderRadius: "var(--radius-full)",
             border: "1px solid var(--border-default)", background: "transparent",
             color: "var(--text-tertiary)", cursor: "pointer", whiteSpace: "nowrap",
             transition: "border-color var(--duration-fast), color var(--duration-fast)",
@@ -373,7 +373,7 @@ export function LeftSidebar() {
     return (
       <div style={{
         width: 48, minWidth: 48, maxWidth: 48,
-        background: "#1C1C1C",
+        background: "var(--bg-elevated)",
         borderRight: "1px solid var(--border-subtle)",
         display: "flex", flexDirection: "column",
         alignItems: "center", padding: "var(--space-3) 0",
@@ -381,8 +381,8 @@ export function LeftSidebar() {
       }}>
         <div style={{
           width: 32, height: 32, borderRadius: "var(--radius-md)",
-          background: "linear-gradient(135deg, var(--accent), #5B21B6)",
-          display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16,
+          background: "var(--gradient-avatar)",
+          display: "flex", alignItems: "center", justifyContent: "center", fontSize: "var(--text-lg)",
         }}>🐼</div>
         <div style={{ flex: 1 }} />
         <button
@@ -390,7 +390,7 @@ export function LeftSidebar() {
           style={{
             width: 28, height: 28, borderRadius: "var(--radius-sm)",
             border: "1px solid var(--border-default)", background: "transparent",
-            color: "var(--text-tertiary)", fontSize: 14, cursor: "pointer",
+            color: "var(--text-tertiary)", fontSize: "var(--text-md)", cursor: "pointer",
             display: "flex", alignItems: "center", justifyContent: "center",
           }}
           title="展开"
@@ -402,7 +402,7 @@ export function LeftSidebar() {
   return (
     <div style={{
       width, minWidth: 180, maxWidth: 400,
-      background: "rgba(17, 17, 17, 0.3)",
+      background: "var(--shadow-md)" /* ui-lint-ok: 弹层阴影保留实色 */,
       borderRight: "1px solid var(--border-subtle)",
       display: "flex", flexDirection: "column",
       height: "100%", overflow: "hidden",

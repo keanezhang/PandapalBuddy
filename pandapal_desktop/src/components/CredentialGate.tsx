@@ -29,6 +29,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useCredentialStore } from "../store/credentialStore";
 import { useConnectionStore } from "../store/connectionStore";
 import { useWorkspaceStore } from "../store/workspaceStore";
+import { GateScreen, GateLoading } from "./ui";
 
 type Phase = "checking" | "starting" | "ready" | "error";
 
@@ -131,82 +132,26 @@ export function CredentialGate({ children, bypassCredentialCheck = false }: Cred
   }
 
   if (phase === "checking") {
-    return (
-      <div style={styles.loadingContainer}>
-        <div style={styles.spinner}>🔑</div>
-        <p style={styles.loadingText}>正在检查配置...</p>
-      </div>
-    );
+    return <GateLoading text="正在检查配置..." icon="🔑" />;
   }
 
   if (phase === "starting") {
-    return (
-      <div style={styles.loadingContainer}>
-        <div style={styles.spinner}>🐼</div>
-        <p style={styles.loadingText}>正在启动后端...</p>
-      </div>
-    );
+    return <GateLoading text="正在启动后端..." />;
   }
 
   if (phase === "error") {
     return (
-      <div style={styles.loadingContainer}>
-        <div style={styles.errorIcon}>⚠️</div>
-        <p style={styles.errorText}>后端启动失败</p>
-        {errorMsg && <p style={styles.errorDetail}>{errorMsg}</p>}
-        <button style={styles.retryBtn} onClick={() => void checkAndStart()}>
+      <GateScreen>
+        <div style={{ fontSize: "var(--icon-empty-lg)" }}>⚠️</div>
+        <p className="gate-error-title">后端启动失败</p>
+        {errorMsg && <p className="gate-error-detail">{errorMsg}</p>}
+        <button className="gate-btn" onClick={() => void checkAndStart()}>
           重试
         </button>
-      </div>
+      </GateScreen>
     );
   }
 
   // phase === "ready"：sidecar 已就绪，放行子组件
   return <>{children}</>;
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  loadingContainer: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    height: "100vh",
-    background: "var(--bg-page)",
-    gap: 16,
-  },
-  spinner: {
-    fontSize: 48,
-    animation: "thinking-pulse 1.2s ease-in-out infinite",
-  },
-  loadingText: {
-    fontSize: 14,
-    color: "var(--text-secondary)",
-  },
-  errorIcon: {
-    fontSize: 48,
-  },
-  errorText: {
-    fontSize: 16,
-    fontWeight: 600,
-    color: "var(--text-primary)",
-  },
-  errorDetail: {
-    fontSize: 13,
-    color: "var(--text-secondary)",
-    maxWidth: 400,
-    textAlign: "center",
-    lineHeight: 1.5,
-  },
-  retryBtn: {
-    marginTop: 8,
-    padding: "8px 24px",
-    fontSize: 14,
-    fontWeight: 500,
-    color: "#fff",
-    background: "var(--accent, #4f46e5)",
-    border: "none",
-    borderRadius: 8,
-    cursor: "pointer",
-  },
-};

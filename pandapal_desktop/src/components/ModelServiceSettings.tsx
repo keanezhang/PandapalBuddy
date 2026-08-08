@@ -25,131 +25,8 @@ import {
   type LLMProvider,
 } from "../store/credentialStore";
 
-// ── 样式 ─────────────────────────────────────────────────────────────────
-
-const S = {
-  header: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: "var(--space-4)",
-  } as React.CSSProperties,
-
-  headerTitle: {
-    fontSize: "var(--text-sm)",
-    fontWeight: 600,
-    color: "var(--text-primary)",
-  } as React.CSSProperties,
-
-  headerCount: {
-    fontSize: "var(--text-xs)",
-    color: "var(--text-tertiary)",
-    marginLeft: "var(--space-2)",
-    fontWeight: 400,
-  } as React.CSSProperties,
-
-  description: {
-    fontSize: "var(--text-xs)",
-    color: "var(--text-tertiary)",
-    lineHeight: 1.5,
-    marginBottom: "var(--space-4)",
-  } as React.CSSProperties,
-
-  emptyState: {
-    textAlign: "center" as const,
-    padding: "var(--space-8) var(--space-4)",
-  } as React.CSSProperties,
-
-  emptyIcon: {
-    fontSize: 32,
-    marginBottom: "var(--space-2)",
-  } as React.CSSProperties,
-
-  emptyText: {
-    fontSize: "var(--text-sm)",
-    color: "var(--text-tertiary)",
-    marginBottom: "var(--space-3)",
-  } as React.CSSProperties,
-
-  addBtn: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "var(--space-2)",
-    width: "100%",
-    padding: "8px 16px",
-    fontSize: "var(--text-xs)",
-    fontFamily: "inherit",
-    fontWeight: 500,
-    color: "var(--text-secondary)",
-    background: "transparent",
-    border: "1px dashed var(--border-default)",
-    borderRadius: "var(--radius-sm)",
-    cursor: "pointer",
-    marginBottom: "var(--space-4)",
-    transition: "border-color var(--duration-fast), color var(--duration-fast)",
-  } as React.CSSProperties,
-
-  saveArea: {
-    display: "flex",
-    flexDirection: "column" as const,
-    alignItems: "center",
-    gap: "var(--space-2)",
-    paddingTop: "var(--space-4)",
-    borderTop: "1px solid var(--border-subtle)",
-  } as React.CSSProperties,
-
-  saveBtn: {
-    width: "100%",
-    padding: "10px 20px",
-    fontSize: "var(--text-sm)",
-    fontFamily: "inherit",
-    fontWeight: 600,
-    color: "#fff",
-    background: "var(--accent)",
-    border: "none",
-    borderRadius: "var(--radius-sm)",
-    cursor: "pointer",
-    transition: "all var(--duration-fast)",
-  } as React.CSSProperties,
-
-  saveBtnDisabled: {
-    opacity: 0.5,
-    cursor: "not-allowed",
-  } as React.CSSProperties,
-
-  saveBtnLoading: {
-    opacity: 0.7,
-    cursor: "wait",
-  } as React.CSSProperties,
-
-  warning: {
-    fontSize: "var(--text-xs)",
-    color: "var(--warning)",
-    textAlign: "center" as const,
-    lineHeight: 1.5,
-  } as React.CSSProperties,
-
-  error: {
-    fontSize: "var(--text-xs)",
-    color: "var(--danger)",
-    textAlign: "center" as const,
-  } as React.CSSProperties,
-
-  success: {
-    fontSize: "var(--text-xs)",
-    color: "var(--success)",
-    textAlign: "center" as const,
-  } as React.CSSProperties,
-
-  verifyProgress: {
-    fontSize: "var(--text-xs)",
-    color: "var(--text-secondary)",
-    textAlign: "center" as const,
-  } as React.CSSProperties,
-};
-
-// ── 组件 ─────────────────────────────────────────────────────────────────
+// ── 组件（样式类见 global-v2.css SECTION 31：.mss-* / .dashed-add-btn）─────
+// 原 JS hover 效果（添加/保存按钮）已全部改为 CSS :hover 伪类。
 
 /** 凭据主键：与后端 sentinel 的取值键 (provider, model_id) 一致 */
 function credKeyOf(c: { provider: string; model_id: string }): string {
@@ -413,25 +290,25 @@ export function ModelServiceSettings(_props: { onClose: () => void }) {
   return (
     <div>
       {/* ── 头部 ── */}
-      <div style={S.header}>
-        <span style={S.headerTitle}>
+      <div className="mss-header">
+        <span className="mss-header-title">
           模型服务
-          <span style={S.headerCount}>
+          <span className="mss-header-count">
             {localCreds.length > 0 ? `${localCreds.length} 个模型已配置` : "未配置"}
           </span>
         </span>
       </div>
 
-      <p style={S.description}>
+      <p className="mss-description">
         配置模型服务商的 API 凭据。同一服务商下可配置多个模型，已配置的模型将出现在
         对话页的下拉列表中。凭据仅存储在本机，不会上传。
       </p>
 
       {/* ── 空状态 ── */}
       {localCreds.length === 0 && !saving && (
-        <div style={S.emptyState}>
-          <div style={S.emptyIcon}>🔑</div>
-          <p style={S.emptyText}>尚未配置任何模型服务</p>
+        <div className="mss-empty">
+          <div className="mss-empty-icon">🔑</div>
+          <p className="mss-empty-text">尚未配置任何模型服务</p>
         </div>
       )}
 
@@ -473,49 +350,35 @@ export function ModelServiceSettings(_props: { onClose: () => void }) {
       {availableToAdd.length > 0 && !verifying && (
         <button
           type="button"
-          style={S.addBtn}
+          className="dashed-add-btn"
           onClick={() => handleAdd(availableToAdd[0])}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = "var(--accent)";
-            e.currentTarget.style.color = "var(--accent)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = "var(--border-default)";
-            e.currentTarget.style.color = "var(--text-secondary)";
-          }}
         >
           + 添加模型
         </button>
       )}
 
       {/* ── 保存区域 ── */}
-      <div style={S.saveArea}>
+      <div className="mss-save-area">
         {verifying && (
-          <div style={S.verifyProgress}>正在验证凭据…</div>
+          <div className="mss-status-text mss-status-text--muted">正在验证凭据…</div>
         )}
         {verifyStatus === "failed" && (
-          <div style={S.error}>部分凭据验证未通过，详见各卡片内的错误提示</div>
+          <div className="mss-status-text mss-status-text--error">部分凭据验证未通过，详见各卡片内的错误提示</div>
         )}
         {hasDuplicate && (
-          <div style={S.error}>
+          <div className="mss-status-text mss-status-text--error">
             存在重复的模型 ID —— 模型 ID 即路由键，重复会造成「装配了 A 却路由到 B」
           </div>
         )}
         {/* 保存错误来自后端确认（store.saveError），不是本地猜测 */}
-        {storeSaveError && <div style={S.error}>{storeSaveError}</div>}
-        {saveSuccess && <div style={S.success}>{saveSuccess}</div>}
+        {storeSaveError && <div className="mss-status-text mss-status-text--error">{storeSaveError}</div>}
+        {saveSuccess && <div className="mss-status-text mss-status-text--success">{saveSuccess}</div>}
 
         {/* 校验与保存拆开：校验是**可选**的连通性探测，失败不阻塞保存
             （PRD §4.3.1 异常分支：网络异常「不阻塞保存」） */}
         <button
           type="button"
-          style={{
-            ...S.saveBtn,
-            background: "transparent",
-            color: "var(--text-secondary)",
-            border: "1px solid var(--border-default)",
-            ...(verifying || localCreds.length === 0 ? S.saveBtnDisabled : {}),
-          }}
+          className="mss-save-btn mss-save-btn--ghost"
           disabled={verifying || localCreds.length === 0}
           onClick={handleVerify}
         >
@@ -524,27 +387,15 @@ export function ModelServiceSettings(_props: { onClose: () => void }) {
 
         <button
           type="button"
-          style={{
-            ...S.saveBtn,
-            ...(!canSave ? S.saveBtnDisabled : {}),
-            ...(saving ? S.saveBtnLoading : {}),
-          }}
+          className={saving ? "mss-save-btn mss-save-btn--loading" : "mss-save-btn"}
           disabled={!canSave}
           onClick={handleSave}
-          onMouseEnter={(e) => {
-            if (canSave) {
-              e.currentTarget.style.background = "var(--accent-soft)";
-            }
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = "var(--accent)";
-          }}
         >
           {saving ? "保存中…" : dirty ? "保存配置" : "已是最新配置"}
         </button>
 
         {dirty && (
-          <p style={S.warning}>
+          <p className="mss-status-text mss-status-text--warning">
             保存后请手动重启客户端，新配置才会生效
           </p>
         )}

@@ -1,0 +1,38 @@
+{
+  "extends": "stylelint-config-standard",
+  "defaultSeverity": "warning",
+  "rules": {
+    "color-no-hex": true,
+    "hue-degree-notation": "number",
+    "alpha-value-notation": "number",
+    "declaration-property-value-disallowed-list": [
+      {
+        "font-size": ["/^[0-9.]+px$/"]
+      },
+      {
+        "message": "字号只允许 var(--text-*) / var(--icon-*) token；阶梯外新值请先补 token",
+        "severity": "error"
+      }
+    ],
+    "selector-class-pattern": null,
+    "custom-property-pattern": null,
+    "keyframes-name-pattern": null,
+    "no-descending-specificity": null,
+    "declaration-block-no-duplicate-properties": null,
+    "declaration-block-single-line-max-declarations": null,
+    "rule-empty-line-before": null,
+    "custom-property-empty-line-before": null,
+    "declaration-empty-line-before": null,
+    "comment-empty-line-before": null,
+    "color-function-alias-notation": null,
+    "media-feature-range-notation": null,
+    "font-family-no-missing-generic-family-keyword": null,
+    "length-zero-no-unit": null,
+    "no-duplicate-selectors": null,
+    "comment-whitespace-inside": null
+  },
+  "ignoreFiles": [
+    "src/monacoInlineDiff/**",
+    "node_modules/**"
+  ]
+}

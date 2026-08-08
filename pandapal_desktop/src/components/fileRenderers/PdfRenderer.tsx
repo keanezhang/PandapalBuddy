@@ -41,7 +41,7 @@ export function PdfRenderer({ path }: PdfRendererProps) {
     return (
       <div style={{
         flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
-        color: "var(--danger)", fontSize: 13,
+        color: "var(--danger)", fontSize: "var(--text-base)",
       }}>
         PDF 加载失败
       </div>
@@ -52,7 +52,7 @@ export function PdfRenderer({ path }: PdfRendererProps) {
     return (
       <div style={{
         flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
-        color: "var(--text-muted)", fontSize: 13,
+        color: "var(--text-muted)", fontSize: "var(--text-base)",
       }}>
         加载中...
       </div>

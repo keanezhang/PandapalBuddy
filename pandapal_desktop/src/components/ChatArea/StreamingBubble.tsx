@@ -21,15 +21,15 @@ export const StreamingBubble = memo(function StreamingBubble({ message }: { mess
     }}>
       <div style={{
         width: 24, height: 24, borderRadius: "var(--radius-full)",
-        background: "linear-gradient(135deg, var(--accent), #5B21B6)",
+        background: "var(--gradient-avatar)",
         display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: 12, flexShrink: 0, marginTop: 1, color: "#fff",
+        fontSize: "var(--text-sm)", flexShrink: 0, marginTop: 1, color: "var(--text-on-accent)",
       }}>
         🐼
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         {isResume && (
-          <div style={{ fontSize: 10, fontWeight: 500, color: "var(--accent-soft)", marginBottom: "var(--space-2)", display: "flex", alignItems: "center", gap: 4 }}>
+          <div style={{ fontSize: "var(--text-2xs)", fontWeight: 500, color: "var(--accent-soft)", marginBottom: "var(--space-2)", display: "flex", alignItems: "center", gap: 4 }}>
             👌🏻 go on baby
           </div>
         )}
@@ -37,7 +37,7 @@ export const StreamingBubble = memo(function StreamingBubble({ message }: { mess
         <Timeline items={timeline} toolCalls={toolCalls} isStreaming={true} />
 
         {empty && (
-          <div style={{ color: "var(--text-muted)", fontSize: 14 }}>
+          <div style={{ color: "var(--text-muted)", fontSize: "var(--text-md)" }}>
             <span style={{ animation: "cursor-blink 1s step-end infinite", color: "var(--accent-soft)", fontWeight: "bold" }}>▌</span>
           </div>
         )}

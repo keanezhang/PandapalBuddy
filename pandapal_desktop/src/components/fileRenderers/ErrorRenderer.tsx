@@ -15,9 +15,9 @@ export function ErrorRenderer({ error }: ErrorRendererProps) {
       flex:1, display:"flex", alignItems:"center", justifyContent:"center",
       flexDirection:"column", gap:8, color:"var(--danger)", padding:24,
     }}>
-      <span style={{ fontSize:24 }}>⚠️</span>
-      <span style={{ fontSize:13 }}>无法读取文件</span>
-      <span style={{ fontSize:11, color:"var(--text-muted)" }}>{error}</span>
+      <span style={{ fontSize: "var(--text-3xl)" }}>⚠️</span>
+      <span style={{ fontSize: "var(--text-base)" }}>无法读取文件</span>
+      <span style={{ fontSize: "var(--text-xs)", color:"var(--text-muted)" }}>{error}</span>
     </div>
   );
 }

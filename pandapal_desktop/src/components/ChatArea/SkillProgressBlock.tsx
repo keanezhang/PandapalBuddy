@@ -13,7 +13,7 @@ import type { SkillProgressGroup, SkillActivityStatus } from "../../store/chatSt
 import { formatDuration } from "./toolRenderers/_primitives";
 
 const STEP_META: Record<SkillActivityStatus, { icon: string; color: string }> = {
-  running:   { icon: "◔", color: "#60A5FA" },
+  running:   { icon: "◔", color: "var(--info)" },
   completed: { icon: "✓", color: "var(--success)" },
   failed:    { icon: "✕", color: "var(--danger)" },
 };
@@ -26,7 +26,7 @@ export function SkillProgressBlock({ group }: { group: SkillProgressGroup }) {
   const headColor =
     group.status === "failed" ? "var(--danger)"
     : group.status === "completed" ? "var(--success)"
-    : "#60A5FA";
+    : "var(--info)";
 
   const dur = formatDuration(group.durationMs);
 
@@ -44,14 +44,14 @@ export function SkillProgressBlock({ group }: { group: SkillProgressGroup }) {
         onClick={() => !running && setExpanded((v) => !v)}
         style={{
           display: "flex", alignItems: "center", gap: "var(--space-2)",
-          padding: "6px var(--space-3)", fontSize: 12, lineHeight: 1.4,
+          padding: "6px var(--space-3)", fontSize: "var(--text-sm)", lineHeight: 1.4,
           cursor: running ? "default" : "pointer", userSelect: "none",
         }}
       >
         {running ? (
           <span style={{
             width: 10, height: 10, borderRadius: "50%",
-            border: "2px solid rgba(96,165,250,0.25)", borderTopColor: "#60A5FA",
+            border: "2px solid color-mix(in srgb, var(--info) 25%, transparent)", borderTopColor: "var(--info)",
             animation: "spin 0.8s linear infinite", display: "inline-block", flexShrink: 0,
           }} />
         ) : (
@@ -64,14 +64,14 @@ export function SkillProgressBlock({ group }: { group: SkillProgressGroup }) {
           {group.activity}
         </span>
         {!running && (
-          <span style={{ color: "var(--text-tertiary)", fontSize: 11, flexShrink: 0 }}>
+          <span style={{ color: "var(--text-tertiary)", fontSize: "var(--text-xs)", flexShrink: 0 }}>
             {group.steps.length} 步
           </span>
         )}
         <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "var(--space-2)", flexShrink: 0 }}>
-          {dur && <span style={{ color: "var(--text-muted)", fontSize: 10 }}>{dur}</span>}
+          {dur && <span style={{ color: "var(--text-muted)", fontSize: "var(--text-2xs)" }}>{dur}</span>}
           {!running && group.steps.length > 0 && (
-            <span style={{ color: "var(--text-muted)", fontSize: 10 }}>{expanded ? "▾" : "▸"}</span>
+            <span style={{ color: "var(--text-muted)", fontSize: "var(--text-2xs)" }}>{expanded ? "▾" : "▸"}</span>
           )}
         </span>
       </div>
@@ -85,11 +85,11 @@ export function SkillProgressBlock({ group }: { group: SkillProgressGroup }) {
             return (
               <div key={i} style={{
                 display: "flex", alignItems: "baseline", gap: "var(--space-2)",
-                padding: "4px var(--space-3)", fontSize: 12, lineHeight: 1.4,
+                padding: "4px var(--space-3)", fontSize: "var(--text-sm)", lineHeight: 1.4,
               }}>
                 {isRunning ? (
                   <span style={{
-                    width: 6, height: 6, borderRadius: "50%", background: "#60A5FA",
+                    width: 6, height: 6, borderRadius: "50%", background: "var(--info)",
                     animation: "pulse 1.2s ease-in-out infinite",
                     display: "inline-block", flexShrink: 0, alignSelf: "center",
                     margin: "0 4px",

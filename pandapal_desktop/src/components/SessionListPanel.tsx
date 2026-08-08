@@ -143,7 +143,7 @@ export function SessionListPanel() {
         >
           <div style={{
             padding: "4px 10px",
-            fontSize: 10,
+            fontSize: "var(--text-2xs)",
             fontWeight: 600,
             color: "var(--text-muted)",
             textTransform: "uppercase",
@@ -179,7 +179,7 @@ export function SessionListPanel() {
           {groups.length === 0 && (
             <div style={{
               padding: "6px 10px",
-              fontSize: 12,
+              fontSize: "var(--text-sm)",
               color: "var(--text-muted)",
             }}>
               暂无分组，请先在上方新建
@@ -204,7 +204,7 @@ function SessionListHeader({ onCreate }: { onCreate: () => void }) {
         borderBottom: "1px solid var(--border-subtle)",
       }}
     >
-      <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)" }}>
+      <span style={{ fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--text-primary)" }}>
         会话
       </span>
       <button
@@ -218,7 +218,7 @@ function SessionListHeader({ onCreate }: { onCreate: () => void }) {
           background: "var(--bg-root)",
           color: "var(--text-primary)",
           cursor: "pointer",
-          fontSize: 14,
+          fontSize: "var(--text-md)",
           lineHeight: 1,
           display: "flex",
           alignItems: "center",
@@ -260,7 +260,7 @@ function SessionListFilter({
           border: "1px solid var(--border-default)",
           background: "var(--bg-root)",
           color: "var(--text-primary)",
-          fontSize: 11,
+          fontSize: "var(--text-xs)",
           outline: "none",
           boxSizing: "border-box",
         }}
@@ -348,7 +348,7 @@ export function SessionGroupSection({
     : null;
 
   return (
-    <div style={{ fontSize: 12, padding: "var(--space-1) 0", position: "relative" }}>
+    <div style={{ fontSize: "var(--text-sm)", padding: "var(--space-1) 0", position: "relative" }}>
       {groups.map((g) => (
         <GroupItem
           key={g.id}
@@ -378,10 +378,10 @@ export function SessionGroupSection({
           style={{
             margin: "2px var(--space-4) 0",
             padding: "6px 10px",
-            fontSize: 11,
+            fontSize: "var(--text-xs)",
             lineHeight: 1.5,
             color: "var(--danger)",
-            background: "rgba(239,68,68,0.08)",
+            background: "color-mix(in srgb, var(--danger) 8%, transparent)",
             border: "1px solid rgba(239,68,68,0.25)",
             borderRadius: "var(--radius-sm)",
           }}
@@ -534,7 +534,7 @@ function GroupNameModal({
             style={{
               width: "100%",
               padding: "9px 12px",
-              fontSize: 14,
+              fontSize: "var(--text-md)",
               border: "1px solid var(--border-default)",
               background: "var(--bg-elevated)",
               color: "var(--text-primary)",
@@ -604,8 +604,8 @@ function GroupDeleteModal({
                   padding: "10px 12px",
                   borderRadius: "var(--radius-sm)",
                   cursor: "pointer",
-                  border: `1px solid ${active ? (danger ? "rgba(239,68,68,0.5)" : "var(--accent)") : "var(--border-default)"}`,
-                  background: active ? (danger ? "rgba(239,68,68,0.08)" : "rgba(124,58,237,0.08)") : "transparent",
+                  border: `1px solid ${active ? (danger ? "color-mix(in srgb, var(--danger) 50%, transparent)" : "var(--accent)") : "var(--border-default)"}`,
+                  background: active ? (danger ? "color-mix(in srgb, var(--danger) 8%, transparent)" : "var(--bg-selected)") : "transparent",
                   transition: "all var(--duration-fast)",
                 }}
               >
@@ -625,10 +625,10 @@ function GroupDeleteModal({
                   )}
                 </span>
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: danger ? "var(--danger)" : "var(--text-primary)" }}>
+                  <div style={{ fontSize: "var(--text-base)", fontWeight: 600, color: danger ? "var(--danger)" : "var(--text-primary)" }}>
                     {opt.title}
                   </div>
-                  <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 2, lineHeight: 1.5 }}>
+                  <div style={{ fontSize: "var(--text-sm)", color: "var(--text-tertiary)", marginTop: 2, lineHeight: 1.5 }}>
                     {opt.desc}
                   </div>
                 </div>
@@ -702,14 +702,14 @@ function SessionItem({
           <button
             title={session.is_favorite ? "取消收藏" : "收藏"}
             onClick={onToggleFavorite}
-            style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: 0, fontSize: 12, fontFamily: "inherit" }}
+            style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: 0, fontSize: "var(--text-sm)", fontFamily: "inherit" }}
           >
             {session.is_favorite ? "☆" : "⭐"}
           </button>
           <button
             title="删除"
             onClick={onDelete}
-            style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: 0, fontSize: 12, fontFamily: "inherit" }}
+            style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: 0, fontSize: "var(--text-sm)", fontFamily: "inherit" }}
           >
             ✕
           </button>
@@ -727,11 +727,11 @@ function SessionListEmpty() {
       style={{
         padding: "28px 16px",
         textAlign: "center",
-        fontSize: 13,
+        fontSize: "var(--text-base)",
         color: "var(--text-muted)",
       }}
     >
-      <div style={{ fontSize: 28, marginBottom: 10 }}>💬</div>
+      <div style={{ fontSize: "var(--text-3xl)", marginBottom: 10 }}>💬</div>
       <div>点击 + 开始新对话</div>
     </div>
   );
@@ -755,7 +755,7 @@ function LoadMoreButton({
         background: "transparent",
         color: "var(--text-secondary)",
         cursor: loading ? "wait" : "pointer",
-        fontSize: 13,
+        fontSize: "var(--text-base)",
       }}
     >
       {loading ? "加载中..." : "▼ 加载更多"}

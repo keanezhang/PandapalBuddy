@@ -107,16 +107,6 @@ interface SkillState {
   activatedSkill: ActivatedSkill | null;
   setActivatedSkill: (skill: ActivatedSkill | null) => void;
   clearActivatedSkill: () => void;
-
-  // ── Toast 通知（导入/导出结果） ──────────
-  toast: SkillToast | null;
-  setToast: (toast: SkillToast | null) => void;
-}
-
-export interface SkillToast {
-  message: string;
-  highlight?: string;
-  type: "success" | "error";
 }
 
 export const useSkillStore = create<SkillState>((set, get) => ({
@@ -184,10 +174,6 @@ export const useSkillStore = create<SkillState>((set, get) => ({
   activatedSkill: null,
   setActivatedSkill: (skill) => set({ activatedSkill: skill }),
   clearActivatedSkill: () => set({ activatedSkill: null }),
-
-  // ── Toast ────────────────────────────────
-  toast: null,
-  setToast: (toast) => set({ toast }),
 }));
 
 // ── 派生选择器 ──────────────────────────────────────────────────────────

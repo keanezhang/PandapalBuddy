@@ -80,7 +80,7 @@ export function SettingsPanel({ onClose }: Props) {
                     }
                   }}
                 >
-                  <span style={{ fontSize: 13 }}>{tab.icon}</span>
+                  <span style={{ fontSize: "var(--text-base)" }}>{tab.icon}</span>
                   {tab.label}
                 </button>
               ))}
@@ -92,7 +92,7 @@ export function SettingsPanel({ onClose }: Props) {
           {activeTab === "wallpaper" && (
             <>
               <div style={{
-                fontSize: 10, fontWeight: 600, color: "var(--text-muted)",
+                fontSize: "var(--text-2xs)", fontWeight: 600, color: "var(--text-muted)",
                 textTransform: "uppercase", letterSpacing: "0.05em",
                 marginBottom: "var(--space-2)",
               }}>

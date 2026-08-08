@@ -37,8 +37,8 @@ export function HitlModal() {
           <div style={{ marginBottom: "var(--space-4)" }}>
             <div className="task-section-label">工具名称</div>
             <code style={{
-              fontFamily: "var(--font-mono)", fontSize: 12,
-              background: "rgba(255,255,255,0.04)", padding: "3px 8px",
+              fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)",
+              background: "var(--bg-card-subtle)", padding: "3px 8px",
               borderRadius: "var(--radius-xs)", color: "var(--accent-2)",
             }}>
               {prompt.toolName}
@@ -48,8 +48,8 @@ export function HitlModal() {
             <div className="task-section">
               <div className="task-section-label">参数</div>
               <pre style={{
-                fontFamily: "var(--font-mono)", fontSize: 11,
-                background: "#121212", padding: "var(--space-3)",
+                fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)",
+                background: "var(--color-code-bg)", padding: "var(--space-3)",
                 borderRadius: "var(--radius-sm)", overflowX: "auto",
                 color: "var(--text-secondary)", whiteSpace: "pre-wrap",
                 maxHeight: 240, overflowY: "auto",

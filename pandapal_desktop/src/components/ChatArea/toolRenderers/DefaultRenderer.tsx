@@ -29,7 +29,7 @@ export function DefaultRenderer({ tc }: { tc: ToolCallState }) {
           <IOBlock label="ARGS" text={argsText} />
           <IOBlock label="RESULT" text={output} tone={isError ? "error" : "default"} />
           {tc.result?.truncated && (
-            <div style={{ padding: "2px var(--space-3) var(--space-2)", fontSize: 10, color: "var(--text-muted)" }}>
+            <div style={{ padding: "2px var(--space-3) var(--space-2)", fontSize: "var(--text-2xs)", color: "var(--text-muted)" }}>
               …输出已截断{tc.result.sizeBytes ? `（${tc.result.sizeBytes} bytes）` : ""}
             </div>
           )}

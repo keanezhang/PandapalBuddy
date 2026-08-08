@@ -44,7 +44,7 @@ export function MarkdownRenderer(props: MarkdownRendererProps) {
     <button
       onClick={() => setView(mode)}
       style={{
-        padding: "2px 10px", fontSize: 11, cursor: "pointer",
+        padding: "2px 10px", fontSize: "var(--text-xs)", cursor: "pointer",
         border: "1px solid var(--border-subtle)", borderRadius: 4,
         background: view === mode ? "var(--bg-elevated)" : "transparent",
         color: view === mode ? "var(--accent)" : "var(--text-tertiary)",
@@ -73,7 +73,7 @@ export function MarkdownRenderer(props: MarkdownRendererProps) {
           dangerouslySetInnerHTML={{ __html: html }}
           style={{
             flex: 1, overflowY: "auto", padding: "16px 20px",
-            fontSize: 14, lineHeight: 1.75, color: "var(--text-primary)",
+            fontSize: "var(--text-md)", lineHeight: 1.75, color: "var(--text-primary)",
           }}
         />
       ) : (

@@ -63,14 +63,14 @@ export function MessageList() {
         padding: "var(--space-6)",
       }}>
         <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 40, marginBottom: "var(--space-4)" }}>🐼</div>
+          <div style={{ fontSize: "var(--icon-empty)", marginBottom: "var(--space-4)" }}>🐼</div>
           <div style={{
             fontSize: "var(--text-lg)", fontWeight: 600,
             color: "var(--text-primary)", marginBottom: "var(--space-2)",
           }}>
             {isConnected ? "今天想聊点什么？" : "等待后端连接…"}
           </div>
-          <div style={{ fontSize: 13, color: "var(--text-tertiary)" }}>
+          <div style={{ fontSize: "var(--text-base)", color: "var(--text-tertiary)" }}>
             {isConnected ? "输入消息开始对话" : "正在启动 PandaPal 引擎"}
           </div>
         </div>

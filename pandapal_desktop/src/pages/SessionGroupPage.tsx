@@ -83,23 +83,16 @@ export function SessionGroupPage() {
   const initialLoading = loading && (viewGroupId !== groupId || sessions.length === 0);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", flex: 1, background: "var(--bg-root)", overflow: "hidden" }}>
+    <div className="page-root">
       {/* Banner */}
-      <div
-        style={{
-          padding: "14px 28px 12px",
-          background: "linear-gradient(135deg, rgba(124,58,237,0.06) 0%, rgba(139,92,246,0.02) 100%)",
-          borderBottom: "1px solid rgba(124,58,237,0.15)",
-          display: "flex", alignItems: "center", gap: 14, flexShrink: 0,
-        }}
-      >
+      <div className="page-header">
         <button onClick={() => navigate("/")} className="btn btn-ghost btn-sm">← 返回</button>
-        <span className="skill-card-icon icon-violet" style={{ width: 34, height: 34, fontSize: 17 }}>🗂</span>
+        <span className="skill-card-icon icon-violet" style={{ width: 34, height: 34, fontSize: "var(--text-lg)" }}>🗂</span>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 700, fontSize: 17, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <div className="page-title" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {groupName}
           </div>
-          <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>
+          <div style={{ fontSize: "var(--text-xs)", color: "var(--text-tertiary)", marginTop: 2 }}>
             该分组下的所有会话
           </div>
         </div>

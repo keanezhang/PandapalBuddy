@@ -86,13 +86,13 @@ export function TopToolbar() {
         {isStreaming && (
           <div style={{
             display: "flex", alignItems: "center", gap: 4,
-            fontSize: 11, color: "var(--accent-soft)",
+            fontSize: "var(--text-xs)", color: "var(--accent-soft)",
             padding: "2px 8px", borderRadius: 9999,
-            background: "rgba(124,58,237,0.10)",
+            background: "color-mix(in srgb, var(--accent) 10%, transparent)",
           }}>
             <span style={{
               width: 12, height: 12, borderRadius: "50%",
-              border: "2px solid rgba(124,58,237,0.2)",
+              border: "2px solid color-mix(in srgb, var(--accent) 20%, transparent)",
               borderTopColor: "var(--accent-soft)",
               animation: "spin 0.8s linear infinite",
               display: "inline-block",

@@ -16,6 +16,7 @@ import type { DegradationStat, SessionData, Turn } from "../types/dashboard";
 import { useDashboardStore } from "../store/dashboardStore";
 import { useBackend } from "../providers/BackendProvider";
 import { BudgetBar } from "../components/BudgetBar";
+import "./dashboard/dashboard.css";
 import {
   ALERT_P99_LATENCY_MS,
   CATEGORY_LABEL,
@@ -76,7 +77,7 @@ const ACCENT = "var(--accent-soft)";
 const ROLE_META: Record<Turn["role"], { label: string; color: string }> = {
   user: { label: "用户", color: "var(--accent-soft)" },
   assistant: { label: "助手", color: "var(--success)" },
-  tool: { label: "工具", color: "#06b6d4" },
+  tool: { label: "工具", color: "var(--info)" },
 };
 type TabId = "overview" | "cost" | "perf" | "sessions" | "health";
 
@@ -192,27 +193,26 @@ export function DashboardPage() {
   ];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", flex: 1, background: "var(--bg-root)", overflow: "hidden" }}>
-      <style>{DASH_CSS}</style>
+    <div className="page-root">
 
       {/* 顶栏 */}
       <div style={{
-        padding: "12px 24px 0", background: "linear-gradient(135deg, rgba(124,58,237,0.06), transparent 70%)",
+        padding: "12px 24px 0", background: "linear-gradient(135deg, color-mix(in srgb, var(--accent) 6%, transparent), transparent 70%)",
         borderBottom: "1px solid var(--border-subtle)", flexShrink: 0,
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <h1 style={{ fontSize: 20, fontWeight: 600, color: "var(--text-primary)", display: "flex", alignItems: "center", gap: 10, margin: 0, letterSpacing: "-0.01em" }}>
-            <span style={{ width: 32, height: 32, display: "grid", placeItems: "center", borderRadius: 10, fontSize: 16, background: "rgba(124,58,237,0.15)" }}>🚀</span>
+          <h1 className="page-title">
+            <span style={{ width: 32, height: 32, display: "grid", placeItems: "center", borderRadius: 10, fontSize: "var(--text-lg)", background: "color-mix(in srgb, var(--accent) 15%, transparent)" }}>🚀</span>
             Dashboard
           </h1>
-          <span className="dash-badge" style={{ background: "rgba(124,58,237,0.12)", color: ACCENT }}>{modelLabel}</span>
+          <span className="dash-badge" style={{ background: "color-mix(in srgb, var(--accent) 12%, transparent)", color: ACCENT }}>{modelLabel}</span>
           <span style={{ flex: 1 }} />
           <input type="date" value={start ?? ""} min={dateBounds.min} max={end} onChange={(e) => setStart(e.target.value)} className="dash-date" />
-          <span style={{ color: "var(--text-muted)", fontSize: 12 }}>→</span>
+          <span style={{ color: "var(--text-muted)", fontSize: "var(--text-sm)" }}>→</span>
           <input type="date" value={end ?? ""} min={start} max={dateBounds.max} onChange={(e) => setEnd(e.target.value)} className="dash-date" />
           <QuickRange label="近 3 天" onClick={() => { setStart(shiftDate(dateBounds.max, -2)); setEnd(dateBounds.max); }} />
           <QuickRange label="全部" onClick={() => { setStart(dateBounds.min); setEnd(dateBounds.max); }} />
-          <span className="dash-badge" onClick={() => requestDashboard()} title="刷新" style={{ cursor: "pointer", background: "rgba(34,197,94,0.12)", color: "var(--success)" }}>
+          <span className="dash-badge" onClick={() => requestDashboard()} title="刷新" style={{ cursor: "pointer", background: "color-mix(in srgb, var(--success) 12%, transparent)", color: "var(--success)" }}>
             {loading ? "⟳ 加载中" : "⟳ 刷新"}
           </span>
         </div>
@@ -277,7 +277,7 @@ function HealthView({ stats, summary }: {
         <div className="dash-sect">健康 · 降级</div>
         <Panel title="🛡 降级事件">
           <div style={{ padding: "36px 0", textAlign: "center" }}>
-            <div style={{ fontSize: 15, color: "var(--success)", fontWeight: 600, marginBottom: 6 }}>
+            <div style={{ fontSize: "var(--text-md)", color: "var(--success)", fontWeight: 600, marginBottom: 6 }}>
               ✓ 未记录到任何降级
             </div>
             <Muted text="没有「本该失败却兜了底」的事件。这是期望状态，不是数据缺失。" />
@@ -296,14 +296,14 @@ function HealthView({ stats, summary }: {
       {summary.abortCount > 0 && (
         <div className="dash-alert" style={{
           background: "linear-gradient(90deg,rgba(239,68,68,0.12),transparent 70%)",
-          borderColor: "rgba(239,68,68,0.28)",
+          borderColor: "color-mix(in srgb, var(--danger) 28%, transparent)",
         }}>
-          <span style={{ fontSize: 18 }}>⛔</span>
+          <span style={{ fontSize: "var(--text-xl)" }}>⛔</span>
           <div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>
+            <div style={{ fontSize: "var(--text-base)", fontWeight: 600, color: "var(--text-primary)" }}>
               {summary.abortCount} 次「直接中止」类降级
             </div>
-            <div style={{ fontSize: 11.5, color: "var(--text-tertiary)", marginTop: 2 }}>
+            <div style={{ fontSize: "var(--text-sm)", color: "var(--text-tertiary)", marginTop: 2 }}>
               决策 / ID / 金额类字段缺失时拒绝放行——这是设计如此（fail-fast），但频繁触发说明上游在丢数据
             </div>
           </div>
@@ -317,30 +317,30 @@ function HealthView({ stats, summary }: {
         <Kpi label="🔺 最高频" value={summary.top ? fmt(summary.top.count) : "—"} sub={summary.top?.event_code ?? "无"} />
       </div>
 
-      <Panel title={<>📦 按字段类别 <span style={{ fontWeight: 400, color: "var(--text-muted)", fontSize: 11 }}>决策 / ID / 金额三类＝「本该失败却兜了底」，治理优先级最高</span></>} style={{ marginBottom: 14 }}>
+      <Panel title={<>📦 按字段类别 <span className="dash-subtle">决策 / ID / 金额三类＝「本该失败却兜了底」，治理优先级最高</span></>} style={{ marginBottom: 14 }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {summary.byCategory.map((c) => {
             const pct = summary.total ? (c.count / summary.total) * 100 : 0;
             const color = c.highStakes ? "var(--warning)" : "var(--text-tertiary)";
             return (
               <div key={c.category} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span style={{ fontSize: 12, color: "var(--text-secondary)", minWidth: 96 }}>
+                <span style={{ fontSize: "var(--text-sm)", color: "var(--text-secondary)", minWidth: 96 }}>
                   {CATEGORY_LABEL[c.category] ?? c.category}
                 </span>
                 <div style={{ flex: 1, height: 8, borderRadius: 4, background: "var(--bg-elevated)", overflow: "hidden" }}>
                   <div style={{ width: `${pct}%`, height: "100%", borderRadius: 4, background: color }} />
                 </div>
-                <span className="mono" style={{ fontSize: 12, fontWeight: 700, color, minWidth: 40, textAlign: "right" }}>{fmt(c.count)}</span>
-                <span className="mono" style={{ fontSize: 11, color: "var(--text-muted)", minWidth: 42, textAlign: "right" }}>{pct.toFixed(0)}%</span>
+                <span className="mono" style={{ fontSize: "var(--text-sm)", fontWeight: 700, color, minWidth: 40, textAlign: "right" }}>{fmt(c.count)}</span>
+                <span className="mono" style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", minWidth: 42, textAlign: "right" }}>{pct.toFixed(0)}%</span>
               </div>
             );
           })}
         </div>
       </Panel>
 
-      <Panel title={<>📋 降级明细 <span style={{ fontWeight: 400, color: "var(--text-muted)", fontSize: 11 }}>按严重度 → 次数排序；累计口径，不受日期筛选影响</span></>}>
+      <Panel title={<>📋 降级明细 <span className="dash-subtle">按严重度 → 次数排序；累计口径，不受日期筛选影响</span></>}>
         <div style={{ display: "flex", flexDirection: "column" }}>
-          <div className="dash-deg-row" style={{ color: "var(--text-muted)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.4px", borderBottom: "1px solid var(--border-subtle)" }}>
+          <div className="dash-deg-row" style={{ color: "var(--text-muted)", fontSize: "var(--text-2xs)", textTransform: "uppercase", letterSpacing: "0.4px", borderBottom: "1px solid var(--border-subtle)" }}>
             <span>严重度</span><span>event_code</span><span>类别</span><span>触发点</span><span style={{ textAlign: "right" }}>次数</span>
           </div>
           {stats.map((d) => {
@@ -348,14 +348,14 @@ function HealthView({ stats, summary }: {
             return (
               <div key={`${d.event_code}|${d.source}|${d.severity}`} className="dash-deg-row">
                 <span>
-                  <span className="dash-badge" style={{ height: 20, padding: "0 8px", fontSize: 10, background: "rgba(127,127,127,0.12)", color: sev.color }}>
+                  <span className="dash-badge" style={{ height: 20, padding: "0 8px", fontSize: "var(--text-2xs)", background: "var(--bg-track)", color: sev.color }}>
                     {sev.label}
                   </span>
                 </span>
-                <span className="mono" style={{ fontSize: 12, color: "var(--text-primary)", fontWeight: 550 }}>{d.event_code || "（无 event_code）"}</span>
-                <span style={{ fontSize: 11.5, color: "var(--text-tertiary)" }}>{CATEGORY_LABEL[d.category] ?? d.category}</span>
-                <span className="mono" style={{ fontSize: 11, color: "var(--text-tertiary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={d.source}>{d.source}</span>
-                <span className="mono" style={{ fontSize: 13, fontWeight: 700, color: sev.color, textAlign: "right" }}>{fmt(d.count)}</span>
+                <span className="mono" style={{ fontSize: "var(--text-sm)", color: "var(--text-primary)", fontWeight: 550 }}>{d.event_code || "（无 event_code）"}</span>
+                <span style={{ fontSize: "var(--text-sm)", color: "var(--text-tertiary)" }}>{CATEGORY_LABEL[d.category] ?? d.category}</span>
+                <span className="mono" style={{ fontSize: "var(--text-xs)", color: "var(--text-tertiary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={d.source}>{d.source}</span>
+                <span className="mono" style={{ fontSize: "var(--text-base)", fontWeight: 700, color: sev.color, textAlign: "right" }}>{fmt(d.count)}</span>
               </div>
             );
           })}
@@ -385,8 +385,8 @@ function OverviewView({ health, daily, perf, onGoPerf, onErrorClick }: {
       {/* 总体 P50 stat（AC-04）：一眼看中位延迟，细分分位/直方图在性能页 */}
       <Panel title="⏱ 总体延迟 P50" style={{ marginBottom: 14 }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
-          <span className="mono" style={{ fontSize: 26, fontWeight: 700, color: "var(--success)" }}>{fmtMs(perf.p50)}</span>
-          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>中位 LLM 调用延迟{perf.reliable ? "" : `（样本 ${perf.count} 偏少，仅供参考）`}</span>
+          <span className="mono" style={{ fontSize: "var(--text-3xl)", fontWeight: 700, color: "var(--success)" }}>{fmtMs(perf.p50)}</span>
+          <span style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>中位 LLM 调用延迟{perf.reliable ? "" : `（样本 ${perf.count} 偏少，仅供参考）`}</span>
           <span style={{ marginLeft: "auto" }}><span className="dash-alert-act" onClick={onGoPerf}>查看性能分布 →</span></span>
         </div>
       </Panel>
@@ -411,14 +411,14 @@ function CacheMacro({ health }: { health: ReturnType<typeof computeHealth> }) {
   const active = health.cachedTokens > 0;
   return (
     <div style={{ marginBottom: 14 }}>
-      <Panel title={<>🎯 缓存命中 · 宏观节省 <span style={{ fontWeight: 400, color: "var(--text-muted)", fontSize: 11 }}>因命中 prefix cache 省下的 token 与费用（相对「全价」基线）</span></>}>
+      <Panel title={<>🎯 缓存命中 · 宏观节省 <span className="dash-subtle">因命中 prefix cache 省下的 token 与费用（相对「全价」基线）</span></>}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, alignItems: "center" }}>
           <CacheStat label="整体命中率" value={health.hitRate.toFixed(1) + "%"} sub={`Σ命中 / Σ输入 · 按 token 加权`} color={active ? ACCENT : "var(--text-muted)"} big />
           <CacheStat label="命中 Token" value={fmt(health.cachedTokens)} sub={`共 ${fmt(health.totalIn)} 输入 token`} color={active ? "var(--success)" : "var(--text-muted)"} />
           <CacheStat label="命中节省费用" value={fmtCost(health.cacheSavedUsd)} sub={active ? `全价 ${fmtCost(health.totalCost)} → 缓存后约 ${fmtCost(health.netCost)}` : "无命中 / 未配置缓存价"} color={active ? "var(--warning)" : "var(--text-muted)"} />
         </div>
         {!active && (
-          <div style={{ marginTop: 10, fontSize: 11, color: "var(--text-muted)" }}>
+          <div style={{ marginTop: 10, fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>
             💡 暂无缓存命中数据（或该模型未在价格表配置 <span className="mono">cache_read_price</span>，节省不臆造，记 0）。
           </div>
         )}
@@ -430,9 +430,9 @@ function CacheMacro({ health }: { health: ReturnType<typeof computeHealth> }) {
 function CacheStat({ label, value, sub, color, big }: { label: string; value: string; sub: string; color?: string; big?: boolean }) {
   return (
     <div>
-      <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>{label}</div>
+      <div style={{ fontSize: "var(--text-2xs)", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>{label}</div>
       <div className="mono" style={{ fontSize: big ? 30 : 24, fontWeight: 700, margin: "3px 0 3px", color: color || "var(--text-primary)" }}>{value}</div>
-      <div style={{ fontSize: 10, color: "var(--text-tertiary)" }}>{sub}</div>
+      <div style={{ fontSize: "var(--text-2xs)", color: "var(--text-tertiary)" }}>{sub}</div>
     </div>
   );
 }
@@ -458,13 +458,13 @@ function CostView({ models, health, topSpend, onSessionClick }: {
       </div>
       <ModelBreakdown models={models} netCost={netCost} />
       {/* 每日费用图已迁移至概览（去与概览重叠，AC-05·2e）。此处仅保留消费 Top10 深链。 */}
-      <Panel title={<>🔥 消费 Top 会话 <span style={{ fontWeight: 400, color: "var(--text-muted)", fontSize: 11 }}>净费用降序前 10（不足按实际）</span></>}>
+      <Panel title={<>🔥 消费 Top 会话 <span className="dash-subtle">净费用降序前 10（不足按实际）</span></>}>
         {topSpend.slice(0, 10).map((s, i) => (
           <div key={s.session.id} className="dash-lrow" onClick={() => onSessionClick(s.session.id)}>
             <span className={"dash-rank" + (i === 0 ? " top" : "")}>{i + 1}</span>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.session.title || "未命名会话"}</div>
-              <div className="mono" style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>{s.session.model} · {s.session.llm_calls} 次</div>
+            <div className="dash-flex-main">
+              <div style={{ fontSize: "var(--text-base)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.session.title || "未命名会话"}</div>
+              <div className="mono" style={{ fontSize: "var(--text-xs)", color: "var(--text-tertiary)", marginTop: 2 }}>{s.session.model} · {s.session.llm_calls} 次</div>
             </div>
             <span className="mono" style={{ fontWeight: 700, color: "var(--warning)" }}>{fmtCost(s.cost)}</span>
             <span className="dash-go">›</span>
@@ -487,7 +487,7 @@ function CostComposition({ health }: { health: ReturnType<typeof computeHealth> 
   const ioDenom = inCost + outCost || 1;
   const inNetPct = (inCost / ioDenom) * 100, outNetPct = (outCost / ioDenom) * 100;
   return (
-    <Panel title={<>💰 费用构成 = <span style={{ fontWeight: 400, color: "var(--text-muted)", fontSize: 11 }}>输入 + 输出</span></>}>
+    <Panel title={<>💰 费用构成 = <span className="dash-subtle">输入 + 输出</span></>}>
       {/* 环形图：输入费用 vs 输出费用 占比（仅两项，中心=实际净费用） */}
       <div style={{ display: "flex", gap: 28, alignItems: "center", flexWrap: "wrap" }}>
         <Donut segments={[{ v: inCost, c: ACCENT }, { v: outCost, c: "var(--success)" }]} center={fmtCost(net)} label="总净费用" />
@@ -508,7 +508,7 @@ function TokenComposition({ health }: { health: ReturnType<typeof computeHealth>
   const inPct = (totalIn / denom) * 100, outPct = (totalOut / denom) * 100;
   const fmtK = (n: number) => (n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(n));
   return (
-    <Panel title={<>🔢 Tokens 构成 = <span style={{ fontWeight: 400, color: "var(--text-muted)", fontSize: 11 }}>输入 + 输出</span></>}>
+    <Panel title={<>🔢 Tokens 构成 = <span className="dash-subtle">输入 + 输出</span></>}>
       {/* 环形图：输入 vs 输出 token 占比（中心=总 tokens） */}
       <div style={{ display: "flex", gap: 28, alignItems: "center", flexWrap: "wrap" }}>
         <Donut segments={[{ v: totalIn, c: ACCENT }, { v: totalOut, c: "var(--success)" }]} center={fmtK(total)} label="总 Tokens" />
@@ -541,7 +541,7 @@ function ModelBreakdown({ models, netCost }: { models: ReturnType<typeof compute
           </div>
           <div>
             {/* 表头 */}
-            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 0 6px", fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.4px", borderBottom: "1px solid var(--border-subtle)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 0 6px", fontSize: "var(--text-2xs)", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.4px", borderBottom: "1px solid var(--border-subtle)" }}>
               <span style={{ width: 150, flexShrink: 0 }}>模型</span>
               <span style={{ flex: 1 }} />
               <span style={{ minWidth: 40, textAlign: "right" }}>占比</span>
@@ -551,12 +551,12 @@ function ModelBreakdown({ models, netCost }: { models: ReturnType<typeof compute
               <span style={{ minWidth: 64, textAlign: "right" }}>缓存省</span>
             </div>
             {models.map((m) => (
-              <div key={m.model} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", fontSize: 12, borderBottom: "1px solid rgba(127,127,127,0.06)" }}>
+              <div key={m.model} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", fontSize: "var(--text-sm)", borderBottom: "1px solid rgba(127,127,127,0.06)" }}>
                 <span style={{ width: 150, display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}>
                   <span style={{ width: 9, height: 9, borderRadius: 3, background: colorForModel(m.model), flexShrink: 0 }} />
                   <span style={{ fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.model}</span>
                 </span>
-                <span style={{ flex: 1, height: 7, borderRadius: 5, background: "rgba(127,127,127,0.12)", overflow: "hidden" }}>
+                <span className="dash-bar-track">
                   <span style={{ display: "block", height: "100%", width: `${(m.netCost / maxNet) * 100}%`, background: colorForModel(m.model), borderRadius: 5 }} />
                 </span>
                 <span className="mono" style={{ color: "var(--text-tertiary)", minWidth: 40, textAlign: "right" }}>{(m.netShare * 100).toFixed(0)}%</span>
@@ -610,9 +610,9 @@ function PerfView({ perf, slow, toolSlow, toolUsage, toolSuccess, onSlowClick }:
           {slow.length === 0 ? <Muted text="无调用记录" /> : slow.map((f, i) => (
             <div key={f.sessionId + f.turn} className="dash-lrow" onClick={() => onSlowClick(f.sessionId, f.turn)}>
               <span className={"dash-rank" + (i === 0 ? " top" : "")}>{i + 1}</span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.title}</div>
-                <div className="mono" style={{ fontSize: 11, marginTop: 2 }}>
+              <div className="dash-flex-main">
+                <div style={{ fontSize: "var(--text-base)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.title}</div>
+                <div className="mono" style={{ fontSize: "var(--text-xs)", marginTop: 2 }}>
                   <span style={{ color: colorForModel(f.model) }}>{f.model}</span>
                   <span style={{ color: "var(--text-tertiary)" }}> · step {f.step}</span>
                 </div>
@@ -626,9 +626,9 @@ function PerfView({ perf, slow, toolSlow, toolUsage, toolSuccess, onSlowClick }:
           {toolSlow.length === 0 ? <Muted text="无工具调用记录（或旧数据无 per-call 耗时）" /> : toolSlow.map((f, i) => (
             <div key={f.sessionId + f.turn + f.name + i} className="dash-lrow" onClick={() => onSlowClick(f.sessionId, f.turn)}>
               <span className={"dash-rank" + (i === 0 ? " top" : "")}>{i + 1}</span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div className="mono" style={{ fontSize: 13, color: "#06b6d4", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
-                <div style={{ fontSize: 11, marginTop: 2, color: "var(--text-tertiary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.title}</div>
+              <div className="dash-flex-main">
+                <div className="mono" style={{ fontSize: "var(--text-base)", color: "var(--info)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
+                <div style={{ fontSize: "var(--text-xs)", marginTop: 2, color: "var(--text-tertiary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.title}</div>
               </div>
               <span className="mono" style={{ fontWeight: 700, color: "var(--text-secondary)" }}>{fmtMs(f.durationMs)}</span>
               <span className="dash-go">›</span>
@@ -652,7 +652,7 @@ function ToolSuccessByModelPanel({ rows }: { rows: ToolSuccessByModel[] }) {
       title={
         <>
           🎯 工具成功率 · 按模型
-          <span style={{ fontWeight: 400, color: "var(--text-muted)", fontSize: 11 }}>
+          <span className="dash-subtle">
             各模型发起的工具调用成功率
           </span>
         </>
@@ -663,7 +663,7 @@ function ToolSuccessByModelPanel({ rows }: { rows: ToolSuccessByModel[] }) {
         <Muted text="暂无带状态的工具调用。" />
       ) : (
         <>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "0 12px 6px", fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.4px", borderBottom: "1px solid var(--border-subtle)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "0 12px 6px", fontSize: "var(--text-2xs)", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.4px", borderBottom: "1px solid var(--border-subtle)" }}>
             <span style={{ width: 170, flexShrink: 0 }}>模型</span>
             <span style={{ flex: 1 }} />
             <span style={{ minWidth: 90, textAlign: "right" }}>成功 / 总数</span>
@@ -679,7 +679,7 @@ function ToolSuccessByModelPanel({ rows }: { rows: ToolSuccessByModel[] }) {
                   <span style={{ width: 9, height: 9, borderRadius: 3, background: colorForModel(r.model), flexShrink: 0 }} />
                   <span className="mono" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.model}</span>
                 </span>
-                <span style={{ flex: 1, height: 7, borderRadius: 5, background: "rgba(127,127,127,0.12)", overflow: "hidden" }}>
+                <span className="dash-bar-track">
                   <span style={{ display: "block", height: "100%", width: `${rate == null ? 0 : (r.total / maxTotal) * 100}%`, background: col, opacity: 0.85, borderRadius: 5 }} />
                 </span>
                 <span className="mono" style={{ minWidth: 90, textAlign: "right", color: "var(--text-tertiary)" }}>{r.ok} / {r.total}</span>
@@ -709,7 +709,7 @@ function ToolUsageRank({ usage }: { usage: ToolUsage[] }) {
       title={
         <>
           🔧 工具使用排行
-          <span style={{ fontWeight: 400, color: "var(--text-muted)", fontSize: 11 }}>累积 {fmt(totalCount)} 次 · {fmtMs(totalMs)}（按{sortBy === "count" ? "次数" : "时长"}排序）</span>
+          <span className="dash-subtle">累积 {fmt(totalCount)} 次 · {fmtMs(totalMs)}（按{sortBy === "count" ? "次数" : "时长"}排序）</span>
           <span style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
             <button type="button" className={"dash-seg" + (sortBy === "count" ? " on" : "")} onClick={() => setSortBy("count")}>次数</button>
             <button type="button" className={"dash-seg" + (sortBy === "time" ? " on" : "")} onClick={() => setSortBy("time")}>时长</button>
@@ -722,7 +722,7 @@ function ToolUsageRank({ usage }: { usage: ToolUsage[] }) {
         <Muted text="暂无工具调用记录（或旧数据无 per-call 耗时）。" />
       ) : (
         <>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "0 12px 6px", fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.4px", borderBottom: "1px solid var(--border-subtle)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "0 12px 6px", fontSize: "var(--text-2xs)", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.4px", borderBottom: "1px solid var(--border-subtle)" }}>
             <span style={{ width: 20, flexShrink: 0 }} />
             <span style={{ width: 160, flexShrink: 0 }}>工具</span>
             <span style={{ flex: 1 }} />
@@ -733,9 +733,9 @@ function ToolUsageRank({ usage }: { usage: ToolUsage[] }) {
           {sorted.map((u, i) => (
             <div key={u.name} className="dash-lrow" style={{ cursor: "default" }}>
               <span className={"dash-rank" + (i === 0 ? " top" : "")}>{i + 1}</span>
-              <span className="mono" style={{ width: 160, flexShrink: 0, color: "#06b6d4", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.name}</span>
-              <span style={{ flex: 1, height: 7, borderRadius: 5, background: "rgba(127,127,127,0.12)", overflow: "hidden" }}>
-                <span style={{ display: "block", height: "100%", width: `${((sortBy === "count" ? u.count : u.totalMs) / max) * 100}%`, background: "#06b6d4", opacity: 0.85, borderRadius: 5 }} />
+              <span className="mono" style={{ width: 160, flexShrink: 0, color: "var(--info)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.name}</span>
+              <span className="dash-bar-track">
+                <span style={{ display: "block", height: "100%", width: `${((sortBy === "count" ? u.count : u.totalMs) / max) * 100}%`, background: "var(--info)", opacity: 0.85, borderRadius: 5 }} />
               </span>
               <span className="mono" style={{ minWidth: 64, textAlign: "right", fontWeight: sortBy === "count" ? 700 : 400, color: sortBy === "count" ? "var(--text-primary)" : "var(--text-secondary)" }}>{fmt(u.count)} 次</span>
               <span className="mono" style={{ minWidth: 72, textAlign: "right", fontWeight: sortBy === "time" ? 700 : 400, color: sortBy === "time" ? "var(--text-primary)" : "var(--text-secondary)" }}>{fmtMs(u.totalMs)}</span>
@@ -779,9 +779,9 @@ function SessionCard({ session, open, onToggle, openTurns, toggleTurn, flash }: 
     <div id={"dash-sc-" + session.id} className={"dash-scard" + (open ? " open" : "") + (flash ? " flash" : "")}>
       <div className="dash-shead" onClick={onToggle}>
         <span className="dash-arw" style={{ transform: open ? "rotate(90deg)" : "none" }}>▶</span>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{session.title || "未命名会话"}</div>
-          <div className="mono" style={{ display: "flex", gap: 10, marginTop: 3, fontSize: 11, color: "var(--text-tertiary)", flexWrap: "wrap" }}>
+        <div className="dash-flex-main">
+          <div style={{ fontSize: "var(--text-md)", fontWeight: 600, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{session.title || "未命名会话"}</div>
+          <div className="mono" style={{ display: "flex", gap: 10, marginTop: 3, fontSize: "var(--text-xs)", color: "var(--text-tertiary)", flexWrap: "wrap" }}>
             <span style={{ color: colorForModel(session.model) }}>{session.model}</span>
             <span>{session.created_at.slice(5, 16)}</span>
             <span>{session.llm_calls} 次 LLM</span>
@@ -808,13 +808,13 @@ function SessionCard({ session, open, onToggle, openTurns, toggleTurn, flash }: 
               {(() => { const st = runStatusMeta(run.status); return (
               <div className="dash-runstrip">
                 <span className={"dash-pill " + st.pill} title={run.finishReason}>{st.icon} {st.label}</span>
-                <span className="mono" style={{ color: ACCENT, fontSize: 12 }}>{run.runId}</span>
-                <span className="mono" style={{ color: "var(--text-tertiary)", fontSize: 11 }}>{run.steps} steps · {fmtMs(run.durationMs)}</span>
+                <span className="mono" style={{ color: ACCENT, fontSize: "var(--text-sm)" }}>{run.runId}</span>
+                <span className="mono" style={{ color: "var(--text-tertiary)", fontSize: "var(--text-xs)" }}>{run.steps} steps · {fmtMs(run.durationMs)}</span>
                 {/* D1 range 对齐：run 级 net/tokens/命中率 = 对话后 footer 单 run 数字，供逐字段核对 */}
-                <span className="mono" style={{ color: ACCENT, fontSize: 11 }} title="本 run 输入/输出 token（与对话后 footer 单 run 数字对齐）">in {fmt(run.inTokens)} · out {fmt(run.outTokens)}</span>
-                <span className="mono" style={{ color: "var(--warning)", fontSize: 11 }} title="本 run 实际净费用 = Σ 各步 net_cost_usd（与对话后 footer 逐字段相等，D1）">净 {fmtCost(run.net)}</span>
+                <span className="mono" style={{ color: ACCENT, fontSize: "var(--text-xs)" }} title="本 run 输入/输出 token（与对话后 footer 单 run 数字对齐）">in {fmt(run.inTokens)} · out {fmt(run.outTokens)}</span>
+                <span className="mono" style={{ color: "var(--warning)", fontSize: "var(--text-xs)" }} title="本 run 实际净费用 = Σ 各步 net_cost_usd（与对话后 footer 逐字段相等，D1）">净 {fmtCost(run.net)}</span>
                 <span className={"dash-pill " + (run.cacheHit > 0 ? "acc" : "mut")} title="run 级命中率 = 原始 cached / 原始 In（唯一口径，与 footer 同公式，R2）">🎯 run 命中率 {run.cacheHit.toFixed(1)}%</span>
-                <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--text-muted)" }}>
+                <span style={{ marginLeft: "auto", fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>
                   {runs.length > 1 ? `run ${ri + 1} / ${runs.length} · 会话总计为 ${runs.length} run 合计` : "本会话 1 个 run（多轮对话 = 多个 run，各自一条链路）"}
                 </span>
               </div>
@@ -822,9 +822,9 @@ function SessionCard({ session, open, onToggle, openTurns, toggleTurn, flash }: 
               {/* 结束原因横幅：仅真正的错误用红色告警；暂停（cancelled）用中性琥珀色说明，不吓人 */}
               {run.status !== "ok" && run.finishReason && (() => { const err = run.status === "error"; return (
                 <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "0 4px 10px", padding: "7px 11px", borderRadius: 8,
-                  background: err ? "rgba(239,68,68,0.08)" : "rgba(245,158,11,0.08)",
+                  background: err ? "color-mix(in srgb, var(--danger) 8%, transparent)" : "color-mix(in srgb, var(--warning) 8%, transparent)",
                   border: err ? "1px solid rgba(239,68,68,0.22)" : "1px solid rgba(245,158,11,0.22)",
-                  fontSize: 11.5, color: err ? "var(--danger)" : "var(--warning)" }}>
+                  fontSize: "var(--text-sm)", color: err ? "var(--danger)" : "var(--warning)" }}>
                   <span>{err ? "⚠️ 失败原因" : "⏸ 结束原因"}</span>
                   <span style={{ color: "var(--text-secondary)", fontFamily: "var(--font-mono)" }}>{run.finishReason}</span>
                 </div>
@@ -855,10 +855,10 @@ function TurnRow({ turn, runTurns, idxInRun, open, onToggle }: {
     <div className="dash-turnwrap">
       <div className={"dash-turn" + (open ? " open" : "")} onClick={onToggle}>
         <span style={{ width: 6, height: 6, borderRadius: "50%", background: rm.color, flexShrink: 0 }} />
-        <span style={{ fontSize: 12, fontWeight: 600, color: rm.color, flexShrink: 0, minWidth: 62 }}>T{turn.turn}·{rm.label}</span>
-        <span style={{ flex: 1, fontSize: 12, color: "var(--text-tertiary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{summary.slice(0, 72)}</span>
+        <span style={{ fontSize: "var(--text-sm)", fontWeight: 600, color: rm.color, flexShrink: 0, minWidth: 62 }}>T{turn.turn}·{rm.label}</span>
+        <span style={{ flex: 1, fontSize: "var(--text-sm)", color: "var(--text-tertiary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{summary.slice(0, 72)}</span>
         {turn.llm ? (
-          <span className="mono" style={{ display: "flex", gap: 11, flexShrink: 0, fontSize: 11, alignItems: "center" }}>
+          <span className="mono" style={{ display: "flex", gap: 11, flexShrink: 0, fontSize: "var(--text-xs)", alignItems: "center" }}>
             <span style={{ color: ACCENT }}>in {fmt(turn.llm.input_tokens)}</span>
             <span style={{ color: "var(--success)" }}>out {fmt(turn.llm.output_tokens)}</span>
             <span style={{ color: "var(--warning)" }} title={`实际净费用 · 全价 ${fmtCost(callFullCost(turn.llm))}${(turn.llm.cache_saved_usd ?? 0) > 0 ? ` · 命中省 ${fmtCost(turn.llm.cache_saved_usd ?? 0)}` : ""}`}>{fmtCost(callNetCost(turn.llm))}</span>
@@ -866,7 +866,7 @@ function TurnRow({ turn, runTurns, idxInRun, open, onToggle }: {
             {turn.llm.cache_hit_ratio != null && <span style={{ color: ACCENT }}>🎯 {turn.llm.cache_hit_ratio.toFixed(1)}%</span>}
           </span>
         ) : (
-          <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>{turn.role === "tool" ? "工具返回" : "用户输入"}</span>
+          <span style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", flexShrink: 0 }}>{turn.role === "tool" ? "工具返回" : "用户输入"}</span>
         )}
         <span className="dash-tchev" style={{ transform: open ? "rotate(90deg)" : "none" }}>›</span>
       </div>
@@ -878,10 +878,10 @@ function TurnRow({ turn, runTurns, idxInRun, open, onToggle }: {
               {ctx && <CtxBlock msgs={ctx} />}
               {turn.reasoning && <Block label="🧠 推理 reasoning" color={ACCENT}>{turn.reasoning}</Block>}
               {turn.tool_calls?.map((tc, i) => (
-                <Block key={i} label={"🔧 工具调用 · " + tc.name} color="#06b6d4">{JSON.stringify(tc.args, null, 2)}</Block>
+                <Block key={i} label={"🔧 工具调用 · " + tc.name} color="var(--info)">{JSON.stringify(tc.args, null, 2)}</Block>
               ))}
               {turn.content && <Block label="💬 回复" mono={false} color="var(--success)">{turn.content}</Block>}
-              {turn.llm && <div className="mono" style={{ fontSize: 10, color: "var(--text-muted)" }}>{turn.llm.model} · step {turn.llm.step} · {fmtLocalTime(turn.timestamp)}</div>}
+              {turn.llm && <div className="mono" style={{ fontSize: "var(--text-2xs)", color: "var(--text-muted)" }}>{turn.llm.model} · step {turn.llm.step} · {fmtLocalTime(turn.timestamp)}</div>}
             </>
           )}
           {turn.role === "tool" && <Block label="📤 工具结果">{turn.content}</Block>}
@@ -897,11 +897,11 @@ function Waterfall({ run, session }: { run: ReturnType<typeof groupRuns>[number]
   const total = spans[0]?.durationMs || 1;
   const anyUnknown = spans.some((s) => s.kind === "tool" && s.unknown);
   // over = 超 p99 的「慢调用」高亮，用琥珀色（warning）——不是错误，不用红色（红仅表失败）。
-  const color = (s: (typeof spans)[number]) => s.over ? "var(--warning)" : s.kind === "tool" ? "#06b6d4" : s.kind === "run" ? "rgba(127,127,127,0.4)" : ACCENT;
+  const color = (s: (typeof spans)[number]) => s.over ? "var(--warning)" : s.kind === "tool" ? "var(--info)" : s.kind === "run" ? "rgba(127,127,127,0.4)" : ACCENT;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
       {spans.map((s, i) => (
-        <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, height: 28, fontSize: 11 }}>
+        <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, height: 28, fontSize: "var(--text-xs)" }}>
           <span className="mono" style={{ width: 150, flexShrink: 0, color: s.kind === "run" ? "var(--text-secondary)" : "var(--text-tertiary)", paddingLeft: s.kind === "tool" ? 26 : s.kind === "llm" ? 14 : 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.label}</span>
           <span style={{ flex: 1, position: "relative", height: "100%" }}>
             {s.unknown ? (
@@ -909,19 +909,19 @@ function Waterfall({ run, session }: { run: ReturnType<typeof groupRuns>[number]
               <span title={s.meta} style={{
                 position: "absolute", top: 5, height: 18, left: `${(s.startMs / total) * 100}%`,
                 padding: "0 8px", borderRadius: 5, border: "1px dashed var(--text-muted)", background: "transparent",
-                display: "flex", alignItems: "center", color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 10, whiteSpace: "nowrap",
+                display: "flex", alignItems: "center", color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: "var(--text-2xs)", whiteSpace: "nowrap",
               }}>耗时未知</span>
             ) : (
               <span title={s.meta} style={{
                 position: "absolute", top: 5, height: 18, left: `${(s.startMs / total) * 100}%`,
                 width: `${Math.max((s.durationMs / total) * 100, 2)}%`, background: color(s), opacity: s.kind === "run" ? 0.5 : 0.9,
-                borderRadius: 5, display: "flex", alignItems: "center", padding: "0 7px", color: "#fff", fontFamily: "var(--font-mono)", fontSize: 10, whiteSpace: "nowrap",
+                borderRadius: 5, display: "flex", alignItems: "center", padding: "0 7px", color: "var(--text-on-accent)", fontFamily: "var(--font-mono)", fontSize: "var(--text-2xs)", whiteSpace: "nowrap",
               }}>{s.durationMs / total > 0.12 ? fmtMs(s.durationMs) : ""}{s.over ? " 🐢慢" : ""}</span>
             )}
           </span>
         </div>
       ))}
-      {anyUnknown && <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 4 }}>💡 虚线标记 = 该工具调用无 trace span，无法获取真实耗时（不以均值伪造）</div>}
+      {anyUnknown && <div style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", marginTop: 4 }}>💡 虚线标记 = 该工具调用无 trace span，无法获取真实耗时（不以均值伪造）</div>}
     </div>
   );
 }
@@ -975,7 +975,7 @@ function LineTrend({ data, lines, fmtVal }: {
   const gid = (i: number) => `dash-trend-fill-${i}`;
   return (
     <div>
-      <div style={{ display: "flex", gap: 16, marginBottom: 8, fontSize: 11 }}>
+      <div style={{ display: "flex", gap: 16, marginBottom: 8, fontSize: "var(--text-xs)" }}>
         {lines.map((l) => <Legend key={l.label} color={l.color} label={l.label} />)}
         <span style={{ marginLeft: "auto", color: "var(--text-muted)" }}>峰值 {fmtVal(max)}</span>
       </div>
@@ -1010,15 +1010,15 @@ function LineTrend({ data, lines, fmtVal }: {
 }
 
 function CtxBlock({ msgs }: { msgs: ReturnType<typeof buildContext> }) {
-  const col: Record<string, string> = { system: "var(--text-muted)", user: ACCENT, assistant: "var(--success)", tool: "#06b6d4" };
+  const col: Record<string, string> = { system: "var(--text-muted)", user: ACCENT, assistant: "var(--success)", tool: "var(--info)" };
   return (
     <div className="dash-tblk ctx">
       <div className="dash-bl">📥 发往模型的上下文 · {msgs.length} 条消息（完整原文 · system 不重复）</div>
       <div className="dash-bc" style={{ fontFamily: "inherit" }}>
         {msgs.map((m, i) => (
           <div key={i} style={{ display: "flex", gap: 8, padding: "5px 0", borderTop: i ? "1px dashed var(--border-subtle)" : "none", alignItems: "baseline" }}>
-            <span className="mono" style={{ flexShrink: 0, fontSize: 10, padding: "1px 6px", borderRadius: 4, background: "rgba(127,127,127,0.1)", color: col[m.role] }}>{m.role}</span>
-            <span style={{ flex: 1, fontSize: 11, color: m.isSystemRef ? "var(--text-muted)" : "var(--text-secondary)" }}>
+            <span className="mono" style={{ flexShrink: 0, fontSize: "var(--text-2xs)", padding: "1px 6px", borderRadius: 4, background: "var(--bg-track)", color: col[m.role] }}>{m.role}</span>
+            <span style={{ flex: 1, fontSize: "var(--text-xs)", color: m.isSystemRef ? "var(--text-muted)" : "var(--text-secondary)" }}>
               {m.isSystemRef ? "共享系统提示 · 见会话顶部 ⚙️（此处不重复）" : m.text}
             </span>
           </div>
@@ -1040,28 +1040,28 @@ function Block({ label, children, mono = true, color }: { label: string; childre
 function Kpi({ label, value, sub, color, clickable, onClick }: { label: string; value: string; sub: string; color?: string; clickable?: boolean; onClick?: () => void }) {
   return (
     <div className={"dash-kpi" + (clickable ? " clk" : "")} onClick={onClick}>
-      <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>{label}</div>
-      <div className="mono" style={{ fontSize: 24, fontWeight: 700, margin: "4px 0 3px", color: color || "var(--text-primary)" }}>{value}</div>
-      <div style={{ fontSize: 10, color: "var(--text-tertiary)" }}>{sub}</div>
+      <div style={{ fontSize: "var(--text-2xs)", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>{label}</div>
+      <div className="mono" style={{ fontSize: "var(--text-3xl)", fontWeight: 700, margin: "4px 0 3px", color: color || "var(--text-primary)" }}>{value}</div>
+      <div style={{ fontSize: "var(--text-2xs)", color: "var(--text-tertiary)" }}>{sub}</div>
     </div>
   );
 }
 function Panel({ title, children, style }: { title: React.ReactNode; children: React.ReactNode; style?: React.CSSProperties }) {
   return (
     <div style={{ background: "var(--bg-panel)", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-md)", padding: 16, ...style }}>
-      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-tertiary)", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>{title}</div>
+      <div style={{ fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--text-tertiary)", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>{title}</div>
       {children}
     </div>
   );
 }
 function BigStat({ value, color }: { value: string; color: string }) {
-  return <div className="mono" style={{ fontSize: 26, fontWeight: 700, textAlign: "center", color, padding: "6px 0" }}>{value}</div>;
+  return <div className="mono" style={{ fontSize: "var(--text-3xl)", fontWeight: 700, textAlign: "center", color, padding: "6px 0" }}>{value}</div>;
 }
 function Stat({ val, lbl, color }: { val: string; lbl: string; color?: string }) {
   return (
     <div style={{ minWidth: 56 }}>
-      <div className="mono" style={{ fontSize: 15, fontWeight: 700, color: color || "var(--text-primary)" }}>{val}</div>
-      <div style={{ fontSize: 9, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.3px" }}>{lbl}</div>
+      <div className="mono" style={{ fontSize: "var(--text-md)", fontWeight: 700, color: color || "var(--text-primary)" }}>{val}</div>
+      <div style={{ fontSize: "var(--text-2xs)", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.3px" }}>{lbl}</div>
     </div>
   );
 }
@@ -1073,9 +1073,9 @@ function DonutLegend({ color, label, value, pct }: { color: string; label: strin
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
       <span style={{ width: 11, height: 11, borderRadius: 3, background: color, flexShrink: 0 }} />
-      <span style={{ flex: 1, fontSize: 12, color: "var(--text-secondary)" }}>{label}</span>
-      <span className="mono" style={{ fontSize: 12, fontWeight: 700, color }}>{value}</span>
-      <span className="mono" style={{ fontSize: 11, color: "var(--text-tertiary)", minWidth: 42, textAlign: "right" }}>{pct.toFixed(0)}%</span>
+      <span style={{ flex: 1, fontSize: "var(--text-sm)", color: "var(--text-secondary)" }}>{label}</span>
+      <span className="mono" style={{ fontSize: "var(--text-sm)", fontWeight: 700, color }}>{value}</span>
+      <span className="mono" style={{ fontSize: "var(--text-xs)", color: "var(--text-tertiary)", minWidth: 42, textAlign: "right" }}>{pct.toFixed(0)}%</span>
     </div>
   );
 }
@@ -1083,74 +1083,11 @@ function QuickRange({ label, onClick }: { label: string; onClick: () => void }) 
   return <button type="button" onClick={onClick} className="dash-qr">{label}</button>;
 }
 function Empty({ text }: { text: string }) {
-  return <div style={{ padding: "80px 0", textAlign: "center", color: "var(--text-muted)", fontSize: 14 }}>{text}</div>;
+  return <div style={{ padding: "80px 0", textAlign: "center", color: "var(--text-muted)", fontSize: "var(--text-md)" }}>{text}</div>;
 }
 function Muted({ text }: { text: string }) {
-  return <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{text}</div>;
+  return <div style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)" }}>{text}</div>;
 }
 
 /* ── 局部样式（scoped class，避免污染全局）── */
-const DASH_CSS = `
-.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
-.dash-badge{display:inline-flex;align-items:center;height:26px;padding:0 11px;border-radius:20px;font-size:11.5px;font-weight:600;font-family:var(--font-mono)}
-.dash-date{background:var(--bg-elevated);border:1px solid var(--border-subtle);border-radius:8px;color:var(--text-secondary);font-size:12px;padding:5px 8px;font-family:var(--font-mono);color-scheme:dark;outline:none}
-.dash-qr{font-size:11px;padding:5px 10px;border-radius:8px;cursor:pointer;background:var(--bg-elevated);color:var(--text-tertiary);border:1px solid var(--border-subtle)}
-.dash-qr:hover{color:var(--text-secondary)}
-.dash-seg{font-size:11px;font-weight:600;padding:4px 12px;border-radius:7px;cursor:pointer;background:var(--bg-elevated);color:var(--text-tertiary);border:1px solid var(--border-subtle);font-family:var(--font-mono)}
-.dash-seg:hover{color:var(--text-secondary)}
-.dash-seg.on{background:rgba(6,182,212,0.14);color:#06b6d4;border-color:rgba(6,182,212,0.4)}
-.dash-tab{display:flex;align-items:center;gap:8px;padding:9px 20px 11px;font-size:13px;font-weight:550;white-space:nowrap;color:var(--text-tertiary);cursor:pointer;border-radius:9px 9px 0 0;position:relative;user-select:none}
-.dash-tab:hover{color:var(--text-secondary)}
-.dash-tab.on{color:var(--text-primary)}
-.dash-tab.on::after{content:"";position:absolute;left:16px;right:16px;bottom:-1px;height:2px;border-radius:2px;background:linear-gradient(90deg,var(--accent-soft),transparent)}
-.dash-cnt{font-size:10px;padding:1px 6px;border-radius:20px;background:rgba(127,127,127,0.12);color:var(--text-tertiary);font-family:var(--font-mono);flex-shrink:0}
-.dash-tab.on .dash-cnt{background:rgba(124,58,237,0.15);color:var(--accent-soft)}
-.dash-kpi{background:var(--bg-panel);border:1px solid var(--border-subtle);border-radius:var(--radius-md);padding:14px;position:relative}
-.dash-kpi.clk{cursor:pointer;transition:transform var(--duration-fast),border-color var(--duration-fast)}
-.dash-kpi.clk:hover{border-color:rgba(124,58,237,0.4);transform:translateY(-2px)}
-.dash-alert{display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:var(--radius-md);margin-bottom:14px;background:linear-gradient(90deg,rgba(245,158,11,0.12),transparent 70%);border:1px solid rgba(245,158,11,0.28)}
-.dash-alert-act{margin-left:auto;font-size:12px;color:var(--warning);cursor:pointer;border:1px solid rgba(245,158,11,0.3);padding:5px 11px;border-radius:7px}
-.dash-alert-act:hover{background:rgba(245,158,11,0.14)}
-.dash-sect{font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-tertiary);margin:6px 0 12px}
-.dash-deg-row{display:grid;grid-template-columns:74px minmax(0,1.5fr) 96px minmax(0,1.4fr) 62px;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border-subtle)}
-.dash-deg-row:last-child{border-bottom:none}
-.dash-pill{display:inline-flex;align-items:center;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;font-family:var(--font-mono)}
-.dash-pill.ok,.dash-pill.acc{background:rgba(124,58,237,0.13);color:var(--accent-soft)}
-.dash-pill.ok{background:rgba(34,197,94,0.12);color:var(--success)}
-.dash-pill.danger{background:rgba(239,68,68,0.12);color:var(--danger)}
-.dash-pill.warn{background:rgba(245,158,11,0.12);color:var(--warning)}
-.dash-pill.mut{background:rgba(127,127,127,0.1);color:var(--text-tertiary)}
-.dash-lrow{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:9px;cursor:pointer;border:1px solid transparent;transition:background var(--duration-fast),border-color var(--duration-fast)}
-.dash-lrow:hover{background:var(--bg-elevated);border-color:var(--border-subtle)}
-.dash-rank{font-family:var(--font-mono);font-size:12px;color:var(--text-muted);width:20px;text-align:center;flex-shrink:0}
-.dash-rank.top{color:var(--danger);font-weight:700}
-.dash-go{color:var(--text-muted);font-size:15px;flex-shrink:0;transition:transform var(--duration-fast)}
-.dash-lrow:hover .dash-go{color:var(--accent-soft);transform:translateX(2px)}
-.dash-scard{background:var(--bg-panel);border:1px solid var(--border-subtle);border-radius:var(--radius-md);margin-bottom:11px;overflow:hidden;transition:border-color var(--duration-fast)}
-.dash-scard.open{border-color:rgba(124,58,237,0.3)}
-.dash-scard.flash{animation:dashFlash 1.4s ease}
-@keyframes dashFlash{0%,100%{box-shadow:0 0 0 0 transparent}30%{box-shadow:0 0 0 3px rgba(124,58,237,0.4)}}
-.dash-shead{display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer;user-select:none}
-.dash-arw{color:var(--text-muted);font-size:11px;transition:transform var(--duration-fast);flex-shrink:0}
-.dash-runstrip{display:flex;align-items:center;gap:10px;padding:8px 4px 10px}
-.dash-wf-embed{background:rgba(127,127,127,0.02);border:1px solid var(--border-subtle);border-radius:10px;padding:12px 14px;margin-bottom:12px}
-.dash-tdiv{font-size:11px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:var(--text-tertiary);margin:6px 0 8px}
-.dash-sysfold{margin:2px 4px 12px;border:1px solid var(--border-subtle);border-radius:10px;background:rgba(127,127,127,0.02);overflow:hidden}
-.dash-sysfold summary{cursor:pointer;padding:9px 13px;font-size:11.5px;color:var(--text-tertiary);user-select:none;list-style:none}
-.dash-sysfold summary::-webkit-details-marker{display:none}
-.dash-sysfold summary::before{content:"▸ ";color:var(--text-muted)}
-.dash-sysfold[open] summary::before{content:"▾ ";color:var(--accent-soft)}
-.dash-sysfold[open] summary{color:var(--accent-soft);border-bottom:1px solid var(--border-subtle)}
-.dash-sysbody{padding:11px 14px;font-family:var(--font-mono);font-size:11.5px;color:var(--text-secondary);white-space:pre-wrap;line-height:1.65}
-.dash-turnwrap{margin-bottom:6px}
-.dash-turn{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--bg-elevated);border:1px solid var(--border-subtle);border-radius:9px;cursor:pointer;user-select:none;transition:border-color var(--duration-fast)}
-.dash-turn:hover{border-color:rgba(124,58,237,0.25)}
-.dash-turn.open{border-radius:9px 9px 0 0;border-color:rgba(124,58,237,0.3)}
-.dash-tchev{color:var(--text-muted);font-size:14px;flex-shrink:0;transition:transform var(--duration-fast)}
-.dash-tdetails{display:flex;flex-direction:column;gap:7px;background:var(--bg-root);border:1px solid rgba(124,58,237,0.3);border-top:none;border-radius:0 0 9px 9px;padding:10px 11px 12px}
-.dash-tblk{background:rgba(0,0,0,0.18);border:1px solid var(--border-subtle);border-radius:8px;overflow:hidden}
-.dash-tblk.ctx{border-color:rgba(124,58,237,0.22)}
-.dash-bl{padding:5px 11px;font-size:10px;font-weight:600;letter-spacing:0.03em;border-bottom:1px solid var(--border-subtle);background:rgba(127,127,127,0.03)}
-.dash-tblk.ctx .dash-bl{background:rgba(124,58,237,0.1);color:var(--accent-soft)}
-.dash-bc{padding:9px 11px;font-size:11.5px;color:var(--text-secondary);line-height:1.65;white-space:pre-wrap;max-height:220px;overflow:auto}
-`;
+

@@ -34,6 +34,7 @@ import { useChatStore, categorizeTool } from "../store/chatStore";
 import { useTaskSchedulerStore } from "../store/taskSchedulerStore";
 import { useAgentTaskStore } from "../store/agentTaskStore";
 import { useSkillStore } from "../store/skillStore";
+import { toast } from "../components/ui";
 import { useSearchStore } from "../store/searchStore";
 import { useSessionConcurrencyStore } from "../store/sessionConcurrencyStore";
 import { useFileStore } from "../store/fileStore";
@@ -749,11 +750,7 @@ export function BackendProvider({ children }: { children: React.ReactNode }) {
         invoke("request_skill_list", {
           msgId: crypto.randomUUID(),
         }).catch((e) => console.error("[ipc] auto-refresh skill list failed:", e));
-        useSkillStore.getState().setToast({
-          message: "已删除",
-          highlight: skillName,
-          type: "success",
-        });
+        toast.success("已删除", skillName);
         break;
       }
 
@@ -778,27 +775,16 @@ export function BackendProvider({ children }: { children: React.ReactNode }) {
           invoke("request_skill_list", {
             msgId: crypto.randomUUID(),
           }).catch((e) => console.error("[ipc] auto-refresh after import failed:", e));
-          useSkillStore.getState().setToast({
-            message: "导入成功",
-            highlight: importedMsg.skill_name,
-            type: "success",
-          });
+          toast.success("导入成功", importedMsg.skill_name);
         } else {
-          useSkillStore.getState().setToast({
-            message: `导入失败: ${importedMsg.error ?? "未知错误"}`,
-            type: "error",
-          });
+          toast.error(`导入失败: ${importedMsg.error ?? "未知错误"}`);
         }
         break;
       }
 
       case "SKILL_EXPORTED": {
         const exportedMsg = msg as SkillExportedMsg;
-        useSkillStore.getState().setToast({
-          message: "导出成功",
-          highlight: exportedMsg.file_path,
-          type: "success",
-        });
+        toast.success("导出成功", exportedMsg.file_path);
         break;
       }
 

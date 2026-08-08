@@ -47,3 +47,44 @@ jobs:
       - name: Robustness advisories (ROB003/ROB004, non-blocking)
         if: always()
         run: python scripts/lint_robustness.py --baseline
+
+  desktop-ui:
+    name: desktop UI consistency (stylelint + lint:ui)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pandapal_desktop
+    steps:
+      - uses: actions/checkout@v4
+
+      # 只有桌面端文件变更才执行后续步骤，避免 Python-only PR 浪费分钟数
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            desktop:
+              - "pandapal_desktop/**"
+
+      - uses: pnpm/action-setup@v4
+        if: steps.changes.outputs.desktop == 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.changes.outputs.desktop == 'true'
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: pandapal_desktop/pnpm-lock.yaml
+
+      - name: Install deps
+        if: steps.changes.outputs.desktop == 'true'
+        run: pnpm install --frozen-lockfile
+
+      # stylelint：CSS 内禁 hex 字面量 / 禁非 token font-size（error 级，规则在 .stylelintrc.json）
+      - name: stylelint (CSS hard rules)
+        if: steps.changes.outputs.desktop == 'true'
+        run: pnpm lint:css
+
+      # 自建脚本：TSX style={{}} 块内禁颜色/字号字面量（scripts/lint-ui.mjs）
+      - name: lint:ui (TSX inline-style hard rules)
+        if: steps.changes.outputs.desktop == 'true'
+        run: pnpm lint:ui

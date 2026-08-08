@@ -78,12 +78,12 @@ export function ImageRenderer({ path }: ImageRendererProps) {
         flexShrink: 0,
       }}>
         <button onClick={zoomOut} style={btn} title="缩小">−</button>
-        <span style={{ fontSize: 11, color: "var(--text-tertiary)", minWidth: 44, textAlign: "center" }}>
+        <span style={{ fontSize: "var(--text-xs)", color: "var(--text-tertiary)", minWidth: 44, textAlign: "center" }}>
           {Math.round(zoom * 100)}%
         </span>
         <button onClick={zoomIn} style={btn} title="放大">+</button>
         <button onClick={reset} style={{ ...btn, minWidth: 0 }} title="重置">1:1</button>
-        <span style={{ fontSize: 10, color: "var(--text-muted)", opacity: 0.6, marginLeft: 4 }}>
+        <span style={{ fontSize: "var(--text-2xs)", color: "var(--text-muted)", opacity: 0.6, marginLeft: 4 }}>
           Ctrl/⌘ + 滚轮缩放
         </span>
       </div>
@@ -97,7 +97,7 @@ export function ImageRenderer({ path }: ImageRendererProps) {
         }}
       >
         {error ? (
-          <span style={{ color: "var(--danger)", fontSize: 13 }}>图片加载失败</span>
+          <span style={{ color: "var(--danger)", fontSize: "var(--text-base)" }}>图片加载失败</span>
         ) : url ? (
           <img
             src={url}
@@ -110,7 +110,7 @@ export function ImageRenderer({ path }: ImageRendererProps) {
             onError={() => setError(true)}
           />
         ) : (
-          <span style={{ color: "var(--text-muted)", fontSize: 13 }}>加载中...</span>
+          <span style={{ color: "var(--text-muted)", fontSize: "var(--text-base)" }}>加载中...</span>
         )}
       </div>
     </div>

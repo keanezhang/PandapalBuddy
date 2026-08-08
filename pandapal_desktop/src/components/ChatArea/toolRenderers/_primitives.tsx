@@ -93,7 +93,7 @@ export function CollapsibleCard({
           display: "flex", alignItems: "center", gap: "var(--space-2)",
           padding: "6px var(--space-3)",
           cursor: expandable ? "pointer" : "default",
-          fontSize: 12, lineHeight: 1.4,
+          fontSize: "var(--text-12)", lineHeight: 1.4,
         }}
       >
         {status === "running" ? (
@@ -105,7 +105,7 @@ export function CollapsibleCard({
             display: "inline-block", flexShrink: 0,
           }} />
         ) : (
-          <span style={{ color: sm.color, fontSize: 11, flexShrink: 0, width: 12, textAlign: "center" }}>{sm.icon}</span>
+          <span style={{ color: sm.color, fontSize: "var(--text-11)", flexShrink: 0, width: 12, textAlign: "center" }}>{sm.icon}</span>
         )}
         <span style={{ flexShrink: 0 }}>{icon}</span>
         <span style={{ fontWeight: 600, color: "var(--text-primary)", flexShrink: 0 }}>{name}</span>
@@ -113,15 +113,15 @@ export function CollapsibleCard({
           <span style={{
             color: "var(--text-tertiary)", overflow: "hidden",
             textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0,
-            fontFamily: "var(--font-mono)", fontSize: 11,
+            fontFamily: "var(--font-mono)", fontSize: "var(--text-11)",
           }}>
             {summary}
           </span>
         )}
         <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "var(--space-2)", flexShrink: 0 }}>
           {meta}
-          {dur && <span style={{ color: "var(--text-muted)", fontSize: 10 }}>{dur}</span>}
-          {expandable && <span style={{ color: "var(--text-muted)", fontSize: 10 }}>{expanded ? "▾" : "▸"}</span>}
+          {dur && <span style={{ color: "var(--text-muted)", fontSize: "var(--text-10)" }}>{dur}</span>}
+          {expandable && <span style={{ color: "var(--text-muted)", fontSize: "var(--text-10)" }}>{expanded ? "▾" : "▸"}</span>}
         </span>
       </div>
 
@@ -146,13 +146,13 @@ export function IOBlock({ label, text, tone = "default", maxHeight = 280 }: {
   return (
     <div style={{ padding: "var(--space-2) var(--space-3)" }}>
       <div style={{
-        fontSize: 9, fontWeight: 700, letterSpacing: 0.5,
+        fontSize: "var(--text-2xs)", fontWeight: 700, letterSpacing: 0.5,
         color: "var(--text-muted)", marginBottom: 4, fontFamily: "var(--font-mono)",
       }}>
         {label}
       </div>
       <pre style={{
-        margin: 0, fontFamily: "var(--font-mono)", fontSize: 11, lineHeight: 1.55,
+        margin: 0, fontFamily: "var(--font-mono)", fontSize: "var(--text-11)", lineHeight: 1.55,
         color: tone === "error" ? "var(--danger)" : "var(--text-secondary)",
         whiteSpace: "pre-wrap", wordBreak: "break-word",
         maxHeight, overflowY: "auto",
@@ -169,8 +169,8 @@ export function CodePreview({ code, maxHeight = 320 }: { code: string; maxHeight
   return (
     <pre style={{
       margin: 0, padding: "var(--space-2) var(--space-3)",
-      background: "#121212", color: "rgba(255,255,255,0.8)",
-      fontFamily: "var(--font-mono)", fontSize: 11, lineHeight: 1.55,
+      background: "var(--color-code-bg)", color: "var(--color-code-text)",
+      fontFamily: "var(--font-mono)", fontSize: "var(--text-11)", lineHeight: 1.55,
       overflow: "auto", maxHeight, whiteSpace: "pre",
     }}>
       <code>{code}</code>
@@ -204,8 +204,8 @@ function computeLineDiff(oldStr: string, newStr: string, context = 2): DiffRow[]
 
 const DIFF_STYLE: Record<DiffRow["type"], React.CSSProperties> = {
   ctx: { color: "var(--text-tertiary)" },
-  del: { color: "#F87171", background: "rgba(239,68,68,0.10)" },
-  add: { color: "#4ADE80", background: "rgba(34,197,94,0.10)" },
+  del: { color: "var(--diff-remove)", background: "color-mix(in srgb, var(--diff-remove) 10%, transparent)" },
+  add: { color: "var(--diff-add)", background: "color-mix(in srgb, var(--diff-add) 10%, transparent)" },
 };
 const DIFF_SIGN: Record<DiffRow["type"], string> = { ctx: " ", del: "-", add: "+" };
 
@@ -217,8 +217,8 @@ export function DiffView({ oldStr, newStr, maxHeight = 320 }: {
   const rows = computeLineDiff(oldStr, newStr);
   return (
     <div style={{
-      fontFamily: "var(--font-mono)", fontSize: 11, lineHeight: 1.5,
-      overflow: "auto", maxHeight, background: "#121212",
+      fontFamily: "var(--font-mono)", fontSize: "var(--text-11)", lineHeight: 1.5,
+      overflow: "auto", maxHeight, background: "var(--color-code-bg)",
     }}>
       {rows.map((r, i) => (
         <div key={i} style={{ ...DIFF_STYLE[r.type], padding: "0 var(--space-3)", whiteSpace: "pre" }}>

@@ -90,9 +90,9 @@ function nextTriggerText(cron: string): { text: string; isSoon: boolean } {
 const TRIGGER_ICONS: Record<string, string> = { recurring: "⏱", oneshot: "📌", event: "📡", manual: "👆" };
 const TRIGGER_LABELS: Record<string, string> = { recurring: "重复任务", oneshot: "单次任务", event: "事件触发", manual: "手动执行" };
 const TRIGGER_BADGE: Record<string, { bg: string; color: string }> = {
-  recurring: { bg: "rgba(124,58,237,0.12)", color: "var(--accent-soft)" },
-  oneshot: { bg: "rgba(234,179,8,0.12)", color: "var(--accent-2)" },
-  event: { bg: "rgba(59,130,246,0.12)", color: "#60A5FA" },
+  recurring: { bg: "color-mix(in srgb, var(--accent) 12%, transparent)", color: "var(--accent-soft)" },
+  oneshot: { bg: "color-mix(in srgb, var(--accent-2) 12%, transparent)", color: "var(--accent-2)" },
+  event: { bg: "color-mix(in srgb, var(--info) 12%, transparent)", color: "var(--info)" },
   manual: { bg: "rgba(255,255,255,0.06)", color: "var(--text-tertiary)" },
 };
 
@@ -132,28 +132,22 @@ export function TasksPage() {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", flex: 1, background: "var(--bg-root)", overflow: "hidden" }}>
+    <div className="page-root">
       {/* 标题行 */}
-      <div style={{
-        padding: "12px 24px 10px",
-        background: "linear-gradient(135deg, rgba(234,179,8,0.06) 0%, rgba(249,115,22,0.03) 50%, rgba(234,179,8,0.02) 100%)",
-        borderBottom: "1px solid var(--border-subtle)",
-        display: "flex", alignItems: "center", gap: 14,
-        flexShrink: 0,
-      }}>
+      <div className="page-header page-header--gold">
         <div style={{ flex: 1 }}>
-          <h1 style={{ fontSize: 22, fontWeight: 600, color: "var(--text-primary)", display: "flex", alignItems: "center", gap: 10, margin: 0, letterSpacing: "-0.01em" }}>
-            <span style={{ width: 34, height: 34, fontSize: 17, display: "flex", alignItems: "center", justifyContent: "center" }}>📋</span>
+          <h1 className="page-title">
+            <span style={{ width: 34, height: 34, fontSize: "var(--text-lg)", display: "flex", alignItems: "center", justifyContent: "center" }}>📋</span>
             任务安排
             {validTasks.length > 0 && (
-              <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-tertiary)" }}>· {validTasks.length}</span>
+              <span style={{ fontSize: "var(--text-base)", fontWeight: 500, color: "var(--text-tertiary)" }}>· {validTasks.length}</span>
             )}
           </h1>
         </div>
         {validTasks.length > 0 && (
           <button onClick={handleCreateTask} className="btn btn-sm" style={{
-            background: "rgba(234,179,8,0.10)", color: "var(--accent-2)",
-            border: "1px solid rgba(234,179,8,0.20)",
+            background: "color-mix(in srgb, var(--accent-2) 10%, transparent)", color: "var(--accent-2)",
+            border: "1px solid color-mix(in srgb, var(--accent-2) 20%, transparent)",
           }}>＋ 创建任务</button>
         )}
         {loading && <span className="skills-loading-dot" title="刷新中..." />}
@@ -171,12 +165,12 @@ export function TasksPage() {
           }}>
             <div style={{
               width: 64, height: 64, borderRadius: "var(--radius-lg)",
-              background: "linear-gradient(135deg, rgba(234,179,8,0.15), rgba(249,115,22,0.10))",
+              background: "linear-gradient(135deg, color-mix(in srgb, var(--accent-2) 15%, transparent), color-mix(in srgb, var(--warning) 10%, transparent))",
               display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 32, marginBottom: 20,
+              fontSize: "var(--icon-empty)", marginBottom: 20,
             }}>⏰</div>
-            <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)", marginBottom: 6 }}>还没有定时任务</div>
-            <div style={{ fontSize: 13, color: "var(--text-tertiary)", lineHeight: 1.7, marginBottom: 20, maxWidth: 260 }}>
+            <div style={{ fontSize: "var(--text-lg)", fontWeight: 600, color: "var(--text-primary)", marginBottom: 6 }}>还没有定时任务</div>
+            <div style={{ fontSize: "var(--text-base)", color: "var(--text-tertiary)", lineHeight: 1.7, marginBottom: 20, maxWidth: 260 }}>
               在聊天中对 Agent 说出你想定时做的事情，<br />AI 会自动为你创建定时任务
             </div>
             <div style={{
@@ -185,14 +179,14 @@ export function TasksPage() {
               padding: "var(--space-3) var(--space-4)", marginBottom: 24,
               width: "100%", maxWidth: 280, textAlign: "left",
             }}>
-              <div style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 10 }}>试试这样说</div>
+              <div style={{ fontSize: "var(--text-2xs)", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 10 }}>试试这样说</div>
               {["每天早上 8 点提醒我背单词", "每周五下午 5 点生成周报", "每天 18 点检查代码并推送"].map((tip) => (
-                <div key={tip} style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.7, padding: "4px 0", display: "flex", alignItems: "center", gap: 6 }}>
-                  <span style={{ color: "var(--text-muted)", fontSize: 11 }}>💬</span>{tip}
+                <div key={tip} style={{ fontSize: "var(--text-sm)", color: "var(--text-secondary)", lineHeight: 1.7, padding: "4px 0", display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ color: "var(--text-muted)", fontSize: "var(--text-xs)" }}>💬</span>{tip}
                 </div>
               ))}
             </div>
-            <button onClick={handleCreateTask} className="btn btn-primary" style={{ fontSize: 13, fontWeight: 600, padding: "10px 28px", borderRadius: "var(--radius-md)" }}>
+            <button onClick={handleCreateTask} className="btn btn-primary" style={{ fontSize: "var(--text-base)", fontWeight: 600, padding: "10px 28px", borderRadius: "var(--radius-md)" }}>
               💬 去创建任务
             </button>
           </div>
@@ -243,7 +237,7 @@ function TaskCard({
   return (
     <div style={{
       background: "var(--bg-elevated)",
-      border: `1px solid ${expanded ? "rgba(124,58,237,0.25)" : "var(--border-subtle)"}`,
+      border: `1px solid ${expanded ? "color-mix(in srgb, var(--accent) 25%, transparent)" : "var(--border-subtle)"}`,
       borderRadius: "var(--radius-md)",
       overflow: "hidden",
       transition: "border-color var(--duration-fast)",
@@ -255,14 +249,14 @@ function TaskCard({
       }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
           <span className="skill-card-icon icon-amber" style={{
-            width: 40, height: 40, fontSize: 20, borderRadius: "var(--radius-md)", flexShrink: 0,
+            width: 40, height: 40, fontSize: "var(--text-2xl)", borderRadius: "var(--radius-md)", flexShrink: 0,
           }}>
             {TRIGGER_ICONS[task.trigger_type] || "⏰"}
           </span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <h2 style={{
-                fontSize: 15, fontWeight: 600, color: "var(--text-primary)", margin: 0,
+                fontSize: "var(--text-md)", fontWeight: 600, color: "var(--text-primary)", margin: 0,
                 letterSpacing: "-0.01em", overflow: "hidden", textOverflow: "ellipsis",
               }}>
                 {task.name}
@@ -274,7 +268,7 @@ function TaskCard({
           </div>
           <StatusBadge task={task} />
           <span style={{
-            color: "var(--text-muted)", fontSize: 18, lineHeight: 1,
+            color: "var(--text-muted)", fontSize: "var(--text-xl)", lineHeight: 1,
             transform: expanded ? "rotate(90deg)" : "none",
             transition: "transform var(--duration-fast)", flexShrink: 0, alignSelf: "center",
           }}>›</span>
@@ -285,12 +279,12 @@ function TaskCard({
           <div style={{
             display: "inline-flex", alignItems: "center", gap: 8, alignSelf: "flex-start",
             padding: "5px 12px",
-            background: nt.isSoon ? "rgba(124,58,237,0.08)" : "rgba(255,255,255,0.03)",
+            background: nt.isSoon ? "var(--bg-selected)" : "var(--bg-card-subtle)",
             borderRadius: "var(--radius-sm)",
-            border: `1px solid ${nt.isSoon ? "rgba(124,58,237,0.20)" : "var(--border-subtle)"}`,
+            border: `1px solid ${nt.isSoon ? "color-mix(in srgb, var(--accent) 20%, transparent)" : "var(--border-subtle)"}`,
           }}>
-            <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>提醒 @</span>
-            <span style={{ fontSize: 14, fontWeight: 700, color: nt.isSoon ? "var(--accent)" : "var(--text-primary)" }}>
+            <span style={{ fontSize: "var(--text-sm)", color: "var(--text-tertiary)" }}>提醒 @</span>
+            <span style={{ fontSize: "var(--text-md)", fontWeight: 700, color: nt.isSoon ? "var(--accent)" : "var(--text-primary)" }}>
               {nt.text}
             </span>
           </div>
@@ -302,20 +296,20 @@ function TaskCard({
         <div style={{ padding: "0 var(--space-4) var(--space-4)", borderTop: "1px solid var(--border-subtle)" }}>
           {/* 任务指令 */}
           <div style={{
-            background: "#121212",
+            background: "var(--color-code-bg)",
             border: "1px solid var(--border-subtle)",
             borderRadius: "var(--radius-md)", overflow: "hidden",
             marginTop: 16, marginBottom: 16,
           }}>
             <div style={{
               padding: "var(--space-2) var(--space-4)",
-              background: "rgba(255,255,255,0.02)",
+              background: "var(--bg-card-subtle)",
               borderBottom: "1px solid var(--border-subtle)",
-              fontSize: 11, fontWeight: 600, color: "var(--text-muted)",
+              fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--text-muted)",
               textTransform: "uppercase", letterSpacing: "0.04em",
             }}>任务指令</div>
             <div style={{
-              fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.75,
+              fontSize: "var(--text-base)", color: "var(--text-secondary)", lineHeight: 1.75,
               padding: "var(--space-4)",
               fontFamily: "var(--font-mono)", whiteSpace: "pre-wrap",
               maxHeight: 300, overflowY: "auto",
@@ -366,11 +360,11 @@ function TaskCard({
 
 function StatusBadge({ task }: { task: ScheduledTaskItem }) {
   const ls = task.last_status;
-  if (ls === "running") return <span className="badge badge-blue" style={{ fontSize: 10 }}>⏳ 运行中</span>;
-  if (ls === "completed") return <span className="badge badge-green" style={{ fontSize: 10 }}>✓ 已完成</span>;
-  if (ls === "failed") return <span className="badge badge-red" style={{ fontSize: 10 }}>⚠ 失败</span>;
+  if (ls === "running") return <span className="badge badge-blue" style={{ fontSize: "var(--text-2xs)" }}>⏳ 运行中</span>;
+  if (ls === "completed") return <span className="badge badge-green" style={{ fontSize: "var(--text-2xs)" }}>✓ 已完成</span>;
+  if (ls === "failed") return <span className="badge badge-red" style={{ fontSize: "var(--text-2xs)" }}>⚠ 失败</span>;
   // 待触发 — 紫色高亮（最常见状态，醒目标记）
-  return <span className="badge" style={{ fontSize: 10, background: "rgba(124,58,237,0.15)", color: "var(--accent-soft)", border: "1px solid rgba(124,58,237,0.25)" }}>⏱ 待触发</span>;
+  return <span className="badge" style={{ fontSize: "var(--text-2xs)", background: "color-mix(in srgb, var(--accent) 15%, transparent)", color: "var(--accent-soft)", border: "1px solid color-mix(in srgb, var(--accent) 25%, transparent)" }}>⏱ 待触发</span>;
 }
 
 function StatusText({ task }: { task: ScheduledTaskItem }) {
@@ -390,10 +384,10 @@ function InfoTile({ label, value }: { label: string; value: React.ReactNode }) {
       borderRadius: "var(--radius-sm)",
       padding: "var(--space-3) var(--space-4)",
     }}>
-      <div style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4 }}>
+      <div style={{ fontSize: "var(--text-2xs)", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4 }}>
         {label}
       </div>
-      <div style={{ fontSize: 13, color: "var(--text-primary)", fontWeight: 500 }}>
+      <div style={{ fontSize: "var(--text-base)", color: "var(--text-primary)", fontWeight: 500 }}>
         {value}
       </div>
     </div>

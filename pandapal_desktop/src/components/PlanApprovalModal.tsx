@@ -65,12 +65,12 @@ function PlanBody({ plan, sessionId, userId }: { plan: PlanApprovalRequestMsg; s
               width: "100%", padding: "var(--space-3)",
               borderRadius: "var(--radius-sm)", border: "1px solid var(--border-default)",
               background: "var(--bg-elevated)", color: "var(--text-primary)",
-              fontFamily: "var(--font-sans)", fontSize: 13, resize: "vertical",
+              fontFamily: "var(--font-sans)", fontSize: "var(--text-base)", resize: "vertical",
               outline: "none", marginTop: "var(--space-1)",
             }}
             onFocus={(e) => {
               e.target.style.borderColor = "var(--border-focus)";
-              e.target.style.boxShadow = "0 0 0 3px rgba(124,58,237,0.10)";
+              e.target.style.boxShadow = "0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent)";
             }}
             onBlur={(e) => {
               e.target.style.borderColor = "var(--border-default)";
@@ -92,10 +92,10 @@ function PlanBody({ plan, sessionId, userId }: { plan: PlanApprovalRequestMsg; s
     <>
       <div className="modal-body">
         <div style={{
-          fontSize: 13, lineHeight: 1.6, color: "var(--text-secondary)",
+          fontSize: "var(--text-base)", lineHeight: 1.6, color: "var(--text-secondary)",
           whiteSpace: "pre-wrap", wordBreak: "break-word",
           maxHeight: "40vh", overflowY: "auto",
-          padding: "var(--space-3)", background: "#121212",
+          padding: "var(--space-3)", background: "var(--color-code-bg)",
           borderRadius: "var(--radius-sm)", border: "1px solid var(--border-subtle)",
         }}>
           {content}

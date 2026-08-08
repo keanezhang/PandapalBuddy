@@ -191,21 +191,21 @@ export function FileViewerPanel({ width }: { width: string }) {
             onClick={() => switchActiveFile(f.id)}
             style={{
               display: "flex", alignItems: "center", gap: 4, padding: "4px 10px",
-              fontSize: 11, cursor: "pointer",
+              fontSize: "var(--text-xs)", cursor: "pointer",
               color: a ? "var(--text-primary)" : "var(--text-tertiary)",
               background: a ? "var(--bg-root)" : "transparent",
               borderRight: "1px solid var(--border-subtle)",
               whiteSpace: "nowrap", userSelect: "none", flexShrink: 0,
             }}
           >
-            <span style={{ fontSize: 12 }}>📄</span>
+            <span style={{ fontSize: "var(--text-sm)" }}>📄</span>
             <span style={{ maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis" }}>
               {f.name}
             </span>
             <span
               onClick={e => { e.stopPropagation(); closeFile(f.id); }}
               style={{
-                marginLeft: 4, fontSize: 12, color: "var(--text-tertiary)",
+                marginLeft: 4, fontSize: "var(--text-sm)", color: "var(--text-tertiary)",
                 cursor: "pointer", padding: "0 2px",
               }}
               title="Ctrl+W"
@@ -225,8 +225,8 @@ export function FileViewerPanel({ width }: { width: string }) {
           alignItems: "center", justifyContent: "center", gap: 12,
           color: "var(--text-tertiary)", padding: 40,
         }}>
-          <div style={{ fontSize: 40, opacity: 0.3 }}>📄</div>
-          <div style={{ fontSize: 13 }}>暂无打开的文件</div>
+          <div style={{ fontSize: "var(--icon-empty)", opacity: 0.3 }}>📄</div>
+          <div style={{ fontSize: "var(--text-base)" }}>暂无打开的文件</div>
         </div>
       </div>
     );
@@ -268,9 +268,9 @@ export function FileViewerPanel({ width }: { width: string }) {
         <div style={{
           display: "flex", alignItems: "center", gap: 8, padding: "4px 10px",
           background: "var(--bg-panel)",
-          borderBottom: "1px solid var(--success)", fontSize: 12, flexShrink: 0,
+          borderBottom: "1px solid var(--success)", fontSize: "var(--text-sm)", flexShrink: 0,
         }}>
-          <span style={{ color: "var(--accent)", fontSize: 13 }}>🤖</span>
+          <span style={{ color: "var(--accent)", fontSize: "var(--text-base)" }}>🤖</span>
           <span style={{
             color: "var(--text-primary)", flex: 1,
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
@@ -279,7 +279,7 @@ export function FileViewerPanel({ width }: { width: string }) {
             onClick={() => void acceptSuggestion(af.path)}
             title="接受全部改动并写入文件"
             style={{
-              padding: "2px 10px", fontSize: 11, cursor: "pointer",
+              padding: "2px 10px", fontSize: "var(--text-xs)", cursor: "pointer",
               border: "1px solid var(--success)", borderRadius: 4,
               background: "transparent", color: "var(--success)", fontWeight: 600,
             }}
@@ -288,7 +288,7 @@ export function FileViewerPanel({ width }: { width: string }) {
             onClick={() => void rejectSuggestion(af.path)}
             title="拒绝全部改动，恢复原始内容"
             style={{
-              padding: "2px 10px", fontSize: 11, cursor: "pointer",
+              padding: "2px 10px", fontSize: "var(--text-xs)", cursor: "pointer",
               border: "1px solid var(--border-subtle)", borderRadius: 4,
               background: "transparent", color: "var(--text-tertiary)",
             }}
@@ -323,18 +323,18 @@ export function FileViewerPanel({ width }: { width: string }) {
       <div style={{
         display: "flex", alignItems: "center", gap: 8, padding: "3px 8px",
         background: "var(--bg-panel)", borderBottom: "1px solid var(--border-subtle)",
-        fontSize: 11, color: "var(--text-tertiary)", flexShrink: 0,
+        fontSize: "var(--text-xs)", color: "var(--text-tertiary)", flexShrink: 0,
       }}>
         <span style={{
           padding: "1px 6px", borderRadius: 3, background: "var(--bg-elevated)",
-          fontWeight: 600, color: "var(--accent)", fontSize: 10,
+          fontWeight: 600, color: "var(--accent)", fontSize: "var(--text-2xs)",
         }}>{Labels[md] ?? "TEXT"}</span>
         <span>{ext || "plain"}</span>
         <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {af.path}
         </span>
-        {dirty && <span style={{ color: "var(--accent-2)", fontSize: 10 }}>● 已修改</span>}
-        <span style={{ fontSize: 10, opacity: 0.5 }}>Ctrl+S 保存 · Ctrl+W 关闭</span>
+        {dirty && <span style={{ color: "var(--accent-2)", fontSize: "var(--text-2xs)" }}>● 已修改</span>}
+        <span style={{ fontSize: "var(--text-2xs)", opacity: 0.5 }}>Ctrl+S 保存 · Ctrl+W 关闭</span>
       </div>
       <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex" }}>
         <Renderer {...rendererProps} />
@@ -352,11 +352,11 @@ export function FileViewerPanel({ width }: { width: string }) {
               disabled={!dirty}
               title="Ctrl+S"
               style={{
-                padding: "3px 12px", fontSize: 11,
+                padding: "3px 12px", fontSize: "var(--text-xs)",
                 cursor: dirty ? "pointer" : "default",
                 border: "1px solid var(--border-subtle)", borderRadius: 4,
                 background: dirty ? "var(--accent)" : "transparent",
-                color: dirty ? "#fff" : "var(--text-muted)",
+                color: dirty ? "var(--text-on-accent)" : "var(--text-muted)",
                 fontWeight: dirty ? 600 : 400, opacity: dirty ? 1 : 0.6,
               }}
             >保存</button>
@@ -364,7 +364,7 @@ export function FileViewerPanel({ width }: { width: string }) {
               onClick={() => void onSaveAs()}
               title="Ctrl+Shift+S"
               style={{
-                padding: "3px 12px", fontSize: 11, cursor: "pointer",
+                padding: "3px 12px", fontSize: "var(--text-xs)", cursor: "pointer",
                 border: "1px solid var(--border-subtle)", borderRadius: 4,
                 background: "transparent", color: "var(--text-secondary)",
               }}
@@ -376,7 +376,7 @@ export function FileViewerPanel({ width }: { width: string }) {
           onClick={() => af && closeFile(af.id)}
           title="Ctrl+W"
           style={{
-            padding: "3px 12px", fontSize: 11, cursor: "pointer",
+            padding: "3px 12px", fontSize: "var(--text-xs)", cursor: "pointer",
             border: "1px solid var(--border-subtle)", borderRadius: 4,
             background: "transparent", color: "var(--text-tertiary)",
           }}

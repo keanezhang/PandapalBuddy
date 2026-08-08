@@ -150,7 +150,7 @@ function ActivatedSkillBadge({ skill, onClear }: { skill: ActivatedSkill; onClea
     <div style={{
       margin: "0 var(--space-4) var(--space-1)",
       padding: "6px 12px",
-      background: "rgba(34,197,94,0.06)",
+      background: "color-mix(in srgb, var(--success) 6%, transparent)",
       border: "1px solid rgba(34,197,94,0.12)",
       borderRadius: "var(--radius-sm)",
       display: "flex",
@@ -163,7 +163,7 @@ function ActivatedSkillBadge({ skill, onClear }: { skill: ActivatedSkill; onClea
         {skill.skill_type === "ACTION" ? "⚡" : "📚"} {skill.skill_name}
       </span>
       {skill.tools.length > 0 && (
-        <span style={{ fontSize: 10, opacity: 0.7 }}>
+        <span style={{ fontSize: "var(--text-2xs)", opacity: 0.7 }}>
           ({skill.tools.join(", ")})
         </span>
       )}
@@ -176,7 +176,7 @@ function ActivatedSkillBadge({ skill, onClear }: { skill: ActivatedSkill; onClea
           border: "none",
           color: "var(--success)",
           cursor: "pointer",
-          fontSize: 14,
+          fontSize: "var(--text-md)",
           lineHeight: 1,
           padding: "0 4px",
           fontFamily: "inherit",

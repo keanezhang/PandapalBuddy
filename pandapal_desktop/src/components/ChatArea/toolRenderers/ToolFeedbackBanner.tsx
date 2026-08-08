@@ -66,7 +66,7 @@ export function ToolFeedbackBanner({ feedback }: { feedback?: ToolFeedback | nul
         background: tone.bg,
         borderRadius: "0 4px 4px 0",
         padding: "6px var(--space-3)",
-        fontSize: 11,
+        fontSize: "var(--text-xs)",
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -100,7 +100,7 @@ export function ToolFeedbackBanner({ feedback }: { feedback?: ToolFeedback | nul
       </pre>
 
       {tone.footer && (
-        <div style={{ marginTop: 4, fontSize: 10.5, color: "var(--text-tertiary)" }}>
+        <div style={{ marginTop: 4, fontSize: "var(--text-xs)", color: "var(--text-tertiary)" }}>
           {tone.footer}
         </div>
       )}
