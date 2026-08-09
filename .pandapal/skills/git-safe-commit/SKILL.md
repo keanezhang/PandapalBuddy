@@ -1,8 +1,8 @@
 ---
 name: git-safe-commit
 description: >
-  提交 GitHub 前的安全检查流程：摸清改动现状、排查敏感信息泄漏、审查改动真实性、
-  输出文件级改动分析（重点标记），最后约定式提交并推送。触发短语："提交github"、"提交代码"、"commit"。
+  提交 GitHub 前的安全检查技能：不泄漏敏感信息、不混入调试痕迹、改动内容清晰可追溯。
+  触发短语："提交github"、"提交代码"、"commit"、"我要push"。
 when_to_use: >
   用户要提交代码到 GitHub 时自动触发，典型说法："提交github"、"提交代码"、"commit 一下"、
   "我要push"。提交前必须执行安全检查，不盲推 git 命令。
@@ -26,14 +26,14 @@ tags: "git, commit, push, 安全检查, 敏感信息"
 **成功标准**: 明确知道本次有哪些改动文件、当前分支、远端地址。
 
 ### 2. 敏感信息排查（零容忍）
-- `git ls-files | findstr /i "env"` 检查 .env 类文件是否被追踪（已追踪则 .gitignore 失效，必须处理）
+- `git ls-files | grep -iE '(^|/)\.?env'` 检查 .env 类文件是否被追踪（已追踪则 .gitignore 失效，必须处理；用 grep 跨平台写法，勿用 Windows 专属 findstr）
 - 用 glob/grep 找 `.env*` 文件，核对 `.gitignore` 规则是否覆盖
 - 扫描 `git diff` 内容中是否有硬编码密钥/token/个人路径
 
 **成功标准**: 确认无敏感信息会进入本次提交；**发现敏感信息 = 硬阻断，立即进入步骤 5 提交门禁，绝不带病提交。**
 
 ### 3. 审查改动真实性
-逐文件 `git diff` 查看内容，甄别：
+逐文件 `git diff` 查看已追踪文件内容（untracked 文件 `git diff` 不显示，用 read_file 直接审查），甄别：
 - 调试痕迹/临时验证改动 → 建议 `git restore` 撤销
 - 不该提交的文件（个人配置、构建产物、本地数据）→ 建议排除
 
@@ -45,6 +45,8 @@ tags: "git, commit, push, 安全检查, 敏感信息"
 - **涉及敏感信息的改动**（密钥、token、.env、个人路径）
 - **破坏性/高风险改动**（删除、覆盖、schema 变更、批量操作）
 - **跨模块影响面广的改动**（核心逻辑、联动其他模块）
+
+涉及敏感信息的改动只标注文件与风险级别（如"config.py 含疑似硬编码 token"），**不输出密钥/token 原文**。
 
 **成功标准**: 用户看到一份能直接当提交信息依据的改动分析，重点内容被标记。
 
@@ -62,9 +64,12 @@ tags: "git, commit, push, 安全检查, 敏感信息"
 **成功标准**: 无未决阻断项，用户已明确确认提交范围。
 
 ### 6. 提交与推送
-1. 本地验证：能 build/测试的先跑（如 `npm run build`、`pytest`）
+1. 提交前验证（按项目分级）：
+   - 有测试套件（pytest / npm test / cargo test 等）：先跑，失败 = 中止提交
+   - 无测试但有构建/类型检查（npm run build / tsc 等）：先 build，失败 = 中止提交
+   - 纯文档/配置/资源改动：跳过
 2. `git add <文件>`（逐文件 add，避免误加）
-3. `git commit -m "<类型>: <说明>"`（约定式：feat/fix/refactor/docs）
+3. `git commit -m "<类型>: <说明>"`（约定式：feat/fix/refactor/docs；例：`git commit -m "feat: 增加登录校验"`）
 4. `git pull --rebase origin <分支>` 拉最新
 5. `git push origin <分支>`
 
@@ -75,5 +80,6 @@ tags: "git, commit, push, 安全检查, 敏感信息"
 - **门禁原则（fail-closed）**：敏感信息 = 硬阻断，无条件停，不 add/commit/push；未通过步骤 5 门禁禁止提交
 - **唯一放行通道**：只有用户对每项阻断明确决策才能继续，笼统说"没事"不算放行
 - **处置落库**：敏感文件解除追踪（`git rm --cached`）+ 补 `.gitignore`，调试痕迹撤销（`git restore`），不"这次绕过"
-- 每次提交必须输出改动分析，语言简练但重点标记
+- 每次提交必须输出改动分析，语言简练但重点标记；涉及敏感信息只标注位置与风险，不复述密钥/token 原文
 - 逐文件 add，禁止无脑 `git add -A`
+- **提交前验证分级**：有测试必跑、有构建必 build，失败即中止；纯文档/配置改动可跳过
