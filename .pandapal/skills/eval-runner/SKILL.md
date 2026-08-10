@@ -16,8 +16,8 @@ tags: "skill, eval, 评估, 测试, benchmark"
 
 每一步都有对应的自动化脚本，你负责执行，脚本负责计算。
 
-**v2 严格化要点**（相对 v1 的改动）：
-1. **语义判分由独立裁判 subagent 执行，双盲**——裁判不知道哪份输出用了 skill（A/B 打乱标签），主 agent 不得修改裁判判定。
+**设计要点**：
+1. **语义判分由独立裁判 LLM 调用执行，双盲**——`judge.py` 单次调用裁判 LLM，不知道哪份输出用了 skill（A/B 打乱标签），脚本不修改裁判判定。
 2. **断言 rubric 化**——每条语义断言带 `severity`（critical/major/minor）+ `score`（0/0.5/1）+ 强制 `evidence` 引用（无证据判分无效）。
 3. **多采样**——每 case 的 with/without 各跑 N≥3 次，benchmark 报告 delta 的 bootstrap 95% 置信区间。
 4. **结论量化**——只有 CI 下界 > 0 且 delta ≥ 0.2 才判"有效"；critical 失败一票否决（BLOCKER）；rubric 不合法判"数据不完整"。
@@ -28,7 +28,7 @@ tags: "skill, eval, 评估, 测试, benchmark"
 
 ## 执行流程
 
-按顺序执行以下 6 步。每步有明确的产物，不跳步、不替换方案。
+按顺序执行以下 5 步。每步有明确的产物，不跳步、不替换方案。
 
 ### Step 1: 准备
 
@@ -88,7 +88,7 @@ tags: "skill, eval, 评估, 测试, benchmark"
 }
 ```
 
-   - 机械断言支持类型（v2）：
+   - 机械断言支持类型：
 
 | 类型 | 示例 | 判定 |
 |------|------|------|
@@ -98,58 +98,41 @@ tags: "skill, eval, 评估, 测试, benchmark"
 | `File size <op> N: <path>` | `File size > 1000: report.md` | 文件字节数满足 `<op> ∈ {<, <=, >, >=}` |
 | `Exit code N` | `Exit code 0` | exit_code.txt 值 == N |
 
-3. 执行 `python <eval-runner-dir>/scripts/init_run.py <target-skill-dir> --samples 3` 初始化本次运行的目录结构（为每 case 创建 `sample-1..sample-N` 的 with/without 骨架）。
+3. 骨架无需手动创建——Step 2 的 `run_isolated.py` 会自动建好 `sample-1..sample-N` 的 with/without 目录并自动生成 run 编号。
 
-### Step 2: 跑 Baseline（无 skill）
+### Step 2: 跑样本（脚本自动，with/without 两组一次跑完）
 
-**产物：** 每个用例每个 sample 的 `without_skill/sample-<i>/transcript.md` 和 `outputs/`。
+**产物：** 每个用例每个 sample 的 `with_skill/sample-<i>/` 与 `without_skill/sample-<i>/` 下的 `transcript.md`、`outputs/`、`exit_code.txt`、`timing.json`。
 
-**隔离方式（唯一）：** 使用 subagent。为每个用例的每个 sample 生成一个 subagent，在其 prompt 中**明确排除目标 skill**——不在允许路径中，不提及 skill 名称，且**禁止探索 `.pandapal/skills/<skill-name>/` 目录**（物理隔离做不到时，至少做到指令隔离并记录在 transcript 头部）。
+执行（一条命令跑完两组 + 自动判分 + 聚合）：
 
-对 `evals.json` 中的每个用例、每个 sample（1..N），按顺序执行：
+```bash
+python <eval-runner-dir>/scripts/run_isolated.py <target-skill-dir> --samples 3
+```
 
-1. 生成 subagent，给它以下 prompt：
-   > 执行以下用户请求。不要加载、引用或使用名为 `<skill-name>` 的 skill。
-   > 禁止读取、浏览或探索 `.pandapal/skills/<skill-name>/` 目录及其内容。
-   >
-   > 用户请求：{{case.prompt}}
-   >
-   > 完成后，在 outputs/ 目录下产出所有文件，并在 sample 根目录（与 outputs/ 平级）写入 exit_code.txt（内容为退出码，如 0）。
+脚本内部自动完成：
+- 用 `AgentBuilder` 构建**隔离执行 Agent**：仅 `write_file`/`read_file`/`list_files`/`glob` 四个安全工具（无 bash、无删除），with/without 两组除 skill 注入外完全一致。
+- **with_skill**：把目标 skill 的 `SKILL.md` 正文全文注入 user prompt。
+- **without_skill**：指令隔离——明确"不要加载/引用/使用名为 `<skill-name>` 的 skill、禁止探索其目录"。
+- 自动创建 run 骨架 `eval-runs/run-<N>-isolated/<case-id>/{with_skill,without_skill}/sample-<i>/outputs/` 并自动递增 run 编号。
+- 每 sample 落盘：`transcript.md`（完整 prompt + agent 输出 + 工具轨迹）、`outputs/`、`exit_code.txt`（成功 0 / 失败 1）、`timing.json`（真实墙钟 + AgentResult token 计数）。
 
-2. 等待 subagent 完成。
-3. 将 subagent 的完整输出保存为 `<case-dir>/without_skill/sample-<i>/transcript.md`。
-4. 将 subagent 产出的文件复制到 `<case-dir>/without_skill/sample-<i>/outputs/`。
-5. **由你（主 agent）** 记录墙钟耗时并写入 `<case-dir>/without_skill/sample-<i>/timing.json`（subagent 自估的 token 不算数，只做参考标注）：
-   ```json
-   { "tokens": <subagent 汇报的估算，注明 source: "estimate">, "ms": <你的墙钟测量> }
-   ```
+**关键：** 样本的 transcript 中逐字保留 agent 的**借口原话**（如"太简单了不需要"、"我先让能跑再说"）。这些是 Step 5 改进 skill 的核心证据。
 
-**关键：** transcript 中逐字保留 agent 的**借口原话**（如"太简单了不需要"、"我先让能跑再说"）。这些是 Step 6 改进 skill 的核心证据。
+常用参数：
+- `--variants without`：只跑 without 组（先看 baseline）；`--variants with` 同理
+- `--only <case-id>`：单用例调试
+- `--skip-judge`：只跑机械断言（省 LLM 费用）
+- `--run-id <id>`：显式命名运行目录（默认自动递增 `run-<N>-isolated`）
+- `--credentials-file / --model-id / --provider`：指定 LLM 凭据
 
-所有用例的所有 sample 跑完后，回到主 session 继续 Step 3。
+> ⚠️ **采样一致性**：with/without 的 sample 数必须一致（脚本默认保证）。benchmark 的 `n_samples` 取最小值并如实记录。
 
-### Step 3: 跑 With-Skill
-
-**产物：** 每个用例每个 sample 的 `with_skill/sample-<i>/transcript.md` 和 `outputs/`。
-
-对 `evals.json` 中的**同一批用例、同样 N 个 sample**，按同样顺序执行：
-
-1. 生成 subagent，给它以下 prompt：
-   > 执行以下用户请求。请先加载并使用名为 `<skill-name>` 的 skill。
-   >
-   > 用户请求：{{case.prompt}}
-   >
-   > 完成后，在 outputs/ 目录下产出所有文件，并在 sample 根目录（与 outputs/ 平级）写入 exit_code.txt（内容为退出码，如 0）。
-
-2-5. 与 Step 2 相同（保存 transcript、复制 outputs、写 timing.json）。
-
-> ⚠️ **执行顺序建议**：先跑完所有 without，再跑所有 with，或交叉跑。无论哪种，**每个 case 的 with/without sample 数必须一致**（如都 3 个），否则 benchmark 的 `n_samples` 取最小值并如实记录。
-
-### Step 4: 判分
+### Step 3: 判分
 
 **产物：** 每个用例的 `grading.json`。
 
-#### 4a. 机械断言（脚本自动）
+#### 3a. 机械断言（脚本自动）
 
 执行：
 ```bash
@@ -162,19 +145,22 @@ python <eval-runner-dir>/scripts/grade.py <target-skill-dir>
 - 输出每个断言的通过/失败结果，写入 `grading.json` 的 `mech_assertions`（按 sample）
 - **同时校验语义断言的 rubric 合法性**（severity/score/evidence），不合格的标记 `valid: false`
 
-#### 4b. 语义断言（独立裁判 + 双盲，你来组织，裁判来判）
+#### 3b. 语义断言（judge.py 双盲裁判，自动）
 
-**核心原则：裁判不能是执行者，也不能知道哪份是 with_skill。** 判分由独立的裁判 subagent 完成。
+> `run_isolated.py` 已自动调用 judge.py；需要单独重跑时执行：
+> ```bash
+> python <eval-runner-dir>/scripts/judge.py <target-skill-dir>
+> ```
 
-**双盲协议：**
+judge.py 内部自动执行双盲协议（物理保证，比手工更严格）：
 
-1. 对每个用例，将 `with_skill` 和 `without_skill` 各取一个 sample 的 transcript（多采样时取全部 sample，或按需抽 1 个代表性 sample——**每个 case 的 with/without 必须用同样位置的 sample**），复制为：
-   - `<case-dir>/judge/A.md` ← 随机分配（with 或 without）
-   - `<case-dir>/judge/B.md` ← 另一个
-   - 把 A/B 与 with/without 的对应关系写入 `<case-dir>/judge/mapping.json`（你自己保存，**不告诉裁判**）
-2. 委派**独立裁判 subagent**，prompt 用固定模板（见附录 A）。裁判只读 `judge/A.md`、`judge/B.md` 和断言清单，不知道 A/B 的含义，输出 A/B 各自的判定 JSON。
-3. 裁判返回后，你**只做标签映射**：按 `mapping.json` 把裁判对 A/B 的判定搬回 `with_skill` / `without_skill` 的 `semantic_assertions`，写入 grading.json。
-4. **禁止修改裁判的 score/evidence/severity**；只允许补结构字段（如 `evidence_ref` 规范化）。
+1. `build_blind_pair()`：seeded 随机把 with/without 打乱成 A/B，归属只存 `judge/mapping.json`（脚本私藏，不进裁判输入）。
+2. **内容内联**：transcript 全文 + outputs 文本文件（单文件截断 8000 字符）拼进裁判 prompt——裁判**无文件读取能力**。
+3. 单次 LLM 调用判分（temperature=0，可复现），输出 A/B 判定 JSON。
+4. `normalize_evidence_ref()`：判分完成后才把裁判的 `"A.md:12"` 解码为真实 `"with_skill/sample-1/12"`——裁判永远看不到引用还原成哪个 variant。
+5. `map_verdict_to_variant()`：只做结构补全（assertion 文本、severity、evidence_ref 前缀），score/evidence 原文原样保留；裁判漏判断言补 score 0 + 显式说明（结构补全，非编造判定）。
+6. 审计痕迹：`judge/A.md`、`B.md`、`mapping.json`、`prompt.txt` 全部落盘，事后可复核。
+7. 结果写入 `grading.json` 的 `semantic_assertions`（与 3a 的 `mech_assertions` 互不覆盖，同文件合并，契约见附录 B）。
 
 **每条语义断言的判定格式（写入 grading.json）：**
 
@@ -192,9 +178,9 @@ python <eval-runner-dir>/scripts/grade.py <target-skill-dir>
 - `evidence`：**必须引用 transcript 或产出文件的具体原文**（引用位置 + 原文），空 evidence 判 `valid: false`。
 - `evidence_ref`：文件路径 + 行号/章节（如 `transcript.md:12`），便于复核。
 
-将 4a 脚本结果与 4b 裁判结果合并，写入 `<case-dir>/grading.json`（v2 格式，见附录 B）。
+3a 与 3b 的结果各自写入同一个 `<case-dir>/grading.json`（契约见附录 B），互不覆盖。
 
-### Step 5: 聚合
+### Step 4: 聚合
 
 **产物：** `eval-runs/<run-id>/benchmark.json`。
 
@@ -203,7 +189,7 @@ python <eval-runner-dir>/scripts/grade.py <target-skill-dir>
 python <eval-runner-dir>/scripts/aggregate.py <target-skill-dir>
 ```
 
-脚本扫描所有 `grading.json`（兼容 v1/v2），输出 `benchmark.json`，包含：
+脚本扫描所有 `grading.json`，输出 `benchmark.json`，包含：
 - 机械断言通过率（mech）
 - 语义断言加权分（sem，critical×3 / major×2 / minor×1 加权）
 - **delta 的 bootstrap 95% 置信区间**（对 case 重采样，seeded 可复现）
@@ -218,11 +204,11 @@ python <eval-runner-dir>/scripts/aggregate.py <target-skill-dir>
 | 存在 rubric 不合法断言 | 数据不完整（需重判） |
 | with_skill 有 critical 失败 | BLOCKER |
 | CI 下界 > 0 且 delta ≥ 0.2 | 有效 |
-| CI 下界 < 0 且 delta ≤ -0.2 | 反效果 |
+| CI 上界 < 0 且 delta ≤ -0.2 | 反效果 |
 | abs(delta) < 0.2 | 无效（效应量太小） |
 | 其余（CI 跨越 0） | 证据不足 |
 
-### Step 6: 改进 Skill
+### Step 5: 改进 Skill
 
 **产物：** 目标 SKILL.md 的修改建议。
 
@@ -237,11 +223,11 @@ python <eval-runner-dir>/scripts/aggregate.py <target-skill-dir>
 2. **补规则**：针对 `grading.json` 中失败的断言，补充具体规则。
 3. **控 token**：修改后 token 增加不超过 10%。
 
-**改进后必须重跑**：修改经用户确认 → 递增 run 编号（`init_run.py` 自动生成 `run-<N>-iter-1`）→ 从 Step 2 重新开始。**只改 skill 不重跑 = 没有证据，不算完成。**
+**改进后必须重跑**：修改经用户确认 → 重跑 Step 2（`run_isolated.py` 自动递增生成新的 `run-<N>-isolated`）→ 从 Step 2 重新开始。**只改 skill 不重跑 = 没有证据，不算完成。**
 
 ---
 
-## 目录结构（v2，多采样）
+## 目录结构（多采样）
 
 ```
 <target-skill>/
@@ -249,7 +235,7 @@ python <eval-runner-dir>/scripts/aggregate.py <target-skill-dir>
 ├── evals/
 │   └── evals.json
 └── eval-runs/
-    └── run-<N>-<type>/
+    └── run-<N>-isolated/
         ├── <case-id>/
         │   ├── without_skill/
         │   │   ├── sample-1/  {transcript.md, outputs/, exit_code.txt, timing.json}
@@ -260,13 +246,13 @@ python <eval-runner-dir>/scripts/aggregate.py <target-skill-dir>
         │   │   └── ...
         │   ├── judge/
         │   │   ├── A.md / B.md        ← 双盲输入（打乱标签）
-        │   │   └── mapping.json       ← A/B ↔ with/without 对应（主 agent 私藏）
+        │   │   └── mapping.json       ← A/B ↔ with/without 对应（脚本私藏，裁判不可见）
         │   └── grading.json
         └── benchmark.json
 ```
 
-- `run-1-baseline`：首次 baseline 运行
-- `run-2-iter-1`：第一次改进后的迭代，以此类推
+- `run-1-isolated`：首次 baseline 运行（编号自动递增）
+- `run-2-isolated`：改进后的迭代运行，以此类推
 
 ---
 
@@ -279,7 +265,7 @@ python <eval-runner-dir>/scripts/aggregate.py <target-skill-dir>
 3. 每条语义断言都有非空 `evidence` 引用（无 invalid）
 4. 已基于证据向用户提出目标 SKILL.md 的修改建议
 
-时间预算：3 case × 2 组 × 3 采样 = 18 次 subagent 运行，约 3 小时内完成。
+时间预算：3 case × 2 组 × 3 采样 = 18 个样本，由 `run_isolated.py` 自动执行，约 3 小时内完成。
 
 ---
 
@@ -311,39 +297,7 @@ python <eval-runner-dir>/scripts/aggregate.py <target-skill-dir>
 
 ---
 
-## 附录 A：裁判 subagent prompt 模板
-
-```text
-你是本次评测的独立裁判。你的任务是对两份 agent 输出（A.md 和 B.md）分别判断一组语义断言。
-你不允许知道 A/B 中哪份来自"使用了 skill"的运行——这正是双盲设计，请勿猜测或推测。
-
-输入文件：
-- <case-dir>/judge/A.md
-- <case-dir>/judge/B.md
-
-断言清单（来自 evals.json 的 assertions_sem，逐条复制，severity 保留）：
-
-1. <assertion>（severity: critical|major|minor）
-2. ...
-
-判定要求：
-- 对每条断言，分别对 A 和 B 给出 score：1=完全满足（有明确证据）；0.5=部分满足；0=不满足或相反。
-- evidence 必须引用 A.md/B.md 或对应产出文件的具体原文（引用位置 + 原文），不允许空证据。
-- 输出纯 JSON（不要多余文字），格式：
-{
-  "A": [
-    {"assertion_index": 1, "score": 1, "evidence": "A.md: '原文引用'", "evidence_ref": "A.md:12"}
-  ],
-  "B": [...]
-}
-- 若某条断言在输出中完全找不到对应内容，score 记 0，evidence 写 "A.md/B.md 中未找到相关内容"。
-```
-
-主 agent 收到裁判 JSON 后，按 `mapping.json` 将 A/B 判定映射回 with/without 写入 grading.json，**不改动任何 score/evidence**。
-
----
-
-## 附录 B：grading.json 契约（v2）
+## 附录 B：grading.json 契约
 
 ```json
 {
@@ -355,7 +309,10 @@ python <eval-runner-dir>/scripts/aggregate.py <target-skill-dir>
       "sample-1": {"assertion_0": {"pass": true, "detail": "文件存在：report.md"}},
       "sample-2": {"assertion_0": {"pass": true, "detail": "文件存在：report.md"}}
     },
-    "without_skill": { "...": "..." }
+    "without_skill": {
+      "sample-1": {"assertion_0": {"pass": true, "detail": "文件存在：report.md"}},
+      "sample-2": {"assertion_0": {"pass": false, "detail": "文件不存在"}}
+    }
   },
   "semantic_assertions": {
     "with_skill": [
@@ -367,10 +324,16 @@ python <eval-runner-dir>/scripts/aggregate.py <target-skill-dir>
         "evidence_ref": "with_skill/sample-1/outputs/report.md:45"
       }
     ],
-    "without_skill": [ "...": "..." ]
+    "without_skill": [
+      {
+        "assertion": "产出物包含权限矩阵（≥2 角色）",
+        "severity": "major",
+        "score": 0,
+        "evidence": "输出中未找到权限矩阵相关内容",
+        "evidence_ref": "without_skill/sample-1/transcript.md:88"
+      }
+    ]
   },
   "overall": "裁判整体判断的一句话总结（不进聚合，仅人读）"
 }
 ```
-
-> 兼容性：旧版 v1 grading.json（语义断言带 `pass` bool、机械断言在 variant 顶层）可被 aggregate.py 自动识别并转换（score = 1 if pass else 0，severity 默认 major），但**新运行必须使用 v2 契约**。
