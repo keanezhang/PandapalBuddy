@@ -1,14 +1,15 @@
 /**
- * src/components/ChatArea/MessageList.tsx — v2 重设计版
+ * src/components/ChatArea/MessageList.tsx — v3 虚拟滚动版
  *
  * 消息列表。使用 per-session buffers（chatStore）。
- * 纯 v2 Token。
+ * 长会话（数百上千条）只渲染可视区附近的行（@tanstack/react-virtual），
+ * 配合 MessageBubble 的 memo：流式输出时历史气泡既不重渲染、也不在 DOM 中。
  */
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   useCurrentMessages,
-  useIsStreaming,
   type ChatMessage,
   type CompletedMessage,
   type StreamingMessage,
@@ -16,6 +17,9 @@ import {
 import { useConnectionStore } from "../../store/connectionStore";
 import { MessageBubble } from "./MessageBubble";
 import { StreamingBubble } from "./StreamingBubble";
+
+/** 初始高度估算：真实高度由 measureElement 动态校正，估算只影响滚动条初值。 */
+const ESTIMATE_ROW_HEIGHT = 120;
 
 export function MessageList() {
   const { t } = useTranslation();
@@ -25,13 +29,30 @@ export function MessageList() {
   const [userAtBottom, setUserAtBottom] = useState(true);
   const rafId = useRef(0);
 
-  const completed: CompletedMessage[] = messages.filter(
-    (m): m is CompletedMessage => m.kind === "completed"
-  );
-  const streamings: StreamingMessage[] = messages.filter(
-    (m): m is StreamingMessage => m.kind === "streaming"
-  );
+  // 渲染行：completed 在前、streaming 在后（与旧实现视觉顺序一致）。
+  const rows = useMemo(() => {
+    const completed: CompletedMessage[] = [];
+    const streamings: StreamingMessage[] = [];
+    for (const m of messages) {
+      if (m.kind === "completed") completed.push(m);
+      else streamings.push(m);
+    }
+    return [...completed, ...streamings];
+  }, [messages]);
 
+  const rowVirtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => ESTIMATE_ROW_HEIGHT,
+    overscan: 8,
+    // key 沿用旧实现：kind 前缀 + id + 索引兜底（Plan/HITL 多轮会 reuse reply_id）。
+    getItemKey: (index) => {
+      const m = rows[index];
+      return m ? `${m.kind}-${m.id}-${index}` : String(index);
+    },
+  });
+
+  // 用户是否贴在底部：贴底时新内容自动跟随；手动上翻后停止争抢滚动位置。
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -43,16 +64,18 @@ export function MessageList() {
     return () => el.removeEventListener("scroll", onScroll);
   }, []);
 
+  const hasStreaming = rows.some((r) => r.kind === "streaming");
+
   useEffect(() => {
-    if (!userAtBottom) return;
+    if (!userAtBottom || rows.length === 0) return;
     cancelAnimationFrame(rafId.current);
     rafId.current = requestAnimationFrame(() => {
-      scrollRef.current?.scrollTo({
-        top: scrollRef.current.scrollHeight,
-        behavior: streamings.length > 0 ? "auto" : "smooth",
+      rowVirtualizer.scrollToIndex(rows.length - 1, {
+        align: "end",
+        behavior: hasStreaming ? "auto" : "smooth",
       });
     });
-  }, [messages, userAtBottom, streamings.length]);
+  }, [messages, userAtBottom, hasStreaming, rowVirtualizer]);
 
   const isEmpty = messages.length === 0;
   const isConnected = status === "connected";
@@ -80,21 +103,40 @@ export function MessageList() {
     );
   }
 
+  const virtualItems = rowVirtualizer.getVirtualItems();
+
   return (
     <div ref={scrollRef} style={{
       flex: 1, overflowY: "auto", padding: "var(--space-6) 0",
     }}>
-      <div style={{ width: "100%", maxWidth: 1200, margin: "0 auto", padding: "0 var(--space-6)" }}>
-        {/* key 用 kind 前缀 + 索引兜底：Plan/HITL 多轮会 reuse reply_id，
-            同一 buffer 可能出现 id 相同的两条消息（已完成的一轮 + resume 的一轮），
-            completed 与 streaming 又渲染在同一父节点，纯 id 做 key 会撞。
-            对话消息是 append-only 不重排，索引稳定，可安全参与 key。 */}
-        {completed.map((msg, i) => (
-          <MessageBubble key={`c-${msg.id}-${i}`} message={msg} />
-        ))}
-        {streamings.map((msg, i) => (
-          <StreamingBubble key={`s-${msg.id}-${i}`} message={msg} />
-        ))}
+      <div style={{
+        height: rowVirtualizer.getTotalSize(), width: "100%", position: "relative",
+      }}>
+        {virtualItems.map((virtualRow) => {
+          const msg = rows[virtualRow.index];
+          return (
+            <div
+              key={virtualRow.key}
+              data-index={virtualRow.index}
+              ref={rowVirtualizer.measureElement}
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: "100%",
+                transform: `translateY(${virtualRow.start}px)`,
+              }}
+            >
+              <div style={{ width: "100%", maxWidth: 1200, margin: "0 auto", padding: "0 var(--space-6)" }}>
+                {msg.kind === "completed" ? (
+                  <MessageBubble message={msg} />
+                ) : (
+                  <StreamingBubble message={msg} />
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

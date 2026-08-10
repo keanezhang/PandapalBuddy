@@ -4,7 +4,7 @@
  * 已完成消息气泡。
  * 用户消息：右侧气泡 | 系统消息：居中提示 | AI 消息：左侧头像 + 按 timeline 交错渲染
  */
-import React from "react";
+import React, { memo } from "react";
 import { useTranslation } from "react-i18next";
 import type { CompletedMessage, PendingQuestionnaire } from "../../store/chatStore";
 import type { ReplyUsage } from "../../types/api";
@@ -15,7 +15,13 @@ import { MessageContent } from "./MessageContent";
 
 interface MessageBubbleProps { message: CompletedMessage }
 
-export function MessageBubble({ message }: MessageBubbleProps) {
+/**
+ * memo：流式输出时 chatStore 每来一个 token 都会生成新的 messages 数组，
+ * 导致 MessageList 全量重渲染。completed 消息对象引用不变，加 memo 后
+ * 历史气泡可直接跳过重渲染（流式期间只有 StreamingBubble 在变）。
+ * 语言切换时 useTranslation 内部订阅仍会触发本组件重渲染，翻译照常更新。
+ */
+export const MessageBubble = memo(function MessageBubble({ message }: MessageBubbleProps) {
   const { t } = useTranslation();
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
@@ -120,7 +126,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
       </div>
     </div>
   );
-}
+});
 
 /* ── 本轮消耗页脚：净费用 · tokens 明细（命中/未命中/新写 · 回复/推理）· 命中率 · 耗时 ── */
 function UsageFooter({ usage: u, t }: { usage: ReplyUsage; t: (key: string, opts?: Record<string, unknown>) => string }) {
