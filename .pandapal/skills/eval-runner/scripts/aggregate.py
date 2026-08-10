@@ -117,7 +117,7 @@ def _validate_sem(item: dict) -> dict:
 
 def extract_sem(grading: dict, variant: str) -> list[dict]:
     """提取语义断言列表并归一化为 v2 契约：
-    {assertion, severity, score, evidence, valid, evidence_ref?}。"""
+    {assertion, severity, score, evidence, valid, evidence_ref?, sample?}。"""
     # v2：grading["semantic_assertions"][variant]
     v2 = grading.get("semantic_assertions", {})
     raw = v2.get(variant, []) if isinstance(v2, dict) else []
@@ -126,6 +126,10 @@ def extract_sem(grading: dict, variant: str) -> list[dict]:
         top = grading.get(variant)
         if isinstance(top, dict):
             raw = top.get("semantic_assertions", []) or []
+    # v3：{sample: [items]} → 展平（每条注入 sample 字段）
+    if isinstance(raw, dict):
+        raw = [dict(item, sample=sample) for sample, items in raw.items()
+               for item in (items or []) if isinstance(item, dict)]
 
     normalized = []
     for item in raw:
@@ -146,6 +150,19 @@ def extract_sem(grading: dict, variant: str) -> list[dict]:
         }
         normalized.append(_validate_sem(converted))
     return normalized
+
+
+def extract_sem_by_sample(grading: dict, variant: str) -> dict[str, list[dict]]:
+    """按 sample 提取语义断言（v3 结构 {sample: [items]}，逐条校验）；
+    v2/v1 无 sample 维度 → 记为 "default"。"""
+    v2 = grading.get("semantic_assertions", {})
+    raw = v2.get(variant, {}) if isinstance(v2, dict) else {}
+    if isinstance(raw, dict) and raw:
+        out = {}
+        for sample, items in raw.items():
+            out[sample] = [_validate_sem(it) for it in (items or []) if isinstance(it, dict)]
+        return out
+    return {"default": extract_sem(grading, variant)}
 
 
 def rate_mech(results: list[dict]) -> float | None:
@@ -297,17 +314,20 @@ def main():
     mw, mwo = mean(mech_rates["with_skill"]), mean(mech_rates["without_skill"])
     sw, swo = mean(sem_scores["with_skill"]), mean(sem_scores["without_skill"])
 
-    # 逐 case 差值（bootstrap 的采样单元是 case，不是断言）
+    # 逐 (case, sample) 差值（bootstrap 的采样单元是每个 sample 的配对，消除单样本噪声）
     case_deltas = []
     for case_dir in case_dirs:
         grading_path = case_dir / "grading.json"
         if not grading_path.exists():
             continue
         grading = load_json(grading_path)
-        sw_c = sem_stats(extract_sem(grading, "with_skill"))["weighted_score"]
-        swo_c = sem_stats(extract_sem(grading, "without_skill"))["weighted_score"]
-        if sw_c is not None and swo_c is not None:
-            case_deltas.append(sw_c - swo_c)
+        by_w = extract_sem_by_sample(grading, "with_skill")
+        by_wo = extract_sem_by_sample(grading, "without_skill")
+        for sample in sorted(set(by_w) & set(by_wo)):
+            sw_c = sem_stats(by_w[sample])["weighted_score"]
+            swo_c = sem_stats(by_wo[sample])["weighted_score"]
+            if sw_c is not None and swo_c is not None:
+                case_deltas.append(sw_c - swo_c)
 
     delta_sem = round(sw - swo, 3) if (sw is not None and swo is not None) else None
     ci, significant = bootstrap_ci(case_deltas) if case_deltas else ([None, None], False)

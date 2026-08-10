@@ -112,6 +112,7 @@ python <eval-runner-dir>/scripts/run_isolated.py <target-skill-dir> --samples 3
 
 脚本内部自动完成：
 - 用 `AgentBuilder` 构建**隔离执行 Agent**：仅 `write_file`/`read_file`/`list_files`/`glob` 四个安全工具（无 bash、无删除），with/without 两组除 skill 注入外完全一致。
+- **无人值守自动应答**：评测 agent 无法屏蔽 `ask_user`（builder 强制注册全部内置工具），且 `ask_user` 的 `requires_user_interaction=True` 会让引擎暂停等待人工回答。脚本用统一自动应答（`resume_state` + `interaction_response`）自动恢复，直到任务完成或轮次上限（5 轮）；每次自动应答的问题摘要与回复原文记录在 transcript 的「AskUser 自动应答记录」段。
 - **with_skill**：把目标 skill 的 `SKILL.md` 正文全文注入 user prompt。
 - **without_skill**：指令隔离——明确"不要加载/引用/使用名为 `<skill-name>` 的 skill、禁止探索其目录"。
 - 自动创建 run 骨架 `eval-runs/run-<N>-isolated/<case-id>/{with_skill,without_skill}/sample-<i>/outputs/` 并自动递增 run 编号。
@@ -147,30 +148,45 @@ python <eval-runner-dir>/scripts/grade.py <target-skill-dir>
 
 #### 3b. 语义断言（judge.py 双盲裁判，自动）
 
-> `run_isolated.py` 已自动调用 judge.py；需要单独重跑时执行：
+> `run_isolated.py` 已自动调用 judge.py（对所有 sample 判分）；需要单独重跑时执行：
 > ```bash
-> python <eval-runner-dir>/scripts/judge.py <target-skill-dir>
+> python <eval-runner-dir>/scripts/judge.py <target-skill-dir> [--sample all|sample-1|sample-1,sample-2]
 > ```
+> - 默认 `--sample all`：逐 sample 判分；`resolve_samples()` 扫描 case 目录的 `with_skill/` 下 `sample-*` 子目录确定 sample 列表（无则回退 `default`）。
+> - 判分**幂等且按 sample 粒度**：某 sample 的 with/without 判定都已存在（v3 结构下对应 sample 键非空）则跳过，只判缺失的 sample。
 
 judge.py 内部自动执行双盲协议（物理保证，比手工更严格）：
 
 1. `build_blind_pair()`：seeded 随机把 with/without 打乱成 A/B，归属只存 `judge/mapping.json`（脚本私藏，不进裁判输入）。
 2. **内容内联**：transcript 全文 + outputs 文本文件（单文件截断 8000 字符）拼进裁判 prompt——裁判**无文件读取能力**。
-3. 单次 LLM 调用判分（temperature=0，可复现），输出 A/B 判定 JSON。
+3. 每次 LLM 调用判分一个 sample 的 A/B 对（temperature=0，可复现），输出 A/B 判定 JSON。
 4. `normalize_evidence_ref()`：判分完成后才把裁判的 `"A.md:12"` 解码为真实 `"with_skill/sample-1/12"`——裁判永远看不到引用还原成哪个 variant。
 5. `map_verdict_to_variant()`：只做结构补全（assertion 文本、severity、evidence_ref 前缀），score/evidence 原文原样保留；裁判漏判断言补 score 0 + 显式说明（结构补全，非编造判定）。
 6. 审计痕迹：`judge/A.md`、`B.md`、`mapping.json`、`prompt.txt` 全部落盘，事后可复核。
-7. 结果写入 `grading.json` 的 `semantic_assertions`（与 3a 的 `mech_assertions` 互不覆盖，同文件合并，契约见附录 B）。
+7. 结果写入 `grading.json` 的 `semantic_assertions`（与 3a 的 `mech_assertions` 互不覆盖，同文件合并，契约见附录 B）。写入结构按 sample 分桶（v3）：`semantic_assertions[variant][sample] = [...]`，兼容旧版 v2（`[variant] = [...]`）。
 
-**每条语义断言的判定格式（写入 grading.json）：**
+**每条语义断言的判定格式（写入 grading.json，v3 按 sample 分桶）：**
 
 ```json
 {
-  "assertion": "产出物包含权限矩阵（≥2 角色）",
-  "severity": "major",
-  "score": 1,
-  "evidence": "outputs/report.md: '4.4 权限矩阵：8 功能点 × 2 角色表格'",
-  "evidence_ref": "with_skill/sample-1/outputs/report.md:45"
+  "semantic_assertions": {
+    "with_skill": {
+      "sample-1": [
+        {
+          "assertion": "产出物包含权限矩阵（≥2 角色）",
+          "severity": "major",
+          "score": 1,
+          "evidence": "outputs/report.md: '4.4 权限矩阵：8 功能点 × 2 角色表格'",
+          "evidence_ref": "with_skill/sample-1/outputs/report.md:45"
+        }
+      ],
+      "sample-2": []
+    },
+    "without_skill": {
+      "sample-1": [],
+      "sample-2": []
+    }
+  }
 }
 ```
 
@@ -315,24 +331,30 @@ python <eval-runner-dir>/scripts/aggregate.py <target-skill-dir>
     }
   },
   "semantic_assertions": {
-    "with_skill": [
-      {
-        "assertion": "产出物包含权限矩阵（≥2 角色）",
-        "severity": "major",
-        "score": 1,
-        "evidence": "outputs/report.md: '4.4 权限矩阵：8 功能点 × 2 角色表格'",
-        "evidence_ref": "with_skill/sample-1/outputs/report.md:45"
-      }
-    ],
-    "without_skill": [
-      {
-        "assertion": "产出物包含权限矩阵（≥2 角色）",
-        "severity": "major",
-        "score": 0,
-        "evidence": "输出中未找到权限矩阵相关内容",
-        "evidence_ref": "without_skill/sample-1/transcript.md:88"
-      }
-    ]
+    "with_skill": {
+      "sample-1": [
+        {
+          "assertion": "产出物包含权限矩阵（≥2 角色）",
+          "severity": "major",
+          "score": 1,
+          "evidence": "outputs/report.md: '4.4 权限矩阵：8 功能点 × 2 角色表格'",
+          "evidence_ref": "with_skill/sample-1/outputs/report.md:45"
+        }
+      ],
+      "sample-2": []
+    },
+    "without_skill": {
+      "sample-1": [
+        {
+          "assertion": "产出物包含权限矩阵（≥2 角色）",
+          "severity": "major",
+          "score": 0,
+          "evidence": "输出中未找到权限矩阵相关内容",
+          "evidence_ref": "without_skill/sample-1/transcript.md:88"
+        }
+      ],
+      "sample-2": []
+    }
   },
   "overall": "裁判整体判断的一句话总结（不进聚合，仅人读）"
 }

@@ -1,0 +1,11 @@
+{
+  "skill_name": "prd-design",
+  "samples": 3,
+  "variants": [
+    "with_skill",
+    "without_skill"
+  ],
+  "model": "deepseek/deepseek-v4-flash",
+  "created_at": "2026-08-10T20:18:50",
+  "runner": "run_isolated.py"
+}

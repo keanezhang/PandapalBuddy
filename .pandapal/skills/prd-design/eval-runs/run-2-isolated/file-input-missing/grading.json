@@ -1,0 +1,102 @@
+{
+  "case_id": "file-input-missing",
+  "prompt": "请根据这个需求文档写 PRD：docs/requirements/order-system.md",
+  "expected_output": "目标文件不存在时，Agent 应明确报告文件不存在（失败的操作 + 原因），不编造需求内容。",
+  "mech_assertions": {
+    "with_skill": {
+      "sample-1": {
+        "assertion_0": {
+          "pass": true,
+          "detail": "退出码 0 符合预期 0"
+        }
+      },
+      "sample-2": {
+        "assertion_0": {
+          "pass": true,
+          "detail": "退出码 0 符合预期 0"
+        }
+      },
+      "sample-3": {
+        "assertion_0": {
+          "pass": true,
+          "detail": "退出码 0 符合预期 0"
+        }
+      }
+    },
+    "without_skill": {
+      "sample-1": {
+        "assertion_0": {
+          "pass": true,
+          "detail": "退出码 0 符合预期 0"
+        }
+      },
+      "sample-2": {
+        "assertion_0": {
+          "pass": true,
+          "detail": "退出码 0 符合预期 0"
+        }
+      },
+      "sample-3": {
+        "assertion_0": {
+          "pass": true,
+          "detail": "退出码 0 符合预期 0"
+        }
+      }
+    }
+  },
+  "semantic_assertions": {
+    "with_skill": [
+      {
+        "assertion": "Agent 报告了文件不存在/无法读取，而不是假装读取成功",
+        "severity": "major",
+        "score": 1.0,
+        "evidence": "B.md Agent 完整输出: '请求读取的 `C:\\nonexistent\\requirements.md` 不存在（路径中 `C:\\nonexistent` 目录本身就不存在）'；outputs/PRD.md 处理结果表格中 '文件是否存在 ❌ 不存在'",
+        "evidence_ref": "with_skill/sample-1/82, B.md outputs/PRD.md:6",
+        "valid": true
+      },
+      {
+        "assertion": "错误或说明消息包含：失败的操作、原因、建议（如建议提供正确路径或直接描述需求）",
+        "severity": "major",
+        "score": 1.0,
+        "evidence": "B.md Agent 完整输出包含 '原因'、'采取的行动'、'下一步'（'请提供正确的需求文件路径（或直接粘贴需求描述文本）'）；outputs/PRD.md 包含 '原因说明' 与 '下一步' 建议",
+        "evidence_ref": "with_skill/sample-1/82-100, B.md outputs/PRD.md:10-21",
+        "valid": true
+      },
+      {
+        "assertion": "Agent 没有编造一个完整 PRD 假装是基于该文件生成的",
+        "severity": "critical",
+        "score": 1.0,
+        "evidence": "B.md 未生成虚构 PRD，outputs/PRD.md 标题为 '# PRD · 生成结果说明'，状态 '未生成（输入文件缺失）'，并说明 'PRD 是否生成 ❌ 未生成'、'为避免凭空编造需求细节，本次主动终止 PRD 正文生成'",
+        "evidence_ref": "with_skill/sample-1/ outputs/PRD.md:1, B.md outputs/PRD.md:5-8, B.md outputs/PRD.md:17",
+        "valid": true
+      }
+    ],
+    "without_skill": [
+      {
+        "assertion": "Agent 报告了文件不存在/无法读取，而不是假装读取成功",
+        "severity": "major",
+        "score": 1.0,
+        "evidence": "A.md Agent 完整输出: '尝试读取 `C:\\nonexistent\\requirements.md`，但该文件**不存在**（读取返回“文件不存在”错误）。' 且 outputs/PRD.md 中写 '在执行读取操作时，该文件不存在（读取返回“文件不存在”错误）'",
+        "evidence_ref": "without_skill/sample-1/47, A.md outputs/PRD.md:8",
+        "valid": true
+      },
+      {
+        "assertion": "错误或说明消息包含：失败的操作、原因、建议（如建议提供正确路径或直接描述需求）",
+        "severity": "major",
+        "score": 1.0,
+        "evidence": "A.md Agent 完整输出: '失败的操作（读取需求文件）、原因（该文件不存在）、建议（如果你能提供正确的需求文件路径或需求内容，我可以基于真实需求重新生成完整的 PRD）'；outputs/PRD.md 中也有 '后续建议' 一节列出 '确认需求文件的实际路径是否正确，并确保文件已就位' 等建议",
+        "evidence_ref": "without_skill/sample-1/47-56, A.md outputs/PRD.md:12-16",
+        "valid": true
+      },
+      {
+        "assertion": "Agent 没有编造一个完整 PRD 假装是基于该文件生成的",
+        "severity": "critical",
+        "score": 1.0,
+        "evidence": "A.md 未生成完整 PRD，outputs/PRD.md 明确写明 '# PRD：无法生成（输入文件缺失）'、'状态：未生成（BLOCKED）'、'由于没有可用的需求来源，为避免凭空编造需求细节，本 PRD 未生成具体的产品需求内容'",
+        "evidence_ref": "without_skill/sample-1/ outputs/PRD.md:1-8",
+        "valid": true
+      }
+    ]
+  },
+  "overall": ""
+}

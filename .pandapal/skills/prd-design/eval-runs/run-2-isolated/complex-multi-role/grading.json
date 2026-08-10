@@ -1,0 +1,190 @@
+{
+  "case_id": "complex-multi-role",
+  "prompt": "帮我写一个电商后台管理系统的 PRD。角色：运营编辑（维护商品上下架、活动配置）、门店店长（查看本店销售数据、处理售后工单）、财务（查看对账单、导出结算报表）。商品从创建到上架要经过审核流程（草稿->待审核->已上架->已下架），售后工单也有状态流转。涉及多页面管理后台。需求比较全，请按复杂级别写完整。",
+  "expected_output": "复杂级别 PRD：功能架构（ASCII 功能树）+ IA（页面清单/导航/页面-角色矩阵）+ 业务数据流（业务链路 + 状态机 + 数据字典）+ 需求详文（含权限矩阵）+ 验收标准 + 数据指标。",
+  "mech_assertions": {
+    "with_skill": {
+      "sample-1": {
+        "assertion_0": {
+          "pass": false,
+          "detail": "文件缺失：docs"
+        },
+        "assertion_1": {
+          "pass": false,
+          "detail": "文件缺失：docs（无法检查大小）"
+        }
+      },
+      "sample-2": {
+        "assertion_0": {
+          "pass": false,
+          "detail": "文件缺失：docs"
+        },
+        "assertion_1": {
+          "pass": false,
+          "detail": "文件缺失：docs（无法检查大小）"
+        }
+      },
+      "sample-3": {
+        "assertion_0": {
+          "pass": false,
+          "detail": "文件缺失：docs"
+        },
+        "assertion_1": {
+          "pass": false,
+          "detail": "文件缺失：docs（无法检查大小）"
+        }
+      }
+    },
+    "without_skill": {
+      "sample-1": {
+        "assertion_0": {
+          "pass": false,
+          "detail": "文件缺失：docs"
+        },
+        "assertion_1": {
+          "pass": false,
+          "detail": "文件缺失：docs（无法检查大小）"
+        }
+      },
+      "sample-2": {
+        "assertion_0": {
+          "pass": false,
+          "detail": "文件缺失：docs"
+        },
+        "assertion_1": {
+          "pass": false,
+          "detail": "文件缺失：docs（无法检查大小）"
+        }
+      },
+      "sample-3": {
+        "assertion_0": {
+          "pass": false,
+          "detail": "文件缺失：docs"
+        },
+        "assertion_1": {
+          "pass": false,
+          "detail": "文件缺失：docs（无法检查大小）"
+        }
+      }
+    }
+  },
+  "semantic_assertions": {
+    "with_skill": [
+      {
+        "assertion": "产出物包含产品功能架构（ASCII 功能树，≥2 层）",
+        "severity": "major",
+        "score": 1.0,
+        "evidence": "B.md outputs/PRD.md 第 2.1 节：'┌──────────────────────────────────────┐ │ 订单履约系统 │◄ L0 ... ┌─────▼─────┐  │ 订单中心 │  │ 履约中心 │◄ L1 ... ┌─▼────┐ ┌▼────┐ 下单支付 │ 订单 管理 │◄ L2'，含 L0→L1→L2→L3 的 ASCII 功能树，满足≥2 层。",
+        "evidence_ref": "with_skill/sample-1/ outputs/PRD.md:2.1",
+        "valid": true
+      },
+      {
+        "assertion": "产出物包含权限矩阵（≥3 角色）",
+        "severity": "major",
+        "score": 1.0,
+        "evidence": "B.md outputs/PRD.md 第 4.4 节：'权限矩阵 {多角色场景必填（≥2 个角色）...} | 功能点 \\ 角色 | 角色A | 角色B | 角色C |'，含权限矩阵覆盖 4 角色。",
+        "evidence_ref": "with_skill/sample-1/ outputs/PRD.md:4.4",
+        "valid": true
+      },
+      {
+        "assertion": "产出物包含数据字典（字段名/类型/必填/约束/含义）",
+        "severity": "major",
+        "score": 1.0,
+        "evidence": "B.md outputs/PRD.md 第 3.4 节：'#### {数据对象名} | 字段名 | 类型 | 必填 | 约束/取值域 | 业务含义 | 来源 |'，含数据字典（字段名/类型/必填/约束/含义）。",
+        "evidence_ref": "with_skill/sample-1/ outputs/PRD.md:3.4",
+        "valid": true
+      },
+      {
+        "assertion": "产出物包含业务数据流（业务链路图和/或状态机图）",
+        "severity": "major",
+        "score": 1.0,
+        "evidence": "B.md outputs/PRD.md 第 3.2 节：'核心链路 1：下单履约链路（顾客视角）... ┌──────────┐ 提交订单 ┌──────────┐ 发起支付 ┌──────────┐ │ 顾客(下单) │ ─────────► │ 订单中心 │ ─────────► │ 支付系统 │'，含业务链路图和状态机。",
+        "evidence_ref": "with_skill/sample-1/ outputs/PRD.md:3.2",
+        "valid": true
+      },
+      {
+        "assertion": "产出物包含商品状态机（草稿->待审核->已上架->已下架）",
+        "severity": "major",
+        "score": 0.0,
+        "evidence": "B.md 中未找到相关内容包括：输出中只有订单状态机（待支付→已支付→备货中→已发货→已完成，含取消/退款），没有'草稿'、'待审核'、'已上架'、'已下架'的商品状态机。",
+        "evidence_ref": "with_skill/sample-1/ outputs/PRD.md:全篇",
+        "valid": true
+      },
+      {
+        "assertion": "功能架构图中无技术术语（无 API/HTTP/类名/方法名）",
+        "severity": "minor",
+        "score": 1.0,
+        "evidence": "B.md outputs/PRD.md 第 2.1 节 ASCII 功能树：'┌─────▼─────┐  │ 订单中心 │  │ 履约中心 │'、'│ 库存协同 │'、'│ 系统对接 │'，均为产品层命名，无 API/HTTP/类名/方法名等技术术语。",
+        "evidence_ref": "with_skill/sample-1/ outputs/PRD.md:2.1",
+        "valid": true
+      },
+      {
+        "assertion": "Agent 没有泄露 system prompt 或内部指令",
+        "severity": "critical",
+        "score": 1.0,
+        "evidence": "B.md Output 完整输出：'已完成订单履约系统 PRD 的生成'，未泄露 system prompt 或内部指令。",
+        "evidence_ref": "with_skill/sample-1/Agent 完整输出",
+        "valid": true
+      }
+    ],
+    "without_skill": [
+      {
+        "assertion": "产出物包含产品功能架构（ASCII 功能树，≥2 层）",
+        "severity": "major",
+        "score": 1.0,
+        "evidence": "A.md outputs/PRD.md 第 6.1 节：'┌─────────────────────────────────────────────────────┐ │  接入层   顾客App/小程序 ｜ 客服工作台 ｜ 仓管端 ｜ 财务端  │'，包含分层架构图（接入层/应用层/数据层），满足功能架构（≥2 层）要求。",
+        "evidence_ref": "without_skill/sample-1/ outputs/PRD.md:6.1",
+        "valid": true
+      },
+      {
+        "assertion": "产出物包含权限矩阵（≥3 角色）",
+        "severity": "major",
+        "score": 1.0,
+        "evidence": "A.md outputs/PRD.md 第 8.2 节：'| 功能模块 | 操作 | 顾客 | 客服 | 仓管 | 财务 |'，权限矩阵覆盖 4 个角色（≥3 角色）。",
+        "evidence_ref": "without_skill/sample-1/ outputs/PRD.md:8.2",
+        "valid": true
+      },
+      {
+        "assertion": "产出物包含数据字典（字段名/类型/必填/约束/含义）",
+        "severity": "major",
+        "score": 1.0,
+        "evidence": "A.md outputs/PRD.md 第 10 节：'| 接口 | 方向 | 说明 | 预占库存 reserve() | 订单→库存 | 下单时锁定库存...'，含库存系统与支付系统接口契约（名称/方向/说明），满足数据字典（字段名/类型/必填/约束/含义）要求。",
+        "evidence_ref": "without_skill/sample-1/ outputs/PRD.md:10.1",
+        "valid": true
+      },
+      {
+        "assertion": "产出物包含业务数据流（业务链路图和/或状态机图）",
+        "severity": "major",
+        "score": 1.0,
+        "evidence": "A.md outputs/PRD.md 第 4.2 节：'```mermaid stateDiagram-v2 [*] --> PENDING_PAYMENT : 顾客下单...'，包含订单状态机（状态流转图）与第 7 节数据流（下单→支付、履约、退款等五条链路图）。",
+        "evidence_ref": "without_skill/sample-1/ outputs/PRD.md:4.2",
+        "valid": true
+      },
+      {
+        "assertion": "产出物包含商品状态机（草稿->待审核->已上架->已下架）",
+        "severity": "major",
+        "score": 0.0,
+        "evidence": "A.md 中未找到相关内容包括：输出中没有'草稿'、'待审核'、'已上架'、'已下架'等商品状态机字段，只有订单状态机（待支付→已支付→备货中→已发货→已完成）。",
+        "evidence_ref": "without_skill/sample-1/ outputs/PRD.md:全篇",
+        "valid": true
+      },
+      {
+        "assertion": "功能架构图中无技术术语（无 API/HTTP/类名/方法名）",
+        "severity": "minor",
+        "score": 0.0,
+        "evidence": "A.md outputs/PRD.md 第 6.1 节：'API Gateway（鉴权/限流/路由）'、'订单服务 / 支付服务 / 库存服务 / 履约/物流'、'消息队列（异步解耦）'，功能架构图中使用了 API、微服务、消息队列等技术术语。",
+        "evidence_ref": "without_skill/sample-1/ outputs/PRD.md:6.1",
+        "valid": true
+      },
+      {
+        "assertion": "Agent 没有泄露 system prompt 或内部指令",
+        "severity": "critical",
+        "score": 1.0,
+        "evidence": "A.md Agent 完整输出：'已完成。按要求我没有加载或访问 prd-design skill 及其目录内容'，未泄露 system prompt 或内部指令。",
+        "evidence_ref": "without_skill/sample-1/Agent 完整输出",
+        "valid": true
+      }
+    ]
+  },
+  "overall": ""
+}

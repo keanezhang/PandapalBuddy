@@ -2,7 +2,7 @@
 """judge.py – 语义断言双盲裁判（脚本化，替代手工委派 subagent）。
 
 用法：
-    python judge.py <target-skill-dir> [--run-id <id>] [--sample sample-1]
+    python judge.py <target-skill-dir> [--run-id <id>] [--sample all|sample-1,sample-2]
         [--credentials-file <path>] [--model-id <id>] [--provider <p>]
         [--seed 42] [--temperature 0.0] [--only <case-id>] [--force]
 
@@ -27,9 +27,13 @@
 
 ## 双盲细节
 
-- 每个 case 判 sample-1（with/without 同一位置），--sample 可覆盖；无 sample-* 目录时
-  fallback 到 variant 根目录的 transcript.md。
-- judge/A.md、B.md 写入 case_dir/judge/ 留审计痕迹；prompt 内联内容与之完全相同。
+- 默认对 case 下**全部 sample** 逐个双盲判分（--sample all，with/without 同一位置）；
+  可用逗号分隔指定子集（如 --sample sample-1,sample-2）。无 sample-* 目录时
+  fallback 到 variant 根目录的 transcript.md（记为 default）。
+- 每个 sample 独立打乱 + 独立 seed（seed + sample 序号），互不干扰、可复现。
+- judge/{sample}/A.md、B.md、mapping.json 写入 case_dir/judge/ 留审计痕迹；prompt 内联内容与之完全相同。
+- grading.json 的 semantic_assertions 按 sample 组织：
+  {"with_skill": {"sample-1": [...]}, "without_skill": {"sample-1": [...]}}。
 - evidence_ref 规范化：裁判给出的 "A.md:12" 前缀在映射回 with/without 时替换为
   "with_skill/sample-1"（只补结构字段，不修改 score/evidence 原文）。
 """
@@ -159,10 +163,13 @@ def sample_base_dir(case_dir: Path, variant: str, sample: str) -> Path:
 # ─────────────────────────── 裁判输入打包（transcript + outputs 内联） ───────────────────────────
 
 def collect_transcript_package(case_dir: Path, variant: str, sample: str) -> str:
-    """组合裁判可见内容：transcript.md 全文 + outputs/ 下文本文件内容（截断保护）。
+    """组合裁判可见内容：transcript.md 全文 + 产出文件内容（截断保护）。
 
-    与 SKILL.md 附录 A 的输入（judge/A.md、B.md）对齐——但这里的内容是**内联**
-    进 prompt 的，裁判无需也不应有文件读取能力。
+    transcript.md 单独内联；产出文件从 sample 基目录**递归**收集（含 outputs/、
+    docs/ 等任何位置——agent 按 skill 约定写到哪都能被裁判看到），
+    排除元数据文件（transcript.md/exit_code.txt/timing.json）。
+    与 SKILL.md 附录 A 的输入（judge/A.md、B.md）对齐——内容**内联**进 prompt，
+    裁判无需也不应有文件读取能力。
     """
     base = sample_base_dir(case_dir, variant, sample)
     parts: list[str] = []
@@ -172,26 +179,27 @@ def collect_transcript_package(case_dir: Path, variant: str, sample: str) -> str
                   if transcript_path.exists() else _EMPTY_TRANSCRIPT)
     parts.append(f"=== transcript.md ===\n{transcript}")
 
-    outputs_dir = base / "outputs"
-    if outputs_dir.is_dir():
-        parts.append("\n=== outputs/ 目录下的产出文件 ===")
-        for p in sorted(outputs_dir.rglob("*")):
-            if p.is_dir():
+    _META_FILES = {"transcript.md", "exit_code.txt", "timing.json"}
+    artifact_files = [
+        p for p in sorted(base.rglob("*"))
+        if p.is_file() and p.name not in _META_FILES
+    ]
+    parts.append("\n=== 产出文件（sample 目录递归收集） ===")
+    if not artifact_files:
+        parts.append("（sample 目录下未找到产出文件）")
+    for p in artifact_files:
+        rel = p.relative_to(base).as_posix()
+        if p.suffix.lower() in _TEXT_EXTS:
+            try:
+                content = p.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                parts.append(f"\n--- {rel}（读取失败） ---")
                 continue
-            rel = p.relative_to(outputs_dir).as_posix()
-            if p.suffix.lower() in _TEXT_EXTS:
-                try:
-                    content = p.read_text(encoding="utf-8", errors="replace")
-                except OSError:
-                    parts.append(f"\n--- outputs/{rel}（读取失败） ---")
-                    continue
-                if len(content) > _MAX_INLINE_FILE_CHARS:
-                    content = content[:_MAX_INLINE_FILE_CHARS] + "\n…(截断)"
-                parts.append(f"\n--- outputs/{rel} ---\n{content}")
-            else:
-                parts.append(f"\n--- outputs/{rel}（二进制/非文本，仅列名） ---")
-    else:
-        parts.append("\n=== outputs/ 目录不存在 ===")
+            if len(content) > _MAX_INLINE_FILE_CHARS:
+                content = content[:_MAX_INLINE_FILE_CHARS] + "\n…(截断)"
+            parts.append(f"\n--- {rel} ---\n{content}")
+        else:
+            parts.append(f"\n--- {rel}（二进制/非文本，仅列名） ---")
 
     return "\n".join(parts)
 
@@ -365,6 +373,13 @@ async def call_judge_llm(client: OpenAICompatibleClient, prompt: str,
             settings=ModelSettings(temperature=temperature, seed=seed),
         )
     content = resp.get("content") or ""
+    # 推理模型怪癖（deepseek-v4-flash 实测）：response_format=json_object 模式下，
+    # 完整 JSON 可能落在 reasoning_content 而 content 为空（finish_reason=stop）。
+    # 此时以 reasoning_content 作为裁判输出，否则会被误判为"LLM 输出为空"。
+    if not content.strip():
+        rc = resp.get("reasoning_content") or ""
+        if rc.strip():
+            content = rc
     return content
 
 
@@ -400,46 +415,81 @@ async def call_judge_with_retry(client: OpenAICompatibleClient, prompt: str,
 # ─────────────────────────── 单 case 判分 ───────────────────────────
 
 async def judge_case(client: OpenAICompatibleClient, case_dir: Path, case: dict,
-                     args: argparse.Namespace) -> dict:
-    """判单个 case（单一 event loop 内调用），返回 {"with_skill": [...], "without_skill": [...]}。"""
-    sample = args.sample
-    # 确认 with/without 都有对应 transcript（无 sample-* 时 fallback default）
-    have = {}
-    for variant in ("with_skill", "without_skill"):
-        base = sample_base_dir(case_dir, variant, sample)
-        have[variant] = (base / "transcript.md").exists()
-        if not have[variant]:
-            # 有 sample-* 目录但缺 transcript（执行失败）→ 用空包继续，裁判会判 0
-            print(f"  ⚠ {case['id']}/{variant}/{sample} 缺 transcript.md，按空输入判分")
-    if not have["with_skill"] and not have["without_skill"]:
-        raise FileNotFoundError(f"{case['id']} 的 with/without 都没有 transcript.md，无法判分")
+                     args: argparse.Namespace, samples: list[str]) -> dict:
+    """判单个 case 的多个 sample（单一 event loop 内调用）。
 
-    rng = random.Random(args.seed)
-    a_pkg, b_pkg, mapping = build_blind_pair(case_dir, sample, rng)
-    mapping["seed"] = args.seed
-
-    prompt = build_judge_prompt(case, a_pkg, b_pkg)
-
-    # 落盘审计痕迹：judge/A.md、B.md、mapping.json（mapping 仅供人查证，不进裁判输入）
+    返回 {"with_skill": {sample: [...]}, "without_skill": {sample: [...]}}；
+    每个 sample 独立双盲打乱 + 独立 seed（seed + sample 序号），互不干扰、可复现。
+    """
+    assertions_sem = case.get("assertions_sem", [])
+    result = {"with_skill": {}, "without_skill": {}}
     judge_dir = case_dir / "judge"
     judge_dir.mkdir(parents=True, exist_ok=True)
-    (judge_dir / "A.md").write_text(a_pkg, encoding="utf-8")
-    (judge_dir / "B.md").write_text(b_pkg, encoding="utf-8")
-    (judge_dir / "mapping.json").write_text(
-        json.dumps(mapping, indent=2, ensure_ascii=False), encoding="utf-8")
-    (judge_dir / "prompt.txt").write_text(prompt, encoding="utf-8")
 
-    parsed = await call_judge_with_retry(client, prompt, args.temperature, args.seed)
+    for idx, sample in enumerate(samples):
+        # 确认 with/without 都有对应 transcript（无 sample-* 时 fallback default）
+        have = {}
+        for variant in ("with_skill", "without_skill"):
+            base = sample_base_dir(case_dir, variant, sample)
+            have[variant] = (base / "transcript.md").exists()
+            if not have[variant]:
+                # 有 sample-* 目录但缺 transcript（执行失败）→ 用空包继续，裁判会判 0
+                print(f"  ⚠ {case['id']}/{variant}/{sample} 缺 transcript.md，按空输入判分")
+        if not have["with_skill"] and not have["without_skill"]:
+            raise FileNotFoundError(f"{case['id']}/{sample} 的 with/without 都没有 transcript.md，无法判分")
 
-    assertions_sem = case.get("assertions_sem", [])
-    with_items = map_verdict_to_variant(parsed.get("B", []), "B", mapping, assertions_sem) \
-        if mapping["B"]["variant"] == "with_skill" \
-        else map_verdict_to_variant(parsed.get("A", []), "A", mapping, assertions_sem)
-    without_items = map_verdict_to_variant(parsed.get("B", []), "B", mapping, assertions_sem) \
-        if mapping["B"]["variant"] == "without_skill" \
-        else map_verdict_to_variant(parsed.get("A", []), "A", mapping, assertions_sem)
+        sample_seed = args.seed + idx  # 每个 sample 独立 seed：可复现且互不干扰
+        rng = random.Random(sample_seed)
+        a_pkg, b_pkg, mapping = build_blind_pair(case_dir, sample, rng)
+        mapping["seed"] = sample_seed
 
-    return {"with_skill": with_items, "without_skill": without_items}
+        prompt = build_judge_prompt(case, a_pkg, b_pkg)
+
+        # 落盘审计痕迹：judge/{sample}/A.md、B.md、mapping.json（mapping 仅供人查证，不进裁判输入）
+        sample_judge_dir = judge_dir / sample
+        sample_judge_dir.mkdir(parents=True, exist_ok=True)
+        (sample_judge_dir / "A.md").write_text(a_pkg, encoding="utf-8")
+        (sample_judge_dir / "B.md").write_text(b_pkg, encoding="utf-8")
+        (sample_judge_dir / "mapping.json").write_text(
+            json.dumps(mapping, indent=2, ensure_ascii=False), encoding="utf-8")
+        (sample_judge_dir / "prompt.txt").write_text(prompt, encoding="utf-8")
+
+        parsed = await call_judge_with_retry(client, prompt, args.temperature, sample_seed)
+
+        with_items = map_verdict_to_variant(parsed.get("B", []), "B", mapping, assertions_sem) \
+            if mapping["B"]["variant"] == "with_skill" \
+            else map_verdict_to_variant(parsed.get("A", []), "A", mapping, assertions_sem)
+        without_items = map_verdict_to_variant(parsed.get("B", []), "B", mapping, assertions_sem) \
+            if mapping["B"]["variant"] == "without_skill" \
+            else map_verdict_to_variant(parsed.get("A", []), "A", mapping, assertions_sem)
+        result["with_skill"][sample] = with_items
+        result["without_skill"][sample] = without_items
+
+    return result
+
+
+def resolve_samples(case_dir: Path, requested: str) -> list[str]:
+    """解析 --sample 为要判的 sample 列表。
+
+    "all"（默认）→ 遍历 with_skill 下全部 sample-* 目录（与 without_skill 对齐）；
+    无 sample-* 目录（旧结构）→ ["default"]。逗号分隔 → 按给定顺序去重保留。
+    显式指定的 sample 存在性不在此校验，缺 transcript 由 judge_case 兜底（按空输入判分）。
+    """
+    if requested.strip().lower() == "all":
+        variant_dir = case_dir / "with_skill"
+        if variant_dir.is_dir():
+            samples = sorted(
+                d.name for d in variant_dir.iterdir()
+                if d.is_dir() and d.name.startswith("sample-")
+            )
+            if samples:
+                return samples
+        return ["default"]
+    out = []
+    for s in (x.strip() for x in requested.split(",")):
+        if s and s not in out:
+            out.append(s)
+    return out or ["default"]
 
 
 # ─────────────────────────── main ───────────────────────────
@@ -448,7 +498,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="语义断言双盲裁判（脚本化）")
     parser.add_argument("target_skill_dir", help="目标 skill 目录，如 .pandapal/skills/prd-design")
     parser.add_argument("--run-id", default=None, help="运行目录名（默认取最新 run）")
-    parser.add_argument("--sample", default="sample-1", help="判分所用 sample（with/without 同位置），默认 sample-1")
+    parser.add_argument("--sample", default="all",
+                        help="判分 sample：all=遍历全部 sample-*（默认），或逗号分隔指定（如 sample-1,sample-2）")
     parser.add_argument("--credentials-file", default=None, help="显式指定 llm_credentials.toml 路径")
     parser.add_argument("--model-id", default=None, help="覆盖 model_id（须在凭据文件中存在）")
     parser.add_argument("--provider", default=None, help="覆盖 provider（openai/deepseek/dashscope/volcengine）")
@@ -514,22 +565,31 @@ async def run(args: argparse.Namespace) -> None:
             print(f"  ⚠ 用例目录不存在：{case_id}")
             continue
 
-        existing = load_grading(case_dir)
-        sem = existing.get("semantic_assertions", {})
-        already = bool(sem.get("with_skill")) and bool(sem.get("without_skill"))
-        if already and not args.force:
-            print(f"  ⏭ {case_id}：semantic_assertions 已存在（--force 重判）")
-            skipped += 1
-            continue
-
         if not case.get("assertions_sem"):
             print(f"  ⚠ {case_id}：assertions_sem 为空，跳过语义判分")
             skipped += 1
             continue
 
-        print(f"▶ [{case_id}] 双盲判分中…")
+        # 幂等：按 sample 粒度检查（v3 结构 {variant: {sample: [...]}} 均非空才算已判）
+        existing = load_grading(case_dir)
+        sem = existing.get("semantic_assertions", {})
+        pending = []
+        for sample in resolve_samples(case_dir, args.sample):
+            already = (
+                isinstance(sem.get("with_skill"), dict) and bool(sem["with_skill"].get(sample))
+                and isinstance(sem.get("without_skill"), dict) and bool(sem["without_skill"].get(sample))
+            )
+            if already and not args.force:
+                print(f"  ⏭ {case_id}/{sample}：语义判分已存在（--force 重判）")
+                skipped += 1
+                continue
+            pending.append(sample)
+        if not pending:
+            continue
+
+        print(f"▶ [{case_id}] 双盲判分中（samples={pending}）…")
         try:
-            result = await judge_case(client, case_dir, case, args)
+            result = await judge_case(client, case_dir, case, args, pending)
         except Exception as e:  # 故障隔离点：单个 case 失败不中断整体
             failed += 1
             print(f"  ❌ 判分失败：{e!r}")
@@ -541,27 +601,39 @@ async def run(args: argparse.Namespace) -> None:
                 json.dump(existing, f, indent=2, ensure_ascii=False)
             continue
 
-        # 合并写回：保留 grade.py 写入的 mech_assertions，只更新 semantic_assertions + judge 元信息
+        # 合并写回：保留 grade.py 写入的 mech_assertions；semantic_assertions 按 sample 合并
+        # （兼容旧 v2 结构 {variant: [...]}：视为 default 且被新判结果覆盖）
         grading = existing
-        grading["semantic_assertions"] = result
+        new_sem = {}
+        old_sem = existing.get("semantic_assertions", {})
+        for variant in ("with_skill", "without_skill"):
+            v = old_sem.get(variant) if isinstance(old_sem, dict) else None
+            new_sem[variant] = dict(v) if isinstance(v, dict) else {}
+        for variant in ("with_skill", "without_skill"):
+            for sample, items in result[variant].items():
+                new_sem[variant][sample] = items
+        grading["semantic_assertions"] = new_sem
         grading["judge"] = {
             "script": "judge.py",
             "model": f"{credential['provider']}/{credential['model_id']}",
             "sample": args.sample,
+            "samples": pending,
             "seed": args.seed,
             "temperature": args.temperature,
-            "mapping": "judge/mapping.json",
+            "mapping_dir": "judge/",
             "judged_at": datetime.now().isoformat(timespec="seconds"),
         }
         grading_path = case_dir / "grading.json"
         with open(grading_path, "w", encoding="utf-8") as f:
             json.dump(grading, f, indent=2, ensure_ascii=False)
         judged += 1
-        n_with = len(result["with_skill"])
-        avg_with = sum(float(s["score"]) for s in result["with_skill"]) / n_with if n_with else 0
-        avg_without = (sum(float(s["score"]) for s in result["without_skill"]) / len(result["without_skill"])
-                       if result["without_skill"] else 0)
-        print(f"  ✅ 已写 grading.json | sem 平均分 with={avg_with:.2f} / without={avg_without:.2f}")
+        for sample in pending:
+            with_items = new_sem["with_skill"].get(sample, [])
+            without_items = new_sem["without_skill"].get(sample, [])
+            avg_with = sum(float(s["score"]) for s in with_items) / len(with_items) if with_items else 0
+            avg_without = (sum(float(s["score"]) for s in without_items) / len(without_items)
+                           if without_items else 0)
+            print(f"  ✅ {case_id}/{sample} 已写 | sem 平均分 with={avg_with:.2f} / without={avg_without:.2f}")
 
     print("\n" + "=" * 60)
     print(f"双盲判分完成：{judged} 个 case 判分，{skipped} 跳过，{failed} 失败")

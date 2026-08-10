@@ -273,18 +273,36 @@ def main():
             grading["mech_assertions"][variant] = mech_by_sample
 
         # 语义断言：保留已有（裁判写入的），只做合法性校验
+        # （v3 = {variant: {sample: [...]}} 逐 sample 校验并原样保留结构；v2/v1 = list）
         for variant in ("with_skill", "without_skill"):
-            existing_sem = existing.get(variant, {}).get("semantic_assertions", [])
+            v2 = existing.get("semantic_assertions", {})
+            existing_sem = v2.get(variant, []) if isinstance(v2, dict) else []
             # 兼容旧格式：语义断言直接挂在 variant 顶层
             if not existing_sem:
                 existing_sem = existing.get("semantic_assertions", [])
-            validated = []
-            for item in existing_sem:
-                v = validate_semantic_assertion(item)
-                if not v["valid"]:
-                    invalid_sem += 1
-                    print(f"  ⚠ {variant} 语义断言校验失败：{v.get('issue')}")
-                validated.append(v)
+            if isinstance(existing_sem, dict):
+                validated = {}
+                for sample, items in existing_sem.items():
+                    sample_items = []
+                    for item in (items or []):
+                        if not isinstance(item, dict):
+                            continue
+                        v = validate_semantic_assertion(item)
+                        if not v["valid"]:
+                            invalid_sem += 1
+                            print(f"  ⚠ {variant}/{sample} 语义断言校验失败：{v.get('issue')}")
+                        sample_items.append(v)
+                    validated[sample] = sample_items
+            else:
+                validated = []
+                for item in existing_sem:
+                    if not isinstance(item, dict):
+                        continue
+                    v = validate_semantic_assertion(item)
+                    if not v["valid"]:
+                        invalid_sem += 1
+                        print(f"  ⚠ {variant} 语义断言校验失败：{v.get('issue')}")
+                    validated.append(v)
             grading["semantic_assertions"][variant] = validated
 
         grading_path = case_dir / "grading.json"

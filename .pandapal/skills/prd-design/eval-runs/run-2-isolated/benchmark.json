@@ -1,0 +1,56 @@
+{
+  "run": "run-2-isolated",
+  "skill": "prd-design",
+  "cases": 5,
+  "sampling": {
+    "n_samples": 3,
+    "note": "采样数为各 variant 目录 sample-* 的最小值；无 sample-* 目录记 1"
+  },
+  "mech": {
+    "with_skill": {
+      "pass_rate": 0.8
+    },
+    "without_skill": {
+      "pass_rate": 0.8
+    },
+    "delta": 0.0
+  },
+  "sem": {
+    "with_skill": {
+      "mean": 0.971,
+      "min": 0.857,
+      "max": 1.0,
+      "n_cases": 5
+    },
+    "without_skill": {
+      "mean": 0.943,
+      "min": 0.786,
+      "max": 1.0,
+      "n_cases": 5
+    },
+    "delta": {
+      "weighted": 0.028,
+      "ci95": [
+        0.0,
+        0.057
+      ],
+      "significant": false,
+      "effective": false,
+      "min_effect": 0.2
+    }
+  },
+  "tokens": {
+    "with_skill": {
+      "mean": 302671,
+      "n": 15
+    },
+    "without_skill": {
+      "mean": 50791,
+      "n": 15
+    },
+    "delta": 251880
+  },
+  "critical_blockers": [],
+  "invalid_sem_assertions": [],
+  "verdict": "无效（效应量太小）"
+}
