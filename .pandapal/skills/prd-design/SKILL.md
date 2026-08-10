@@ -86,7 +86,7 @@ tags: "prd, 需求文档, 产品, 详细设计, 功能架构, 数据流"
 
 ### Step 2：生成 PRD 文档
 
-按复杂度确定哪些章节需要生成，然后一次性产出完整文档写入 `docs/{name}/{name}-PRD.md`。
+按复杂度确定哪些章节需要生成，然后一次性产出完整文档写入 `outputs/docs/{name}/{name}-PRD.md`（评测/沙箱环境如指定了其他路径，以指定路径为准）。
 
 > **开始时**先调 `report_progress(activity="生成PRD", phase="生成 PRD 正文（含{章节说明}）", status="running")`，**不等待回复**，立即开始生成。
 
@@ -505,10 +505,10 @@ tags: "prd, 需求文档, 产品, 详细设计, 功能架构, 数据流"
 
 > **写入前**先调 `report_progress(activity="生成PRD", phase="写入 PRD 文件", status="running")`，**不等待回复**，然后执行写入。
 
-1. 将 Markdown 原文写入 `docs/{name}/{name}-PRD.md`
+1. 将 Markdown 原文写入 `outputs/docs/{name}/{name}-PRD.md`
 2. 写入成功后调 `report_progress(activity="生成PRD", phase="PRD 生成完成", status="completed")` 收尾（整个活动结束、进度块收起）；若中途失败则调 `report_progress(activity="生成PRD", phase="生成失败：{原因}", status="failed")`
 3. 报告用户：
-   - ✅ 输出文件路径：`docs/{name}/{name}-PRD.md`
+   - ✅ 输出文件路径：`outputs/docs/{name}/{name}-PRD.md`
    - 📊 复杂度：{简单/中等/复杂}
    - 📋 包含章节：{列出已生成的章节}
    - ⚠️ 待确认项：{列出所有 `[待确认]` 标记}
