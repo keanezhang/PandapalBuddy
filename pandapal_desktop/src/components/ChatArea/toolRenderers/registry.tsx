@@ -15,6 +15,7 @@ import { WriteRenderer } from "./WriteRenderer";
 import { ReadRenderer } from "./ReadRenderer";
 import { AskUserRenderer } from "./AskUserRenderer";
 import { WebFetchRenderer } from "./WebFetchRenderer";
+import { SearchSkillsRenderer } from "./SearchSkillsRenderer";
 import { ToolFeedbackBanner } from "./ToolFeedbackBanner";
 
 /** 该工具是否不在时间线中直接出卡。 */
@@ -41,6 +42,7 @@ const RENDERERS: Record<string, (tc: ToolCallState) => React.ReactNode> = {
     />
   ),
   web_fetch: (tc) => <WebFetchRenderer tc={tc} />,
+  search_skills: (tc) => <SearchSkillsRenderer tc={tc} />,
 };
 
 /** 渲染单个工具调用卡片（Timeline 的 tool 段调用）。 */
