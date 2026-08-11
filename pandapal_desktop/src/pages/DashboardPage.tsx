@@ -18,6 +18,7 @@ import type { DegradationStat, SessionData, Turn } from "../types/dashboard";
 import { useDashboardStore } from "../store/dashboardStore";
 import { useBackend } from "../providers/BackendProvider";
 import { BudgetBar } from "../components/BudgetBar";
+import { parseSkillLoaded } from "../components/ChatArea/toolRenderers/SearchSkillsRenderer";
 import "./dashboard/dashboard.css";
 import {
   ALERT_P99_LATENCY_MS,
@@ -146,7 +147,15 @@ export function DashboardPage() {
   useEffect(() => {
     if (!didInitOpen.current && filtered.length) {
       didInitOpen.current = true;
-      setOpenSessions(new Set([filtered[0].id]));
+      const first = filtered[0];
+      setOpenSessions(new Set([first.id]));
+      // 同步展开首个会话里的技能加载轮次（与 toggleSession 行为一致，让技能原文直接可见）
+      const skillTurnKeys = first.turns
+        .filter((tr) => tr.role === "tool" && parseSkillLoaded(tr.content))
+        .map((tr) => `${first.id}#${tr.turn}`);
+      if (skillTurnKeys.length) {
+        setOpenTurns((prev) => { const n = new Set(prev); skillTurnKeys.forEach((k) => n.add(k)); return n; });
+      }
     }
   }, [filtered]);
 
@@ -162,8 +171,21 @@ export function DashboardPage() {
     return () => clearTimeout(t);
   }, [tab, scrollNonce]);
 
-  const toggleSession = (id: string) =>
+  const toggleSession = (id: string) => {
+    const s = filtered.find((x) => x.id === id);
+    const isOpen = openSessions.has(id);
     setOpenSessions((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    // 展开会话时：自动展开其中加载了技能（search_skills 命中「已加载技能」）的轮次，
+    // 让技能原文在逐轮明细里直接可见，不用再逐层手动展开。
+    if (!isOpen && s) {
+      const skillTurnKeys = s.turns
+        .filter((tr) => tr.role === "tool" && parseSkillLoaded(tr.content))
+        .map((tr) => `${id}#${tr.turn}`);
+      if (skillTurnKeys.length) {
+        setOpenTurns((prev) => { const n = new Set(prev); skillTurnKeys.forEach((k) => n.add(k)); return n; });
+      }
+    }
+  };
 
   const jumpToTurn = (sessionId: string, turn: number) => {
     setOpenSessions((prev) => new Set(prev).add(sessionId));
@@ -789,6 +811,11 @@ function SessionCard({ session, open, onToggle, openTurns, toggleTurn, flash }: 
 }) {
   const cost = sessionNetCost(session), tok = session.input_tokens + session.output_tokens;
   const runs = useMemo(() => groupRuns(session), [session]);
+  // tools_schema → 工具名列表（兼容 {function:{name}} 与 {name} 两种 schema 形状）
+  const toolNames = (session.tools_schema ?? []).map((s) => {
+    const anyS = s as { function?: { name?: string }; name?: string };
+    return anyS.function?.name ?? anyS.name ?? "";
+  }).filter(Boolean);
   const { t } = useTranslation();
   return (
     <div id={"dash-sc-" + session.id} className={"dash-scard" + (open ? " open" : "") + (flash ? " flash" : "")}>
@@ -815,6 +842,15 @@ function SessionCard({ session, open, onToggle, openTurns, toggleTurn, flash }: 
           <details className="dash-sysfold">
             <summary>{t("dashboard.sysPromptSummary")}{session.system_prompt ? ` · ${session.system_prompt.length} ${t("dashboard.chars")}` : ""}</summary>
             <div className="dash-sysbody">{session.system_prompt || t("dashboard.noSysPrompt")}</div>
+          </details>
+
+          <details className="dash-sysfold">
+            <summary>{t("dashboard.toolsSchemaSummary")}{toolNames.length ? ` · ${toolNames.join(" · ")}` : ""}</summary>
+            {toolNames.length ? (
+              <div className="dash-sysbody">{JSON.stringify(session.tools_schema, null, 2)}</div>
+            ) : (
+              <div className="dash-sysbody">{t("dashboard.noToolsSchema")}</div>
+            )}
           </details>
 
           {/* 按 run 分组：每个 run = 链路条 + 该 run 的 waterfall + 该 run 的逐轮明细（整体一块）*/}
@@ -864,6 +900,7 @@ function TurnRow({ turn, runTurns, idxInRun, open, onToggle }: {
 }) {
   const rm = ROLE_META[turn.role];
   const { t } = useTranslation();
+  const skillLoaded = turn.role === "tool" ? parseSkillLoaded(turn.content) : null;
   let summary = turn.content ? turn.content.replace(/\n/g, " ") : "";
   if (!summary && turn.tool_calls?.length) summary = t("dashboard.callTool") + turn.tool_calls.map((tc) => tc.name).join(", ");
   const ctx = useMemo(() => (turn.role === "assistant" ? buildContext(runTurns, idxInRun) : null), [turn, runTurns, idxInRun]);
@@ -884,6 +921,21 @@ function TurnRow({ turn, runTurns, idxInRun, open, onToggle }: {
         ) : (
           <span style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", flexShrink: 0 }}>{turn.role === "tool" ? t("dashboard.toolReturn") : t("dashboard.userInput")}</span>
         )}
+        {skillLoaded && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onToggle(); }}
+            style={{
+              flexShrink: 0, cursor: "pointer",
+              color: "var(--danger)", fontWeight: 700, fontSize: "var(--text-xs)",
+              background: "color-mix(in srgb, var(--danger) 10%, transparent)",
+              border: "1px solid rgba(239,68,68,0.45)", borderRadius: 6,
+              padding: "2px 10px", lineHeight: 1.5,
+            }}
+            title={t("dashboard.skillDetailTitle")}
+          >
+            {open ? "skill 收起" : "skill 详情"}
+          </button>
+        )}
         <span className="dash-tchev" style={{ transform: open ? "rotate(90deg)" : "none" }}>›</span>
       </div>
       {open && (
@@ -900,8 +952,48 @@ function TurnRow({ turn, runTurns, idxInRun, open, onToggle }: {
               {turn.llm && <div className="mono" style={{ fontSize: "var(--text-2xs)", color: "var(--text-muted)" }}>{turn.llm.model} · step {turn.llm.step} · {fmtLocalTime(turn.timestamp)}</div>}
             </>
           )}
-          {turn.role === "tool" && <Block label={t("dashboard.toolResult")}>{turn.content}</Block>}
+          {turn.role === "tool" && (skillLoaded
+            ? <SkillLoadedCard content={turn.content} />
+            : <Block label={t("dashboard.toolResult")}>{turn.content}</Block>)}
         </div>
+      )}
+    </div>
+  );
+}
+
+/** 技能加载卡片：tool turn 命中「🔧 已加载技能 [name]」时，表头展示技能名徽章，正文可展开。 */
+function SkillLoadedCard({ content }: { content: string }) {
+  const loaded = parseSkillLoaded(content);
+  // 默认展开：技能正文一眼可见（用户可手动折叠）。加载失败/无正文时表头仍可点开看原因。
+  const [open, setOpen] = useState(true);
+  const { t } = useTranslation();
+  if (!loaded) return null;
+  return (
+    <div style={{
+      marginTop: 4, border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-md)",
+      background: "var(--bg-panel)", overflow: "hidden",
+    }}>
+      <div
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          display: "flex", alignItems: "center", gap: "var(--space-2)",
+          padding: "6px var(--space-3)", cursor: "pointer", fontSize: "var(--text-12)", lineHeight: 1.4,
+        }}
+      >
+        <span style={{ flexShrink: 0 }}>🧠</span>
+        <span style={{ fontWeight: 600, color: "var(--text-primary)", flexShrink: 0 }}>search_skills</span>
+        <span className="badge badge-purple" title={t("toolFeedback.skillLoaded")} style={{ flexShrink: 0 }}>✓ {loaded.name}</span>
+        <span style={{ marginLeft: "auto", flexShrink: 0, color: "var(--text-muted)", fontSize: "var(--text-10)" }}>{open ? "▾" : "▸"}</span>
+      </div>
+      {open && (
+        <pre style={{
+          margin: 0, padding: "var(--space-2) var(--space-3)", borderTop: "1px solid var(--border-subtle)",
+          fontFamily: "var(--font-mono)", fontSize: "var(--text-11)", lineHeight: 1.55,
+          color: "var(--text-secondary)", whiteSpace: "pre-wrap", wordBreak: "break-word",
+          maxHeight: 280, overflowY: "auto",
+        }}>
+          {loaded.content}
+        </pre>
       )}
     </div>
   );

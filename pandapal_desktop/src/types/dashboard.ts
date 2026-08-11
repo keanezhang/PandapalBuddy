@@ -82,6 +82,7 @@ export interface SessionData {
   runs: RunInfo[];
   turns: Turn[];
   system_prompt?: string; // 生效系统提示词（logs.md 纯读；缺失时前端降级为占位）
+  tools_schema?: Array<Record<string, unknown>>; // 生效工具 schema（首个 llm 调用 extra_json 纯读；缺失时前端降级为占位）
 }
 
 export interface GlobalMetrics {

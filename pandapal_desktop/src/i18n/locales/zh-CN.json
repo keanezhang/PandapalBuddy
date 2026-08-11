@@ -105,7 +105,9 @@
     "outputTruncatedWithBytes": "输出过长，已截断（{{bytes}} 字节）",
     "outputTruncated": "输出过长，已截断",
     "passed": "通过",
-    "failed": "未通过"
+    "failed": "未通过",
+    "skillLoaded": "已加载技能",
+    "skillLoadFailed": "加载失败"
   },
   "topbar": {
     "aiThinking": "AI 思考中",
@@ -272,6 +274,7 @@
     "noInputTokens": "无输入 tokens",
     "noModelData": "暂无模型数据",
     "noSysPrompt": "无系统提示词",
+    "noToolsSchema": "暂无工具 schema",
     "noToolCallRecords": "暂无工具调用记录",
     "noToolStatusCalls": "暂无已追踪状态的工具调用",
     "noToolUsage": "暂无工具使用数据",
@@ -323,12 +326,14 @@
     "tabPerf": "性能",
     "tabSessions": "会话",
     "times": "次",
+    "toolsSchemaSummary": "工具 Schema",
     "timesCount": "{{count}} 次",
     "tokenComposition": "Token 构成",
     "tokenDailyTrend": "Token 每日趋势",
     "tool": "工具",
     "toolCall": "工具调用 {{name}}",
     "toolResult": "工具结果",
+    "skillDetailTitle": "查看技能详情",
     "toolReturn": "工具返回",
     "toolSuccessHint": "仅统计已追踪到状态的调用",
     "toolSuccessTitle": "工具成功率 · 按模型",

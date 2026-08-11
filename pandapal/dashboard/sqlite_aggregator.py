@@ -78,9 +78,10 @@ class SQLiteDashboardAggregator(BaseDashboardAggregator):
                     spans = self._load_spans(obs, sid)
                     audit_fin = self._load_run_finish(obs, sid)
                     raw_turns = self._load_raw_turns(pan, sid)
-                    system_prompt = self._load_system_prompt(obs, sid)
+                    system_prompt, tools_schema = self._load_system_prompt(obs, sid)
                     s = self._assemble_session(
                         meta, spans, audit_fin, raw_turns, system_prompt, groups,
+                        tools_schema=tools_schema,
                         fallback_id=sid,
                     )
                     if s is not None:
@@ -255,10 +256,11 @@ class SQLiteDashboardAggregator(BaseDashboardAggregator):
             })
         return out
 
-    # ── logs → 生效系统提示词（首条含 messages 的 llm 日志）──────
-    def _load_system_prompt(self, obs: sqlite3.Connection | None, sid: str) -> str:
+    # ── logs → 生效系统提示词 + 生效工具 schema（首条含 messages 的 llm 日志）──
+    def _load_system_prompt(self, obs: sqlite3.Connection | None, sid: str) -> tuple[str, list[dict]]:
+        """从首条含 messages 的 llm 日志提取 (system_prompt, tools_schema)，同源同行。"""
         if obs is None or not sid:
-            return ""
+            return "", []
         try:
             rows = obs.execute(
                 "SELECT extra_json FROM logs WHERE session_id = ? "
@@ -269,10 +271,11 @@ class SQLiteDashboardAggregator(BaseDashboardAggregator):
                 obj = _loads(r["extra_json"])
                 sp = _extract_system_prompt(obj)
                 if sp:
-                    return sp
+                    ts = obj.get("tools_schema")
+                    return sp, ts if isinstance(ts, list) else []
         except sqlite3.Error as exc:
             logger.warning("[sqlite-dashboard] system_prompt query failed (%s): %s", sid, exc)
-        return ""
+        return "", []
 
 
 # ── 局部工具 ─────────────────────────────────────────────────────

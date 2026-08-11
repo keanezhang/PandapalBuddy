@@ -211,6 +211,7 @@ class BaseDashboardAggregator:
         raw_turns: list[dict[str, Any]],
         system_prompt: str,
         groups: dict[str, str],
+        tools_schema: list[dict] | None = None,
         fallback_id: str = "",
     ) -> SessionData | None:
         """把一个会话的归一结构装配成 SessionData。
@@ -316,6 +317,7 @@ class BaseDashboardAggregator:
             runs=runs,
             turns=turns,
             system_prompt=system_prompt,
+            tools_schema=tools_schema or [],
         )
 
     # ── raw_turns × llm_call/tool span → Turn 列表（storage-agnostic）────
@@ -419,3 +421,4 @@ class BaseDashboardAggregator:
                 label, recovered,
             )
         return turns
+

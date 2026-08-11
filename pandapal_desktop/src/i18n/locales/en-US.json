@@ -105,7 +105,9 @@
     "outputTruncatedWithBytes": "Output too long, truncated ({{bytes}} bytes)",
     "outputTruncated": "Output too long, truncated",
     "passed": "Passed",
-    "failed": "Failed"
+    "failed": "Failed",
+    "skillLoaded": "Skill loaded",
+    "skillLoadFailed": "Load failed"
   },
   "topbar": {
     "aiThinking": "AI thinking",
@@ -272,6 +274,7 @@
     "noInputTokens": "No input tokens",
     "noModelData": "No model data",
     "noSysPrompt": "No system prompt",
+    "noToolsSchema": "No tools schema",
     "noToolCallRecords": "No tool call records",
     "noToolStatusCalls": "No tool calls with traced status",
     "noToolUsage": "No tool usage data",
@@ -323,12 +326,14 @@
     "tabPerf": "Performance",
     "tabSessions": "Sessions",
     "times": "×",
+    "toolsSchemaSummary": "Tools schema",
     "timesCount": "{{count}}×",
     "tokenComposition": "Token composition",
     "tokenDailyTrend": "Daily token trend",
     "tool": "Tool",
     "toolCall": "Tool call {{name}}",
     "toolResult": "Tool result",
+    "skillDetailTitle": "View skill details",
     "toolReturn": "Tool return",
     "toolSuccessHint": "only calls with traced status",
     "toolSuccessTitle": "Tool success rate · by model",

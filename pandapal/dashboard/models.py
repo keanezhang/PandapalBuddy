@@ -112,6 +112,7 @@ class SessionData:
     runs: list[RunInfo]
     turns: list[Turn]
     system_prompt: str = ""  # 生效系统提示词（从 logs.md 首个 llm 调用的 messages[system] 纯读）
+    tools_schema: list[dict] = field(default_factory=list)  # 生效工具 schema（首个 llm 调用 extra_json.tools_schema 纯读）
 
 
 @dataclass(frozen=True)

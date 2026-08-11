@@ -58,9 +58,10 @@ class DashboardAggregator(BaseDashboardAggregator):
                     spans = self._parse_traces(sdir / "traces.md")
                     audit_fin = self._parse_run_finish(sdir / "audit.md")
                     raw_turns = self._parse_raw_log(sdir / "raw_log.md")
-                    system_prompt = self._parse_system_prompt(sdir / "logs.md")
+                    system_prompt, tools_schema = self._parse_system_prompt(sdir / "logs.md")
                     s = self._assemble_session(
                         meta, spans, audit_fin, raw_turns, system_prompt, groups,
+                        tools_schema=tools_schema,
                         fallback_id=sdir.name,
                     )
                     if s is not None:
@@ -124,13 +125,18 @@ class DashboardAggregator(BaseDashboardAggregator):
             return []
         text = path.read_text(encoding="utf-8")
         out: list[dict[str, Any]] = []
-        # 按 "## Turn N" 切块（跳过 "## [Compact] Turn"）
-        blocks = re.split(r"\n## ", text)
-        for blk in blocks:
-            m = re.match(r"Turn (\d+)\b", blk)
-            if not m:
+        # 只按**真正的** Turn 头（行首 `## Turn N` / `## [Compact] Turn N`）切块，
+        # 跳过 compact 边界。可读展示正文里的 markdown 标题（如技能全文的 `## 概述`）
+        # 不参与切分——否则 message_json 块会与 Turn 头分离而整条丢失
+        # （与 markdown_raw_log_backend._parse_sections 同口径）。
+        headers = list(re.finditer(r"^## (\[Compact\] )?Turn (\d+)\s*$", text, re.MULTILINE))
+        for i, mt in enumerate(headers):
+            if mt.group(1):  # [Compact] 压缩边界，无 message
                 continue
-            turn_index = int(m.group(1))
+            turn_index = int(mt.group(2))
+            start = mt.end()
+            end = headers[i + 1].start() if i + 1 < len(headers) else len(text)
+            blk = text[start:end]
             fields: dict[str, str] = {}
             for line in blk.splitlines():
                 fm = _FIELD_RE.match(line)
@@ -217,11 +223,12 @@ class DashboardAggregator(BaseDashboardAggregator):
                 out[_rid(run)] = cells[7]  # 最后一次 run_finished 为准
         return out
 
-    # ── logs.md → 生效系统提示词（纯读，不改数据层）──────────────
-    def _parse_system_prompt(self, path: Path) -> str:
-        """从 logs.md 首个 llm 调用日志的 messages[system] 提取系统提示词。"""
+    # ── logs.md → 生效系统提示词 + 生效工具 schema（纯读，不改数据层）─
+    def _parse_system_prompt(self, path: Path) -> tuple[str, list[dict]]:
+        """从 logs.md 首个 llm 调用日志的 messages[system] 提取系统提示词，
+        同时取该行的 tools_schema（生效工具 schema，同一 extra_json）。"""
         if not path.is_file():
-            return ""
+            return "", []
         try:
             for line in path.read_text(encoding="utf-8").splitlines():
                 idx = line.find('{"messages"')
@@ -241,10 +248,11 @@ class DashboardAggregator(BaseDashboardAggregator):
                         continue
                 sp = _extract_system_prompt(obj)
                 if sp:
-                    return sp
+                    ts = obj.get("tools_schema")
+                    return sp, ts if isinstance(ts, list) else []
         except Exception as exc:  # 纯读容错，绝不拖垮聚合
             logger.warning("parse system_prompt failed (%s): %s", path.parent.name, exc)
-        return ""
+        return "", []
 
     # ── frontmatter（--- { json } ---）───────────────────────────
     def _parse_frontmatter(self, path: Path) -> dict[str, Any] | None:
