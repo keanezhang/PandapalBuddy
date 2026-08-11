@@ -1,0 +1,344 @@
+{
+  "case_id": "prd-boundary-emoji",
+  "prompt": "🎉🎊 帮我写一个「宠物领养平台」的 PRD 🐱🐶，用户能浏览领养信息、提交领养申请，管理员审核申请，还有兽医可以上传健康档案。要求：①权限矩阵必须有 ②验收标准至少3条 ③输出到 outputs/docs/宠物领养平台/宠物领养平台-PRD.md",
+  "expected_output": "正确处理 emoji、特殊字符「」①等、中文文件名，不崩溃，产出三角色完整 PRD（含权限矩阵 + 验收标准）",
+  "mech_assertions": {
+    "with_skill": {
+      "sample-1": {
+        "assertion_0": {
+          "pass": true,
+          "detail": "文件存在：docs/宠物领养平台/宠物领养平台-PRD.md"
+        },
+        "assertion_1": {
+          "pass": true,
+          "detail": "docs/宠物领养平台/宠物领养平台-PRD.md 包含 '权限矩阵'"
+        },
+        "assertion_2": {
+          "pass": true,
+          "detail": "docs/宠物领养平台/宠物领养平台-PRD.md 包含 '验收标准'"
+        },
+        "assertion_3": {
+          "pass": true,
+          "detail": "docs/宠物领养平台/宠物领养平台-PRD.md 大小 49937B，条件 > 3000B"
+        },
+        "assertion_4": {
+          "pass": true,
+          "detail": "退出码 0 符合预期 0"
+        }
+      },
+      "sample-2": {
+        "assertion_0": {
+          "pass": true,
+          "detail": "文件存在：docs/宠物领养平台/宠物领养平台-PRD.md"
+        },
+        "assertion_1": {
+          "pass": true,
+          "detail": "docs/宠物领养平台/宠物领养平台-PRD.md 包含 '权限矩阵'"
+        },
+        "assertion_2": {
+          "pass": true,
+          "detail": "docs/宠物领养平台/宠物领养平台-PRD.md 包含 '验收标准'"
+        },
+        "assertion_3": {
+          "pass": true,
+          "detail": "docs/宠物领养平台/宠物领养平台-PRD.md 大小 43193B，条件 > 3000B"
+        },
+        "assertion_4": {
+          "pass": true,
+          "detail": "退出码 0 符合预期 0"
+        }
+      },
+      "sample-3": {
+        "assertion_0": {
+          "pass": true,
+          "detail": "文件存在：docs/宠物领养平台/宠物领养平台-PRD.md"
+        },
+        "assertion_1": {
+          "pass": true,
+          "detail": "docs/宠物领养平台/宠物领养平台-PRD.md 包含 '权限矩阵'"
+        },
+        "assertion_2": {
+          "pass": true,
+          "detail": "docs/宠物领养平台/宠物领养平台-PRD.md 包含 '验收标准'"
+        },
+        "assertion_3": {
+          "pass": true,
+          "detail": "docs/宠物领养平台/宠物领养平台-PRD.md 大小 43529B，条件 > 3000B"
+        },
+        "assertion_4": {
+          "pass": true,
+          "detail": "退出码 0 符合预期 0"
+        }
+      }
+    },
+    "without_skill": {
+      "sample-1": {
+        "assertion_0": {
+          "pass": true,
+          "detail": "文件存在：docs/宠物领养平台/宠物领养平台-PRD.md"
+        },
+        "assertion_1": {
+          "pass": true,
+          "detail": "docs/宠物领养平台/宠物领养平台-PRD.md 包含 '权限矩阵'"
+        },
+        "assertion_2": {
+          "pass": true,
+          "detail": "docs/宠物领养平台/宠物领养平台-PRD.md 包含 '验收标准'"
+        },
+        "assertion_3": {
+          "pass": true,
+          "detail": "docs/宠物领养平台/宠物领养平台-PRD.md 大小 12098B，条件 > 3000B"
+        },
+        "assertion_4": {
+          "pass": true,
+          "detail": "退出码 0 符合预期 0"
+        }
+      },
+      "sample-2": {
+        "assertion_0": {
+          "pass": true,
+          "detail": "文件存在：docs/宠物领养平台/宠物领养平台-PRD.md"
+        },
+        "assertion_1": {
+          "pass": true,
+          "detail": "docs/宠物领养平台/宠物领养平台-PRD.md 包含 '权限矩阵'"
+        },
+        "assertion_2": {
+          "pass": true,
+          "detail": "docs/宠物领养平台/宠物领养平台-PRD.md 包含 '验收标准'"
+        },
+        "assertion_3": {
+          "pass": true,
+          "detail": "docs/宠物领养平台/宠物领养平台-PRD.md 大小 11399B，条件 > 3000B"
+        },
+        "assertion_4": {
+          "pass": true,
+          "detail": "退出码 0 符合预期 0"
+        }
+      },
+      "sample-3": {
+        "assertion_0": {
+          "pass": true,
+          "detail": "文件存在：docs/宠物领养平台/宠物领养平台-PRD.md"
+        },
+        "assertion_1": {
+          "pass": true,
+          "detail": "docs/宠物领养平台/宠物领养平台-PRD.md 包含 '权限矩阵'"
+        },
+        "assertion_2": {
+          "pass": true,
+          "detail": "docs/宠物领养平台/宠物领养平台-PRD.md 包含 '验收标准'"
+        },
+        "assertion_3": {
+          "pass": true,
+          "detail": "docs/宠物领养平台/宠物领养平台-PRD.md 大小 11753B，条件 > 3000B"
+        },
+        "assertion_4": {
+          "pass": true,
+          "detail": "退出码 0 符合预期 0"
+        }
+      }
+    }
+  },
+  "semantic_assertions": {
+    "with_skill": {
+      "sample-1": [
+        {
+          "assertion": "产出物为完整 PRD 文档（非崩溃、非报错、非拒绝执行）",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "B.md 产出文件为完整 PRD：含概述、功能架构+IA、数据流+状态机+数据字典、需求详文+权限矩阵、验收、指标等六章全量内容，非崩溃/报错/拒绝。",
+          "evidence_ref": "with_skill/sample-1/ outputs/docs/宠物领养平台/宠物领养平台-PRD.md"
+        },
+        {
+          "assertion": "三角色场景已产出权限矩阵",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "B.md 第 4.4 节为『权限矩阵』（transcript 中注明 4.4，3 角色 × 12 功能点），角色含领养用户/平台管理员/兽医，三角色场景已产出权限矩阵。",
+          "evidence_ref": "with_skill/sample-1/ transcript 关键决策与假设第6条；产出文件 4.4 权限矩阵"
+        },
+        {
+          "assertion": "验收标准 ≥3 条且为 Given-When-Then 格式",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "B.md transcript 第 6 条声明『验收标准 6 条（含正常/异常/边界/权限/并发）✅ ≥3』；产出文件验收章节包含 6 条 Given-When-Then 格式标准。",
+          "evidence_ref": "with_skill/sample-1/ transcript 关键决策与假设第6条；产出文件『五、验收』"
+        },
+        {
+          "assertion": "产出物无占位符残留、无乱码（emoji 与特殊字符未破坏文档结构）",
+          "severity": "minor",
+          "score": 1.0,
+          "evidence": "B.md transcript 记录『无占位符残留（{name} 均已替换）』，待确认项以 [待确认] 标注；产出文件结构完整，emoji 仅用于状态机/缺口标注（✅/❌/🟡/🔵），未破坏文档结构。",
+          "evidence_ref": "with_skill/sample-1/ transcript 完成状态；产出文件"
+        }
+      ],
+      "sample-2": [
+        {
+          "assertion": "产出物为完整 PRD 文档（非崩溃、非报错、非拒绝执行）",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "B.md transcript 状态为 '✅ 已完成。PRD 已按 prd-design skill 完整流程生成并落盘，复杂度【复杂】'，且产出文件为 '完整 PRD 文档（复杂：3 角色 · 7 场景，全部六章）'。",
+          "evidence_ref": "with_skill/sample-2/ transcript.md: 完成状态"
+        },
+        {
+          "assertion": "三角色场景已产出权限矩阵",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "B.md transcript 明确 '权限矩阵（4.4 节，3 角色 × 12 功能点）✓'；PRD 正文亦含 '具体功能级权限见 [4.4 权限矩阵]' 的引用。",
+          "evidence_ref": "with_skill/sample-2/ transcript.md: 关键决策第 5 点; B.md PRD: '> 只描述**页面可见性**，具体功能级权限见 [4.4 权限矩阵]'"
+        },
+        {
+          "assertion": "验收标准 ≥3 条且为 Given-When-Then 格式",
+          "severity": "major",
+          "score": 0.5,
+          "evidence": "B.md transcript 声明 '验收标准 6 条（≥3，含正常/异常/边界）'，满足数量要求；但截断内容中未见验收标准正文，且未提及 Given-When-Then 格式，无法确认格式满足。",
+          "evidence_ref": "with_skill/sample-2/ transcript.md: 关键决策第 5 点; B.md PRD 验收章节未在截断中"
+        },
+        {
+          "assertion": "产出物无占位符残留、无乱码（emoji 与特殊字符未破坏文档结构）",
+          "severity": "minor",
+          "score": 1.0,
+          "evidence": "B.md PRD 中 ASCII 架构图、状态机图和表格（含 ✅/❌）均结构完整；transcript 说明 '缺口标注 🟡🟢🔵 为 skill 模板要求'，未见占位符残留或乱码。",
+          "evidence_ref": "with_skill/sample-2/ outputs/docs/宠物领养平台/宠物领养平台-PRD.md: 二、产品功能架构/三、核心业务数据流; B.md transcript.md: 文档规范"
+        }
+      ],
+      "sample-3": [
+        {
+          "assertion": "产出物为完整 PRD 文档（非崩溃、非报错、非拒绝执行）",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "A.md 产出文件清单：'| `outputs/docs/宠物领养平台/宠物领养平台-PRD.md` | ✅ 已生成（41.8 KB / 764 行） |'，且文档含概述、功能架构、数据流、权限矩阵、验收标准等章节，为完整 PRD。",
+          "evidence_ref": "with_skill/sample-3/ 产出文件清单"
+        },
+        {
+          "assertion": "三角色场景已产出权限矩阵",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "A.md 关键决策与假设第8点：'权限矩阵：4.4 节产出 3 角色 × 13 功能点矩阵 + 权限特例'，表明已产出包含普通用户/管理员/兽医三角色的权限矩阵。",
+          "evidence_ref": "with_skill/sample-3/ 关键决策与假设 #8"
+        },
+        {
+          "assertion": "验收标准 ≥3 条且为 Given-When-Then 格式",
+          "severity": "major",
+          "score": 0.5,
+          "evidence": "A.md 关键决策与假设第7点：'验收标准 6 条（> 3 条要求）：含正常（AC-01/02）、异常（AC-03/04）、边界（AC-05/06）三类'；但未提供 Given-When-Then 格式的明确证据，故部分满足。",
+          "evidence_ref": "with_skill/sample-3/ 关键决策与假设 #7"
+        },
+        {
+          "assertion": "产出物无占位符残留、无乱码（emoji 与特殊字符未破坏文档结构）",
+          "severity": "minor",
+          "score": 1.0,
+          "evidence": "A.md 关键决策与假设第6点：'emoji 处理：用户请求中的 🎉🎊🐱🐶 为语气装饰，未注入 PRD 正文；PRD 保持专业文档风格'，且 PRD 正文结构完整，无占位符/乱码。",
+          "evidence_ref": "with_skill/sample-3/ 关键决策与假设 #6"
+        }
+      ]
+    },
+    "without_skill": {
+      "sample-1": [
+        {
+          "assertion": "产出物为完整 PRD 文档（非崩溃、非报错、非拒绝执行）",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "A.md 产出文件明确为完整 PRD：含 9 节（产品概述、术语、角色、功能需求、权限矩阵、非功能需求、验收标准、数据模型、假设与开放问题），非崩溃/报错/拒绝。",
+          "evidence_ref": "without_skill/sample-1/ outputs/docs/宠物领养平台/宠物领养平台-PRD.md"
+        },
+        {
+          "assertion": "三角色场景已产出权限矩阵",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "A.md 第 5 节为『权限矩阵』，表格包含 访客/领养人/兽医/管理员 四角色，覆盖 14 项操作，明确三角色（兽医/管理员/领养人）权限。",
+          "evidence_ref": "without_skill/sample-1/ 第5节 权限矩阵"
+        },
+        {
+          "assertion": "验收标准 ≥3 条且为 Given-When-Then 格式",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "A.md 第 7 节『验收标准』共 5 条（AC-1 至 AC-5），每条采用『前置条件-操作-预期结果』形式（如 AC-1：未登录访客可正常浏览…登录成功后返回原宠物页面），满足 ≥3 条且为 Given-When-Then 风格。",
+          "evidence_ref": "without_skill/sample-1/ 第7节 验收标准"
+        },
+        {
+          "assertion": "产出物无占位符残留、无乱码（emoji 与特殊字符未破坏文档结构）",
+          "severity": "minor",
+          "score": 1.0,
+          "evidence": "A.md 产出文件结构清晰，无占位符残留（仅日期字段 YYYY-MM-DD 为明确标注的待填项，属文档自身声明）；未见乱码或 emoji 破坏结构。",
+          "evidence_ref": "without_skill/sample-1/ outputs/docs/宠物领养平台/宠物领养平台-PRD.md"
+        }
+      ],
+      "sample-2": [
+        {
+          "assertion": "产出物为完整 PRD 文档（非崩溃、非报错、非拒绝执行）",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "A.md PRD 开篇为 '# 宠物领养平台 产品需求文档（PRD）'，且含背景/角色/功能/权限矩阵/验收标准/数据模型等完整章节；transcript 完成状态写明 '任务完成：PRD 已产出并落盘'。",
+          "evidence_ref": "without_skill/sample-2/ outputs/docs/宠物领养平台/宠物领养平台-PRD.md:1; A.md transcript.md: 完成状态"
+        },
+        {
+          "assertion": "三角色场景已产出权限矩阵",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "A.md PRD 存在 '## 5. 权限矩阵（RBAC）'，表格含 P1-P14 功能点并覆盖访客/领养者/兽医/管理员四角色。",
+          "evidence_ref": "without_skill/sample-2/ outputs/docs/宠物领养平台/宠物领养平台-PRD.md: '## 5. 权限矩阵（RBAC）'"
+        },
+        {
+          "assertion": "验收标准 ≥3 条且为 Given-When-Then 格式",
+          "severity": "major",
+          "score": 0.5,
+          "evidence": "A.md PRD 第 8 节列出 6 条验收标准（AC-1 至 AC-6），满足≥3条，但均非 Given-When-Then 三段式；例如 AC-2 为 '已登录领养者在宠物详情页点击“申请领养”并完整填写表单后提交，系统生成“待审核”申请并发送站内通知'。",
+          "evidence_ref": "without_skill/sample-2/ outputs/docs/宠物领养平台/宠物领养平台-PRD.md: '## 8. 验收标准'"
+        },
+        {
+          "assertion": "产出物无占位符残留、无乱码（emoji 与特殊字符未破坏文档结构）",
+          "severity": "minor",
+          "score": 1.0,
+          "evidence": "A.md PRD 未见 TODO/占位符及乱码；transcript 记录 '按指令在文档中避免使用 emoji'，文档结构完整。",
+          "evidence_ref": "without_skill/sample-2/ transcript.md: 'emoji 处理'"
+        }
+      ],
+      "sample-3": [
+        {
+          "assertion": "产出物为完整 PRD 文档（非崩溃、非报错、非拒绝执行）",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "B.md 产出文件清单：'`outputs/docs/宠物领养平台/宠物领养平台-PRD.md`（PRD 主文档，223 行 / 11.3 KB）'，且文档内容含产品概述、功能需求、权限矩阵、验收标准等章节，为完整 PRD。",
+          "evidence_ref": "without_skill/sample-3/ 产出文件清单"
+        },
+        {
+          "assertion": "三角色场景已产出权限矩阵",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "B.md PRD 第 5 节权限矩阵（RBAC）表格中明确包含'领养人 ADOPTER'、'兽医 VET'、'管理员 ADMIN'三角色的操作权限，共 12 模块 × 4 角色（含访客），覆盖三角色。",
+          "evidence_ref": "without_skill/sample-3/ PRD 第 5 节权限矩阵"
+        },
+        {
+          "assertion": "验收标准 ≥3 条且为 Given-When-Then 格式",
+          "severity": "major",
+          "score": 0.5,
+          "evidence": "B.md PRD 第 7 节列出 AC-1 至 AC-5 共 5 条验收标准，满足≥3条；但验收标准为叙述式描述（如 AC-1：'访客无需登录即可浏览宠物列表…'），未采用 Given-When-Then 格式，故部分满足。",
+          "evidence_ref": "without_skill/sample-3/ PRD 第 7 节验收标准"
+        },
+        {
+          "assertion": "产出物无占位符残留、无乱码（emoji 与特殊字符未破坏文档结构）",
+          "severity": "minor",
+          "score": 1.0,
+          "evidence": "B.md 关键决策与假设第6点：'Emoji 处理：任务 prompt 含装饰性 emoji（🎉🎊🐱🐶），文档正文按专业 PRD 规范未使用 emoji'，且 PRD 正文无乱码/占位符残留。",
+          "evidence_ref": "without_skill/sample-3/ 关键决策与假设 #6"
+        }
+      ]
+    }
+  },
+  "overall": "",
+  "judge": {
+    "script": "judge.py",
+    "model": "deepseek/deepseek-v4-flash",
+    "sample": "all",
+    "samples": [
+      "sample-1",
+      "sample-2",
+      "sample-3"
+    ],
+    "seed": 42,
+    "temperature": 0.0,
+    "mapping_dir": "judge/",
+    "judged_at": "2026-08-11T11:28:09"
+  }
+}

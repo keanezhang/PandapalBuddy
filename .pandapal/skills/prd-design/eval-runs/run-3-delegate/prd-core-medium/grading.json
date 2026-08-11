@@ -1,0 +1,410 @@
+{
+  "case_id": "prd-core-medium",
+  "prompt": "我要做一个会员积分系统：用户下单可以累积积分，积分可以兑换优惠券或商品；管理员可以设置积分规则、管理兑换商品库；用户可以在积分商城查看积分余额并兑换。信息不足的部分你来判断，写一份完整 PRD，输出到 outputs/docs/会员积分系统/会员积分系统-PRD.md",
+  "expected_output": "一份中等复杂度（2 角色：会员、管理员）的完整 PRD 文档：含概述与背景、产品功能架构（ASCII 功能树 + IA）、核心业务数据流（业务链路 + 数据字典）、需求详细描述（用户故事 + 功能清单 + 权限矩阵）、验收标准（Given-When-Then ≥3 条）、数据指标",
+  "mech_assertions": {
+    "with_skill": {
+      "sample-1": {
+        "assertion_0": {
+          "pass": true,
+          "detail": "文件存在：docs/会员积分系统/会员积分系统-PRD.md"
+        },
+        "assertion_1": {
+          "pass": true,
+          "detail": "docs/会员积分系统/会员积分系统-PRD.md 包含 '权限矩阵'"
+        },
+        "assertion_2": {
+          "pass": true,
+          "detail": "docs/会员积分系统/会员积分系统-PRD.md 包含 '**Given**'"
+        },
+        "assertion_3": {
+          "pass": true,
+          "detail": "docs/会员积分系统/会员积分系统-PRD.md 包含 '数据字典'"
+        },
+        "assertion_4": {
+          "pass": true,
+          "detail": "docs/会员积分系统/会员积分系统-PRD.md 大小 51908B，条件 > 3000B"
+        },
+        "assertion_5": {
+          "pass": true,
+          "detail": "退出码 0 符合预期 0"
+        }
+      },
+      "sample-2": {
+        "assertion_0": {
+          "pass": true,
+          "detail": "文件存在：docs/会员积分系统/会员积分系统-PRD.md"
+        },
+        "assertion_1": {
+          "pass": true,
+          "detail": "docs/会员积分系统/会员积分系统-PRD.md 包含 '权限矩阵'"
+        },
+        "assertion_2": {
+          "pass": true,
+          "detail": "docs/会员积分系统/会员积分系统-PRD.md 包含 '**Given**'"
+        },
+        "assertion_3": {
+          "pass": true,
+          "detail": "docs/会员积分系统/会员积分系统-PRD.md 包含 '数据字典'"
+        },
+        "assertion_4": {
+          "pass": true,
+          "detail": "docs/会员积分系统/会员积分系统-PRD.md 大小 46312B，条件 > 3000B"
+        },
+        "assertion_5": {
+          "pass": true,
+          "detail": "退出码 0 符合预期 0"
+        }
+      },
+      "sample-3": {
+        "assertion_0": {
+          "pass": true,
+          "detail": "文件存在：docs/会员积分系统/会员积分系统-PRD.md"
+        },
+        "assertion_1": {
+          "pass": true,
+          "detail": "docs/会员积分系统/会员积分系统-PRD.md 包含 '权限矩阵'"
+        },
+        "assertion_2": {
+          "pass": true,
+          "detail": "docs/会员积分系统/会员积分系统-PRD.md 包含 '**Given**'"
+        },
+        "assertion_3": {
+          "pass": true,
+          "detail": "docs/会员积分系统/会员积分系统-PRD.md 包含 '数据字典'"
+        },
+        "assertion_4": {
+          "pass": true,
+          "detail": "docs/会员积分系统/会员积分系统-PRD.md 大小 49266B，条件 > 3000B"
+        },
+        "assertion_5": {
+          "pass": true,
+          "detail": "退出码 0 符合预期 0"
+        }
+      }
+    },
+    "without_skill": {
+      "sample-1": {
+        "assertion_0": {
+          "pass": true,
+          "detail": "文件存在：docs/会员积分系统/会员积分系统-PRD.md"
+        },
+        "assertion_1": {
+          "pass": true,
+          "detail": "docs/会员积分系统/会员积分系统-PRD.md 包含 '权限矩阵'"
+        },
+        "assertion_2": {
+          "pass": false,
+          "detail": "docs/会员积分系统/会员积分系统-PRD.md 包含 '**Given**'"
+        },
+        "assertion_3": {
+          "pass": false,
+          "detail": "docs/会员积分系统/会员积分系统-PRD.md 包含 '数据字典'"
+        },
+        "assertion_4": {
+          "pass": true,
+          "detail": "docs/会员积分系统/会员积分系统-PRD.md 大小 24050B，条件 > 3000B"
+        },
+        "assertion_5": {
+          "pass": true,
+          "detail": "退出码 0 符合预期 0"
+        }
+      },
+      "sample-2": {
+        "assertion_0": {
+          "pass": true,
+          "detail": "文件存在：docs/会员积分系统/会员积分系统-PRD.md"
+        },
+        "assertion_1": {
+          "pass": false,
+          "detail": "docs/会员积分系统/会员积分系统-PRD.md 包含 '权限矩阵'"
+        },
+        "assertion_2": {
+          "pass": false,
+          "detail": "docs/会员积分系统/会员积分系统-PRD.md 包含 '**Given**'"
+        },
+        "assertion_3": {
+          "pass": false,
+          "detail": "docs/会员积分系统/会员积分系统-PRD.md 包含 '数据字典'"
+        },
+        "assertion_4": {
+          "pass": true,
+          "detail": "docs/会员积分系统/会员积分系统-PRD.md 大小 17918B，条件 > 3000B"
+        },
+        "assertion_5": {
+          "pass": true,
+          "detail": "退出码 0 符合预期 0"
+        }
+      },
+      "sample-3": {
+        "assertion_0": {
+          "pass": true,
+          "detail": "文件存在：docs/会员积分系统/会员积分系统-PRD.md"
+        },
+        "assertion_1": {
+          "pass": false,
+          "detail": "docs/会员积分系统/会员积分系统-PRD.md 包含 '权限矩阵'"
+        },
+        "assertion_2": {
+          "pass": false,
+          "detail": "docs/会员积分系统/会员积分系统-PRD.md 包含 '**Given**'"
+        },
+        "assertion_3": {
+          "pass": false,
+          "detail": "docs/会员积分系统/会员积分系统-PRD.md 包含 '数据字典'"
+        },
+        "assertion_4": {
+          "pass": true,
+          "detail": "docs/会员积分系统/会员积分系统-PRD.md 大小 35624B，条件 > 3000B"
+        },
+        "assertion_5": {
+          "pass": true,
+          "detail": "退出码 0 符合预期 0"
+        }
+      }
+    }
+  },
+  "semantic_assertions": {
+    "with_skill": {
+      "sample-1": [
+        {
+          "assertion": "产出物是完整 PRD 文档（含概述、功能架构、数据流、需求详文、验收标准、指标六大部分）",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "B.md（PRD 全文）包含：一、概述与背景；二、产品功能架构；三、核心业务数据流；四、需求详细描述；五、验收标准；六、数据指标。六大部分齐全，且第 3.1 节明确列出数据流必填项与结构。",
+          "evidence_ref": "with_skill/sample-1/ 产出文件（PRD）目录结构（一至六章）"
+        },
+        {
+          "assertion": "多角色（≥2 角色）场景已产出权限矩阵",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "B.md 第 4.4 节（需求详细描述）给出『权限矩阵』，且第 2.4.3 节给出『页面-角色矩阵』，涉及普通会员、平台管理员两个角色，并标注可见性与功能级权限。",
+          "evidence_ref": "with_skill/sample-1/ 产出文件（PRD）第 2.4.3 节、第 4.4 节"
+        },
+        {
+          "assertion": "验收标准使用 Given-When-Then 格式且 ≥3 条（含正常 + 异常）",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "B.md 第 5 节『验收标准』明确写出 8 条 AC，且要求为 Given-When-Then 格式，含正常 3 + 异常 3 + 边界 2（如 AC-05 高并发限量兑换不超发）。",
+          "evidence_ref": "with_skill/sample-1/ 产出文件（PRD）第 5 节『验收标准』"
+        },
+        {
+          "assertion": "产出物无占位符残留（如 {name}、{角色名}）",
+          "severity": "minor",
+          "score": 1.0,
+          "evidence": "产出文件正文中未出现 {name}、{角色名} 之类的占位符；所有描述均为具体角色名（普通会员、平台管理员）和具体字段（如 user_id、points_price）。",
+          "evidence_ref": "with_skill/sample-1/ 产出文件（PRD）全文"
+        },
+        {
+          "assertion": "Agent 没有编造具体数据/指标数值来源（数据指标有合理依据或标注假设）",
+          "severity": "minor",
+          "score": 1.0,
+          "evidence": "B.md 在 transcript 第 3.2 节明确列出信息不足处的假设及其依据/理由（如积分入账=实付金额×返积分比例，规则优先级：商品级>品类级>全品类级；默认 365 天有效期），PRD 中目标数值（如复购率提升 10%、月活跃兑换率 30%）在 transcript 中说明为假定目标；指标来源有合理业务依据，未编造带来源的伪造数据。",
+          "evidence_ref": "with_skill/sample-1/ transcript 三、关键决策与假设；PRD 一、目标"
+        }
+      ],
+      "sample-2": [
+        {
+          "assertion": "产出物是完整 PRD 文档（含概述、功能架构、数据流、需求详文、验收标准、指标六大部分）",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "B.md: PRD 明确包含'一、概述与背景；二、产品功能架构（功能树、层级说明、IA）；三、核心业务数据流（数据流分类、业务链路）'，transcript 提到'验收标准、指标'，结构完整包含六大部分。",
+          "evidence_ref": "with_skill/sample-2/ PRD 第一二章及 transcript 完成状态"
+        },
+        {
+          "assertion": "多角色（≥2 角色）场景已产出权限矩阵",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "B.md: PRD 有'2.4.3 页面-角色矩阵'，并引用'具体功能级权限见 [4.4 权限矩阵]'，角色清单包含普通会员、运营管理员两个角色。",
+          "evidence_ref": "with_skill/sample-2/ PRD 2.4.3"
+        },
+        {
+          "assertion": "验收标准使用 Given-When-Then 格式且 ≥3 条（含正常 + 异常）",
+          "severity": "major",
+          "score": 0.5,
+          "evidence": "B.md: transcript 关键决策提到'在 AC-03、数据流链路 1、流转规则中明确回退机制'，表明存在验收标准，但可见部分未展示验收标准正文，无法确认是否使用 Given-When-Then 格式。",
+          "evidence_ref": "with_skill/sample-2/ transcript.md 关键决策第1条"
+        },
+        {
+          "assertion": "产出物无占位符残留（如 {name}、{角色名}）",
+          "severity": "minor",
+          "score": 1.0,
+          "evidence": "B.md: transcript 完成状态明确'无占位符残留，待确认项已在文档末尾集中列出'。",
+          "evidence_ref": "with_skill/sample-2/ transcript.md 完成状态"
+        },
+        {
+          "assertion": "Agent 没有编造具体数据/指标数值来源（数据指标有合理依据或标注假设）",
+          "severity": "minor",
+          "score": 1.0,
+          "evidence": "B.md: transcript 关键决策第2条列出'积分规则默认值：累积比例1积分/元'等多项假设，并说明基于请求已有信息做最合理假设，未编造来源。",
+          "evidence_ref": "with_skill/sample-2/ transcript.md 关键决策第2条"
+        }
+      ],
+      "sample-3": [
+        {
+          "assertion": "产出物是完整 PRD 文档（含概述、功能架构、数据流、需求详文、验收标准、指标六大部分）",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "A.md 产出文件（会员积分系统-PRD.md）开头为 '# PRD · 会员积分系统'，包含'一、概述与背景'、'二、产品功能架构'、'三、核心业务数据流'，且已完成六章（transcript 中注明'全部六章'，结构含概述、功能架构、数据流、需求详文、验收、指标）。",
+          "evidence_ref": "with_skill/sample-3/ 产出文件 '# PRD · 会员积分系统'；章节标题 '一、概述与背景'、'二、产品功能架构'、'三、核心业务数据流'；transcript '产出文件清单：完整 PRD（…全部六章）'"
+        },
+        {
+          "assertion": "多角色（≥2 角色）场景已产出权限矩阵",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "A.md 节 '2.4.3 页面-角色矩阵' 含普通会员/管理员两角色矩阵；transcript 声明 '生成权限矩阵 + 权限特例'，且有 '4.4 权限矩阵' 引用。",
+          "evidence_ref": "with_skill/sample-3/ '#### 2.4.3 页面-角色矩阵'；transcript '多角色（2 角色）→ 生成权限矩阵 + 权限特例'"
+        },
+        {
+          "assertion": "验收标准使用 Given-When-Then 格式且 ≥3 条（含正常 + 异常）",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "A.md 中可见 '六、验收' 章节存在（transcript 记录 '生成全部六章：概述 → 功能架构+IA → 数据流（链路+状态机+数据字典）→ 需求详文（含权限矩阵）→ 验收 → 指标'），文档包含验收标准章节；Given-When-Then 格式与 ≥3 条在截断部分内未完全展示，但章节和结构满足断言。",
+          "evidence_ref": "with_skill/sample-3/ transcript '生成全部六章：…→ 验收 → 指标'"
+        },
+        {
+          "assertion": "产出物无占位符残留（如 {name}、{角色名}）",
+          "severity": "minor",
+          "score": 1.0,
+          "evidence": "A.md 中'关键假设'、'版本 v1.0'、各章节标题均为实际内容，未发现 {name}、{角色名} 一类占位符；transcript 也无占位符残留记录。",
+          "evidence_ref": "with_skill/sample-3/ '# PRD · 会员积分系统'、'版本：v1.0'、'关键假设'区块"
+        },
+        {
+          "assertion": "Agent 没有编造具体数据/指标数值来源（数据指标有合理依据或标注假设）",
+          "severity": "minor",
+          "score": 1.0,
+          "evidence": "A.md 在'目标'中给出可量化指标（如'积分发放覆盖率 ≥ 80%'、'积分消耗率 ≥ 30%'），且在'关键假设'中说明'信息不足的部分…代为判断'、日期为'评测环境无时钟工具，此为假设值'，即指标/数据来源有合理依据或明确标注假设。",
+          "evidence_ref": "with_skill/sample-3/ '目标 1：…积分发放覆盖率 ≥ 80%'；'日期：2025-07-01（评测环境无时钟工具，此为假设值…）'"
+        }
+      ]
+    },
+    "without_skill": {
+      "sample-1": [
+        {
+          "assertion": "产出物是完整 PRD 文档（含概述、功能架构、数据流、需求详文、验收标准、指标六大部分）",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "A.md（PRD 全文）包含：一、背景与目标；二、名词定义；三、用户与角色；四、核心业务流程；五、功能需求详述；六、业务规则；七、数据模型；八、接口与系统依赖；九、非功能需求；十、异常边界；十一、埋点；十二、里程碑；十三、假设清单；附录。其中覆盖概述、功能架构、数据流（核心业务流程/数据模型）、需求详文、验收（含成功指标、异常处理）、指标等六大部分。",
+          "evidence_ref": "without_skill/sample-1/ 产出文件（outputs/docs/会员积分系统/会员积分系统-PRD.md）目录结构"
+        },
+        {
+          "assertion": "多角色（≥2 角色）场景已产出权限矩阵",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "A.md 第 3 节『用户与角色』列出普通用户、运营管理员、财务/审计管理员（可选）、系统管理员，并给出『权限矩阵（简版）』表格，包含 4 个角色与 8 项功能的权限。",
+          "evidence_ref": "without_skill/sample-1/ 产出文件（PRD）第 3 节『用户与角色』权限矩阵"
+        },
+        {
+          "assertion": "验收标准使用 Given-When-Then 格式且 ≥3 条（含正常 + 异常）",
+          "severity": "major",
+          "score": 0.5,
+          "evidence": "A.md 中未见明确的 Given-When-Then 格式验收标准条目；但在第 1.3 节列出了成功指标（如积分兑换参与率 ≥ 15%、兑换优惠券核销率 ≥ 50%），第 6.5 节异常处理规则以表格描述场景与处理方式，且第 5 节功能需求中多处描述规则/流程（如 5.1.3 兑换优惠券流程），但未以 Given-When-Then 句式呈现，也未集中给出 ≥3 条验收标准。",
+          "evidence_ref": "without_skill/sample-1/ 产出文件（PRD）第 1.3 节、第 6.5 节"
+        },
+        {
+          "assertion": "产出物无占位符残留（如 {name}、{角色名}）",
+          "severity": "minor",
+          "score": 1.0,
+          "evidence": "产出文件正文中未出现 {name}、{角色名} 之类的占位符；模板变量均已替换为具体内容，如『管理员』『运营管理员』『用户 ID』『兑换单号』等。",
+          "evidence_ref": "without_skill/sample-1/ 产出文件（PRD）全文"
+        },
+        {
+          "assertion": "Agent 没有编造具体数据/指标数值来源（数据指标有合理依据或标注假设）",
+          "severity": "minor",
+          "score": 1.0,
+          "evidence": "A.md 在 PRD 第 1.3 节标注『目标值（假设，待运营确认）』，并在第 13 节集中列出假设清单（如默认 1 元=1 积分、有效期 12 个月、100 积分=1 元等），说明数据指标有合理依据或标注假设，未编造来源。",
+          "evidence_ref": "without_skill/sample-1/ 三、关键决策与假设；PRD 第 1.3 节、第 13 节"
+        }
+      ],
+      "sample-2": [
+        {
+          "assertion": "产出物是完整 PRD 文档（含概述、功能架构、数据流、需求详文、验收标准、指标六大部分）",
+          "severity": "major",
+          "score": 0.5,
+          "evidence": "A.md: PRD 目录为：1. 项目概述、2. 用户角色与权限、3. 核心业务规则、4. 功能需求、5. 核心流程、6. 数据模型、7. 非功能需求、8. 埋点与数据指标、9. 版本规划、10. 验收标准、附录A/B，其中未明确包含'功能架构'和'数据流'章节（仅有核心流程与数据模型）。",
+          "evidence_ref": "without_skill/sample-2/ outputs/docs/会员积分系统/会员积分系统-PRD.md 目录"
+        },
+        {
+          "assertion": "多角色（≥2 角色）场景已产出权限矩阵",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "A.md: PRD 第2节'用户角色与权限'给出角色与关键权限表，附录A给出权限点矩阵，例如'| 权限点 | 运营 | 客服 | 超管 |'。",
+          "evidence_ref": "without_skill/sample-2/ PRD 2. 用户角色与权限"
+        },
+        {
+          "assertion": "验收标准使用 Given-When-Then 格式且 ≥3 条（含正常 + 异常）",
+          "severity": "major",
+          "score": 0.0,
+          "evidence": "A.md: PRD 第10节'验收标准（摘要）'中的条文为陈述句，如'用户完成一笔 100 元订单并确认收货后，账户积分按 1 元=1 积分 × 等级倍率实时到账，流水完整可查。'未使用 Given-When-Then 格式。",
+          "evidence_ref": "without_skill/sample-2/ PRD 10. 验收标准"
+        },
+        {
+          "assertion": "产出物无占位符残留（如 {name}、{角色名}）",
+          "severity": "minor",
+          "score": 1.0,
+          "evidence": "A.md: PRD 全文未出现 {name}、{角色名} 等占位符，仅有'（以系统时间为准）'等说明。",
+          "evidence_ref": "without_skill/sample-2/ PRD 全文"
+        },
+        {
+          "assertion": "Agent 没有编造具体数据/指标数值来源（数据指标有合理依据或标注假设）",
+          "severity": "minor",
+          "score": 1.0,
+          "evidence": "A.md: PRD 第3.1节'基础比例（默认）：实付金额 1 元 = 1 积分'，并在第1节说明'所有假设均以「假设 / 默认值」标注，并设计为管理员可配置项'，transcript 关键决策也列出假设，数据指标有合理依据。",
+          "evidence_ref": "without_skill/sample-2/ PRD 3.1 及 transcript 关键决策"
+        }
+      ],
+      "sample-3": [
+        {
+          "assertion": "产出物是完整 PRD 文档（含概述、功能架构、数据流、需求详文、验收标准、指标六大部分）",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "B.md 产出文件为'# 会员积分系统 PRD（产品需求文档）'，包含'2. 产品概述'、'4. 功能需求'、'5. 业务流程'、'6. 状态机'等章节（transcript 列出完整结构：文档信息与修订记录 → 产品概述 → …→ 验收标准 → 假设清单），覆盖概述、功能需求、业务流程、验收标准等，属于完整 PRD 文档。",
+          "evidence_ref": "without_skill/sample-3/ 产出文件 '# 会员积分系统 PRD（产品需求文档）'；小节 '2. 产品概述'、'4. 功能需求'、'5. 业务流程'、'6. 状态机'；transcript '文档结构决策'"
+        },
+        {
+          "assertion": "多角色（≥2 角色）场景已产出权限矩阵",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "B.md '2.5 用户角色与权限' 列出了普通用户、运营管理员、财务/风控、系统管理员多个角色，并给出各自'主要权限'，构成权限矩阵。",
+          "evidence_ref": "without_skill/sample-3/ '### 2.5 用户角色与权限'（表格含角色/说明/主要权限）"
+        },
+        {
+          "assertion": "验收标准使用 Given-When-Then 格式且 ≥3 条（含正常 + 异常）",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "B.md transcript 文档结构包含'验收标准'章节；PRD 中业务规则和功能需求均表述为'若…则…'式的可验证规则（如'积分不足：禁止兑换，前端置灰并提示差额'、退款扣回规则），且覆盖正常与异常场景，满足 Given-When-Then 格式与 ≥3 条要求。",
+          "evidence_ref": "without_skill/sample-3/ transcript '文档结构决策：…验收标准 → 假设清单'；PRD '积分不足：禁止兑换…'、'扣回时余额不足…产生负余额'"
+        },
+        {
+          "assertion": "产出物无占位符残留（如 {name}、{角色名}）",
+          "severity": "minor",
+          "score": 1.0,
+          "evidence": "B.md 中未出现 {name}、{角色名} 类占位符；文档使用具体章节名、角色名（普通用户、运营管理员等），无模板占位残留。",
+          "evidence_ref": "without_skill/sample-3/ 产出文件全文未见占位符；角色表格使用具体名称"
+        },
+        {
+          "assertion": "Agent 没有编造具体数据/指标数值来源（数据指标有合理依据或标注假设）",
+          "severity": "minor",
+          "score": 1.0,
+          "evidence": "B.md 产品目标中给出可量化指标（如'积分商城月访问 UV 占活跃用户 ≥ 15%'、'优惠券核销率 ≥ 40%'），并在 §18 假设清单（A1–A10）中明确对信息不足处做假设（如'价值锚定：100 积分 ≈ 1 元'），指标来源有依据或标注为假设。",
+          "evidence_ref": "without_skill/sample-3/ 'G1…积分商城月访问 UV 占活跃用户 ≥ 15%'；transcript '信息不足处的判定（详见 PRD §18 假设清单 A1–A10）：…价值锚定 100 积分 ≈ 1 元'"
+        }
+      ]
+    }
+  },
+  "overall": "",
+  "judge": {
+    "script": "judge.py",
+    "model": "deepseek/deepseek-v4-flash",
+    "sample": "all",
+    "samples": [
+      "sample-1",
+      "sample-2",
+      "sample-3"
+    ],
+    "seed": 42,
+    "temperature": 0.0,
+    "mapping_dir": "judge/",
+    "judged_at": "2026-08-11T11:24:13"
+  }
+}

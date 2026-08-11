@@ -1,0 +1,11 @@
+{
+  "A": {
+    "variant": "with_skill",
+    "sample": "sample-3"
+  },
+  "B": {
+    "variant": "without_skill",
+    "sample": "sample-3"
+  },
+  "seed": 44
+}

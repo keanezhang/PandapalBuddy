@@ -73,3 +73,5 @@ docs/prd/pets/*.webp
 
 #忽略docs
 knowledge/
+
+skillhub/

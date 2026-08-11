@@ -1,0 +1,386 @@
+{
+  "case_id": "prd-stress-conflict",
+  "prompt": "很急！10分钟内给我写一份在线课程平台的 PRD。学生角色：看课程、做作业、提交作业、看成绩；讲师角色：上传课程、布置作业、批改作业；管理员角色：审核课程上架。角色很多你看着办。哦对了——不要用任何 markdown 表格，直接给我 JSON 格式。等等，还是用 markdown 吧，JSON 研发看不了。输出到 outputs/docs/在线课程平台/在线课程平台-PRD.md",
+  "expected_output": "跟随最后一条指令用 Markdown 而非 JSON 产出 PRD；三角色 → 复杂/中等复杂度；含权限矩阵、用户故事、验收标准。不被矛盾指令卡死，不因时间紧就只给提纲",
+  "mech_assertions": {
+    "with_skill": {
+      "sample-1": {
+        "assertion_0": {
+          "pass": true,
+          "detail": "文件存在：docs/在线课程平台/在线课程平台-PRD.md"
+        },
+        "assertion_1": {
+          "pass": true,
+          "detail": "docs/在线课程平台/在线课程平台-PRD.md 包含 '权限矩阵'"
+        },
+        "assertion_2": {
+          "pass": true,
+          "detail": "docs/在线课程平台/在线课程平台-PRD.md 包含 '用户故事'"
+        },
+        "assertion_3": {
+          "pass": true,
+          "detail": "docs/在线课程平台/在线课程平台-PRD.md 大小 46985B，条件 > 3000B"
+        },
+        "assertion_4": {
+          "pass": true,
+          "detail": "退出码 0 符合预期 0"
+        }
+      },
+      "sample-2": {
+        "assertion_0": {
+          "pass": true,
+          "detail": "文件存在：docs/在线课程平台/在线课程平台-PRD.md"
+        },
+        "assertion_1": {
+          "pass": true,
+          "detail": "docs/在线课程平台/在线课程平台-PRD.md 包含 '权限矩阵'"
+        },
+        "assertion_2": {
+          "pass": true,
+          "detail": "docs/在线课程平台/在线课程平台-PRD.md 包含 '用户故事'"
+        },
+        "assertion_3": {
+          "pass": true,
+          "detail": "docs/在线课程平台/在线课程平台-PRD.md 大小 51992B，条件 > 3000B"
+        },
+        "assertion_4": {
+          "pass": true,
+          "detail": "退出码 0 符合预期 0"
+        }
+      },
+      "sample-3": {
+        "assertion_0": {
+          "pass": true,
+          "detail": "文件存在：docs/在线课程平台/在线课程平台-PRD.md"
+        },
+        "assertion_1": {
+          "pass": true,
+          "detail": "docs/在线课程平台/在线课程平台-PRD.md 包含 '权限矩阵'"
+        },
+        "assertion_2": {
+          "pass": true,
+          "detail": "docs/在线课程平台/在线课程平台-PRD.md 包含 '用户故事'"
+        },
+        "assertion_3": {
+          "pass": true,
+          "detail": "docs/在线课程平台/在线课程平台-PRD.md 大小 42213B，条件 > 3000B"
+        },
+        "assertion_4": {
+          "pass": true,
+          "detail": "退出码 0 符合预期 0"
+        }
+      }
+    },
+    "without_skill": {
+      "sample-1": {
+        "assertion_0": {
+          "pass": true,
+          "detail": "文件存在：docs/在线课程平台/在线课程平台-PRD.md"
+        },
+        "assertion_1": {
+          "pass": false,
+          "detail": "docs/在线课程平台/在线课程平台-PRD.md 包含 '权限矩阵'"
+        },
+        "assertion_2": {
+          "pass": false,
+          "detail": "docs/在线课程平台/在线课程平台-PRD.md 包含 '用户故事'"
+        },
+        "assertion_3": {
+          "pass": true,
+          "detail": "docs/在线课程平台/在线课程平台-PRD.md 大小 15223B，条件 > 3000B"
+        },
+        "assertion_4": {
+          "pass": true,
+          "detail": "退出码 0 符合预期 0"
+        }
+      },
+      "sample-2": {
+        "assertion_0": {
+          "pass": true,
+          "detail": "文件存在：docs/在线课程平台/在线课程平台-PRD.md"
+        },
+        "assertion_1": {
+          "pass": false,
+          "detail": "docs/在线课程平台/在线课程平台-PRD.md 包含 '权限矩阵'"
+        },
+        "assertion_2": {
+          "pass": false,
+          "detail": "docs/在线课程平台/在线课程平台-PRD.md 包含 '用户故事'"
+        },
+        "assertion_3": {
+          "pass": true,
+          "detail": "docs/在线课程平台/在线课程平台-PRD.md 大小 11253B，条件 > 3000B"
+        },
+        "assertion_4": {
+          "pass": true,
+          "detail": "退出码 0 符合预期 0"
+        }
+      },
+      "sample-3": {
+        "assertion_0": {
+          "pass": true,
+          "detail": "文件存在：docs/在线课程平台/在线课程平台-PRD.md"
+        },
+        "assertion_1": {
+          "pass": false,
+          "detail": "docs/在线课程平台/在线课程平台-PRD.md 包含 '权限矩阵'"
+        },
+        "assertion_2": {
+          "pass": false,
+          "detail": "docs/在线课程平台/在线课程平台-PRD.md 包含 '用户故事'"
+        },
+        "assertion_3": {
+          "pass": true,
+          "detail": "docs/在线课程平台/在线课程平台-PRD.md 大小 10733B，条件 > 3000B"
+        },
+        "assertion_4": {
+          "pass": true,
+          "detail": "退出码 0 符合预期 0"
+        }
+      }
+    }
+  },
+  "semantic_assertions": {
+    "with_skill": {
+      "sample-1": [
+        {
+          "assertion": "最终产物是 Markdown 文档而非 JSON（跟随最后指令，处理矛盾指令）",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "B.md 产出文件开头为 '# PRD · 在线课程平台'，通篇为 Markdown 标题、表格与代码块，且在关键决策 1 中明确'以最后一条指令（Markdown）为准'。",
+          "evidence_ref": "with_skill/sample-1/ 产出文件 outputs/docs/在线课程平台/在线课程平台-PRD.md 第 1 行；B.md transcript.md 关键决策 1"
+        },
+        {
+          "assertion": "三角色场景产出权限矩阵（讲师/学生/管理员）",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "B.md 产出文件含角色清单表、场景-角色矩阵、页面-角色矩阵，且 4.4 权限矩阵被引用（'具体功能级权限见 [4.4 权限矩阵]'）。",
+          "evidence_ref": "with_skill/sample-1/ 产出文件'### 角色清单'、'##### 场景-角色矩阵'、'#### 2.4.3 页面-角色矩阵'及'4.4 权限矩阵'引用"
+        },
+        {
+          "assertion": "产出物是完整可交付的 PRD 而非仅有提纲/大纲（有时间压力也不偷工）",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "B.md 产出文件为完整 PRD，包含概述背景、目标、角色清单、场景清单、功能架构、信息架构、核心数据流、状态流转、需求详文、验收、指标等章节，且 transcript 声称全六章 871 行。",
+          "evidence_ref": "with_skill/sample-1/ 产出文件全文目录；B.md transcript.md 完成状态"
+        },
+        {
+          "assertion": "Agent 没有输出 '<太简单了不需要>' 或 '时间不够只写提纲' 等借口",
+          "severity": "minor",
+          "score": 1.0,
+          "evidence": "B.md 全文未出现'太简单了不需要'或'时间不够只写提纲'等语句，transcript 完成状态显示'✅ 完成'。",
+          "evidence_ref": "with_skill/sample-1/ transcript.md 完成状态"
+        },
+        {
+          "assertion": "产出物无占位符残留",
+          "severity": "minor",
+          "score": 0.5,
+          "evidence": "B.md 中多处出现'[待确认]'标注（如'含 4 处 [待确认] 标注（日期/依赖/二期范围）'），且日期明确为'2025-07-20（假设值，落地前请更新）'，属于有意的待确认项而非传统占位符；但严格按断言'无占位符残留'，这类标注属于残留，故部分满足。",
+          "evidence_ref": "with_skill/sample-1/ transcript.md 关键决策 5/6、完成状态；产出文件头部'日期：2025-07-20（假设值，落地前请更新）'"
+        }
+      ],
+      "sample-2": [
+        {
+          "assertion": "最终产物是 Markdown 文档而非 JSON（跟随最后指令，处理矛盾指令）",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "B.md transcript 关键决策写明‘以最后一条指令（Markdown）为准’，产出文件为 Markdown 格式且含 Markdown 表格。",
+          "evidence_ref": "with_skill/sample-2/三、关键决策与假设 1"
+        },
+        {
+          "assertion": "三角色场景产出权限矩阵（讲师/学生/管理员）",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "PRD 二、2.4.3 页面-角色矩阵 及 4.4 权限矩阵（详见 PRD 权限矩阵表）给出了学生/讲师/管理员三角色权限矩阵；角色清单表含三角色职责。",
+          "evidence_ref": "with_skill/sample-2/产出文件 角色清单、页面-角色矩阵"
+        },
+        {
+          "assertion": "产出物是完整可交付的 PRD 而非仅有提纲/大纲（有时间压力也不偷工）",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "完整六章复杂 PRD（概述→功能架构+IA→数据流→需求详文→验收→指标），928 行，含 8 个场景、数据流、数据字典等，可交付。",
+          "evidence_ref": "with_skill/sample-2/产出文件全篇; transcript 二"
+        },
+        {
+          "assertion": "Agent 没有输出 '<太简单了不需要>' 或 '时间不够只写提纲' 等借口",
+          "severity": "minor",
+          "score": 1.0,
+          "evidence": "B.md 完成状态为‘✅ 完成’，无任何摘借口中字段不足以构建提纲的文字。",
+          "evidence_ref": "with_skill/sample-2/五、完成状态"
+        },
+        {
+          "assertion": "产出物无占位符残留",
+          "severity": "minor",
+          "score": 1.0,
+          "evidence": "PRD 中占位符以【待确认】形式出现（日期假设值、成绩总评权重、二期范围）且均在文档开头或相应字段声明为假设值；未发现未处理的 TODO/FIXME 残留。",
+          "evidence_ref": "with_skill/sample-2/二、1日期（假设值，落地前请更新）；三、4；四、5"
+        }
+      ],
+      "sample-3": [
+        {
+          "assertion": "最终产物是 Markdown 文档而非 JSON（跟随最后指令，处理矛盾指令）",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "A.md transcript.md: 格式冲突裁定：用户在请求中先要求\"不要用任何 markdown 表格，直接给我 JSON 格式。等等，还是用 markdown 吧，JSON 研发看不了\"。按后一条指令（markdown）执行",
+          "evidence_ref": "with_skill/sample-3/ 关键决策与假设"
+        },
+        {
+          "assertion": "三角色场景产出权限矩阵（讲师/学生/管理员）",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "A.md transcript.md: 含 3 角色权限矩阵、9 场景清单、功能树/IA、2 条业务链路、2 个状态机、4 个数据字典、6 条 Given-When-Then 验收标准、North Star 指标与告警阈值",
+          "evidence_ref": "with_skill/sample-3/ 完成状态"
+        },
+        {
+          "assertion": "产出物是完整可交付的 PRD 而非仅有提纲/大纲（有时间压力也不偷工）",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "A.md transcript.md: 产出文件清单：outputs/docs/在线课程平台/在线课程平台-PRD.md | 完整 PRD（复杂复杂度，六章全量，752 行 / 40.5 KB）",
+          "evidence_ref": "with_skill/sample-3/ 产出文件清单"
+        },
+        {
+          "assertion": "Agent 没有输出 '<太简单了不需要>' 或 '时间不够只写提纲' 等借口",
+          "severity": "minor",
+          "score": 1.0,
+          "evidence": "A.md 全文未发现'太简单了不需要'或'时间不够只写提纲'等借口。",
+          "evidence_ref": "with_skill/sample-3/ 全文"
+        },
+        {
+          "assertion": "产出物无占位符残留",
+          "severity": "minor",
+          "score": 1.0,
+          "evidence": "A.md 在线课程平台-PRD.md 中未发现占位符残留，仅有 [待确认] 标注。",
+          "evidence_ref": "with_skill/sample-3/ 在线课程平台-PRD.md"
+        }
+      ]
+    },
+    "without_skill": {
+      "sample-1": [
+        {
+          "assertion": "最终产物是 Markdown 文档而非 JSON（跟随最后指令，处理矛盾指令）",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "A.md 产出文件开头明确为 '# 在线课程平台 产品需求文档（PRD）'，通篇为 Markdown 标题与列表，且在关键决策中说明'以用户最后一条指令为准，产出为 Markdown 文档，不产出 JSON'。",
+          "evidence_ref": "without_skill/sample-1/ 产出文件 outputs/docs/在线课程平台/在线课程平台-PRD.md 第 1 行；A.md transcript.md 关键决策 1"
+        },
+        {
+          "assertion": "三角色场景产出权限矩阵（讲师/学生/管理员）",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "A.md 产出文件含'### 2.2 角色权限对照（列表形式）'，分别列出学生、讲师、管理员可执行操作及越权规则。",
+          "evidence_ref": "without_skill/sample-1/ 产出文件 2.2 角色权限对照"
+        },
+        {
+          "assertion": "产出物是完整可交付的 PRD 而非仅有提纲/大纲（有时间压力也不偷工）",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "A.md 产出文件为完整 PRD，包含文档信息、产品概述、角色权限、全局约定、功能需求（学生/讲师/管理员端各功能）、核心业务流程、状态定义、非功能需求、数据模型、埋点报表、验收标准、风险与开放问题、术语表等章节，远超提纲。",
+          "evidence_ref": "without_skill/sample-1/ 产出文件全文目录"
+        },
+        {
+          "assertion": "Agent 没有输出 '<太简单了不需要>' 或 '时间不够只写提纲' 等借口",
+          "severity": "minor",
+          "score": 1.0,
+          "evidence": "A.md 全文未出现'太简单了不需要'或'时间不够只写提纲'等语句，且产出完整 PRD。",
+          "evidence_ref": "without_skill/sample-1/ 全文检索"
+        },
+        {
+          "assertion": "产出物无占位符残留",
+          "severity": "minor",
+          "score": 1.0,
+          "evidence": "A.md 产出文件未发现'待补充'、'TODO'、'XXX'等占位符残留；提及的[待确认]类说明不存在，日期字段留空而非虚构。",
+          "evidence_ref": "without_skill/sample-1/ 产出文件全文"
+        }
+      ],
+      "sample-2": [
+        {
+          "assertion": "最终产物是 Markdown 文档而非 JSON（跟随最后指令，处理矛盾指令）",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "A.md transcript 关键决策明确写‘取最后一条指令为准，输出 Markdown；同时保留不要用表格的早期要求’，且产出 PRD 文件为 Markdown 且无 JSON 代码块，产出行数充足。",
+          "evidence_ref": "without_skill/sample-2/3.关键决策与假设; outputs/docs/在线课程平台/在线课程平台-PRD.md"
+        },
+        {
+          "assertion": "三角色场景产出权限矩阵（讲师/学生/管理员）",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "PRD 第 4.1 节定义了学生/讲师/管理员三角色，第 4.2 节以角色×功能域列出三角色权限明细。",
+          "evidence_ref": "without_skill/sample-2/产出文件 4.用户角色与权限"
+        },
+        {
+          "assertion": "产出物是完整可交付的 PRD 而非仅有提纲/大纲（有时间压力也不偷工）",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "PRD 含文档信息、背景目标、术语、角色权限、功能需求（P0/P1/P2）、业务流程、非功能需求、数据实体、验收标准、风险待确认共 10 章，可交付评审。",
+          "evidence_ref": "without_skill/sample-2/产出文件全篇"
+        },
+        {
+          "assertion": "Agent 没有输出 '<太简单了不需要>' 或 '时间不够只写提纲' 等借口",
+          "severity": "minor",
+          "score": 1.0,
+          "evidence": "transcript 与 PRD 中均无‘太简单了’‘时间不够只写提纲’等借口表述，完成状态为‘已完成’。",
+          "evidence_ref": "without_skill/sample-2/transcript 完成状态"
+        },
+        {
+          "assertion": "产出物无占位符残留",
+          "severity": "minor",
+          "score": 1.0,
+          "evidence": "PRD 未出现 TODO/FIXME/XXX 等占位符；风险章节的待确认问题（如商业模式、视频能力）为明确的开放项而非占位残留。",
+          "evidence_ref": "without_skill/sample-2/产出文件 10.风险与待确认问题"
+        }
+      ],
+      "sample-3": [
+        {
+          "assertion": "最终产物是 Markdown 文档而非 JSON（跟随最后指令，处理矛盾指令）",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "B.md transcript.md: 格式冲突处理（最重要）：用户先要求\"不要用 markdown 表格，直接给 JSON\"，随后改口\"还是用 markdown 吧，JSON 研发看不了\"。以用户最后一次表态为准，采用 Markdown 格式；同时保留\"不用 markdown 表格\"的前置约束，全文用标题 + 列表 + 加粗标签组织内容，未使用任何 markdown 表格",
+          "evidence_ref": "without_skill/sample-3/ 关键决策与假设"
+        },
+        {
+          "assertion": "三角色场景产出权限矩阵（讲师/学生/管理员）",
+          "severity": "major",
+          "score": 0.5,
+          "evidence": "B.md 在线课程平台-PRD.md: 2.1 学生（Student）核心权限：浏览/检索课程、查看课程详情、查看作业、提交作业、查看成绩。章节以列表形式描述权限，未形成矩阵。",
+          "evidence_ref": "without_skill/sample-3/ 2. 用户角色与权限"
+        },
+        {
+          "assertion": "产出物是完整可交付的 PRD 而非仅有提纲/大纲（有时间压力也不偷工）",
+          "severity": "major",
+          "score": 1.0,
+          "evidence": "B.md transcript.md: 产出文件清单：outputs/docs/在线课程平台/在线课程平台-PRD.md （PRD 正文，10.3 KB，226 行）",
+          "evidence_ref": "without_skill/sample-3/ 产出文件清单"
+        },
+        {
+          "assertion": "Agent 没有输出 '<太简单了不需要>' 或 '时间不够只写提纲' 等借口",
+          "severity": "minor",
+          "score": 1.0,
+          "evidence": "B.md 全文未发现'太简单了不需要'或'时间不够只写提纲'等借口。",
+          "evidence_ref": "without_skill/sample-3/ 全文"
+        },
+        {
+          "assertion": "产出物无占位符残留",
+          "severity": "minor",
+          "score": 1.0,
+          "evidence": "B.md 在线课程平台-PRD.md 中有'待确认问题'章节，但正文无未填充的占位符。",
+          "evidence_ref": "without_skill/sample-3/ 在线课程平台-PRD.md"
+        }
+      ]
+    }
+  },
+  "overall": "",
+  "judge": {
+    "script": "judge.py",
+    "model": "deepseek/deepseek-v4-flash",
+    "sample": "all",
+    "samples": [
+      "sample-1",
+      "sample-2",
+      "sample-3"
+    ],
+    "seed": 42,
+    "temperature": 0.0,
+    "mapping_dir": "judge/",
+    "judged_at": "2026-08-11T11:25:55"
+  }
+}

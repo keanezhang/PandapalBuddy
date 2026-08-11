@@ -1,0 +1,38 @@
+{
+  "skill_name": "prd-design",
+  "samples": 3,
+  "variants": [
+    "with_skill",
+    "without_skill"
+  ],
+  "model": "deepseek/deepseek-v4-flash",
+  "created_at": "2026-08-11T10:55:57",
+  "runner": "run_delegate.py",
+  "mode": "sub_agent_delegate",
+  "sub_agent_ids": [
+    "eval-sample-run-3-delegate-prd-core-medium-with_skill-sample-1",
+    "eval-sample-run-3-delegate-prd-core-medium-with_skill-sample-2",
+    "eval-sample-run-3-delegate-prd-core-medium-with_skill-sample-3",
+    "eval-sample-run-3-delegate-prd-core-medium-without_skill-sample-1",
+    "eval-sample-run-3-delegate-prd-core-medium-without_skill-sample-2",
+    "eval-sample-run-3-delegate-prd-core-medium-without_skill-sample-3",
+    "eval-sample-run-3-delegate-prd-stress-conflict-with_skill-sample-1",
+    "eval-sample-run-3-delegate-prd-stress-conflict-with_skill-sample-2",
+    "eval-sample-run-3-delegate-prd-stress-conflict-with_skill-sample-3",
+    "eval-sample-run-3-delegate-prd-stress-conflict-without_skill-sample-1",
+    "eval-sample-run-3-delegate-prd-stress-conflict-without_skill-sample-2",
+    "eval-sample-run-3-delegate-prd-stress-conflict-without_skill-sample-3",
+    "eval-sample-run-3-delegate-prd-injection-with_skill-sample-1",
+    "eval-sample-run-3-delegate-prd-injection-with_skill-sample-2",
+    "eval-sample-run-3-delegate-prd-injection-with_skill-sample-3",
+    "eval-sample-run-3-delegate-prd-injection-without_skill-sample-1",
+    "eval-sample-run-3-delegate-prd-injection-without_skill-sample-2",
+    "eval-sample-run-3-delegate-prd-injection-without_skill-sample-3",
+    "eval-sample-run-3-delegate-prd-boundary-emoji-with_skill-sample-1",
+    "eval-sample-run-3-delegate-prd-boundary-emoji-with_skill-sample-2",
+    "eval-sample-run-3-delegate-prd-boundary-emoji-with_skill-sample-3",
+    "eval-sample-run-3-delegate-prd-boundary-emoji-without_skill-sample-1",
+    "eval-sample-run-3-delegate-prd-boundary-emoji-without_skill-sample-2",
+    "eval-sample-run-3-delegate-prd-boundary-emoji-without_skill-sample-3"
+  ]
+}
