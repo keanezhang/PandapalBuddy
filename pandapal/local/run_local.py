@@ -191,7 +191,7 @@ def _build_environment_block(work_dir: Path) -> str:
 
 
 def _load_pandapal_md(work_dir: Path) -> str:
-    """加载 PANDAPAL.md 项目指引文件，失败时降级返回空字符串。
+    """加载 PANDAPAL.md 项目指引文件（仅 coding 模式注入），失败时降级返回空字符串。
 
     ★ 目录分层改造后：PANDAPAL.md 从用户工作区（--workdir）加载。
     """
@@ -206,24 +206,34 @@ def _load_pandapal_md(work_dir: Path) -> str:
     return ""
 
 
-# 模式无关的 prompt 尾部（运行环境块 + 项目指引），供 prompts.compose 拼接。
-# 双层 Prompt（CORE + PERSONA）见 pandapal/local/prompts.py。
-#
-# 惰性计算：环境块内嵌工作区根目录，由 main() 首次调用 _get_prompt_suffix(WORK_DIR) 时
-# 计算并缓存，后续调用（含 _build_blueprint 内）直接命中缓存。
-_PROMPT_SUFFIX_CACHE: str | None = None
+# 运行环境块（模式无关，所有模式共用）：内嵌工作区根目录，由 main() 首次调用
+# _get_environment_block(WORK_DIR) 时计算并缓存，后续调用（含 _build_blueprint 内）
+# 直接命中缓存。PANDAPAL.md 项目指引不在此缓存内——它仅 coding 模式注入（见
+# _get_prompt_suffix / build_prompt_map 的 coding_extra 参数）。
+_ENV_BLOCK_CACHE: str | None = None
 
 
-def _get_prompt_suffix(work_dir: Path | None = None) -> str:
-    """返回 prompt 尾部（首次调用时计算并缓存）。
+def _get_environment_block(work_dir: Path | None = None) -> str:
+    """返回运行环境块（模式无关的 prompt 尾部，首次调用时计算并缓存）。
 
     main() 首次调用时必须传入 WORK_DIR，后续调用（含 _build_blueprint 内）缓存命中无需传参。
     """
-    global _PROMPT_SUFFIX_CACHE
-    if _PROMPT_SUFFIX_CACHE is None:
-        assert work_dir is not None, "_get_prompt_suffix: 首次调用必须传入 work_dir"
-        _PROMPT_SUFFIX_CACHE = _build_environment_block(work_dir) + _load_pandapal_md(work_dir)
-    return _PROMPT_SUFFIX_CACHE
+    global _ENV_BLOCK_CACHE
+    if _ENV_BLOCK_CACHE is None:
+        assert work_dir is not None, "_get_environment_block: 首次调用必须传入 work_dir"
+        _ENV_BLOCK_CACHE = _build_environment_block(work_dir)
+    return _ENV_BLOCK_CACHE
+
+
+def _get_prompt_suffix(work_dir: Path, mode: str) -> str:
+    """按模式组装 prompt 尾部：运行环境块所有模式共用；PANDAPAL.md 项目指引仅 coding 注入。
+
+    供 prompts.compose 拼接；office 模式只拿环境块，不带项目指引。
+    """
+    suffix = _get_environment_block(work_dir)
+    if mode == "coding":
+        suffix += _load_pandapal_md(work_dir)
+    return suffix
 
 # ══════════════════════════════════════════════════════════════════════════════
 # §2  子系统构建工厂（5.2 重写：每个工厂聚焦于"只做一件事"）
@@ -495,7 +505,9 @@ def _build_blueprint(
     from pandapal.local import prompts
     # 必须传入 work_dir：首次调用负责预热缓存（缓存为 None 时未传会触发 assert）。
     # _build_blueprint 在 main() 的缓存预热调用之前执行，故此处显式传入。
-    agent_builder.system_prompt(prompts.compose(prompts.DEFAULT_MODE, _get_prompt_suffix(work_dir)))
+    agent_builder.system_prompt(
+        prompts.compose(prompts.DEFAULT_MODE, _get_prompt_suffix(work_dir, prompts.DEFAULT_MODE))
+    )
     # 费用停机由应用层全权负责（SDK 只提供通用 StepGuard 机制）：注入 CostBudgetGuard，
     # 它按实际净费用（含缓存折扣，价格数据在 pandapal.config.llm_pricing）累加并判断是否超预算，
     # 同时其 spent(run_id) 供会话末尾（REPLY_END）展示本 run 花费。
@@ -883,8 +895,12 @@ async def run_local() -> None:
         "user_resources_dir": str(USER_RESOURCES_DIR),  # ★ user skills/agents 根 (WORK_DIR/.pandapal)
     }
     # 双层 Prompt：为每个模式预生成完整 prompt，供 SessionAgentPool 按 mode delta-rebind。
+    # 环境块所有模式共用；PANDAPAL.md 项目指引仅 coding 注入（office 不注入）。
     from pandapal.local import prompts
-    prompt_by_mode = prompts.build_prompt_map(_get_prompt_suffix(WORK_DIR))
+    prompt_by_mode = prompts.build_prompt_map(
+        _get_environment_block(WORK_DIR),
+        coding_extra=_load_pandapal_md(WORK_DIR),
+    )
 
     app = PandaPalApp(
         config=app_config,

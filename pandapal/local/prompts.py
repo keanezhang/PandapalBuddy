@@ -6,7 +6,8 @@
 - 每段自带完整操作骨架（安全边界 / 干活流程 / 遇错诊断 / 交付自检 / 收尾）+ 领域人格，
   骨架按领域定制（编码的诊断/自检是代码专属，办公的是交付专属）。
 - compose(mode, suffix) = PROMPTS[mode] + suffix
-  suffix 由应用层启动时算好（运行环境块 + 项目指引），模式无关，两段共用同一尾部。
+  suffix 分两部分：运行环境块（模式无关，两段共用）由应用层启动时算好；
+  项目指引 PANDAPAL.md 与 TEST_RULE.md 同属 coding 专属——仅 coding 模式注入，office 不注入。
 - coding 模式额外在导入期拼接同目录 TEST_RULE.md（代码改动收尾的测试闭环检验），
   office 模式不注入；TEST_RULE.md 缺失即 fail-fast（打包事故必须启动即炸，不静默降级）。
 
@@ -220,12 +221,21 @@ def compose(mode: str | None, suffix: str = "") -> str:
 
     Args:
         mode:   模式键（coding / office）；非法或 None 落 DEFAULT_MODE。
-        suffix: 模式无关的尾部（运行环境块 + 项目指引），由应用层启动时算好。
+        suffix: prompt 尾部（运行环境块等），由应用层按模式算好。
     """
     body = PROMPTS[normalize_mode(mode)]
     return f"{body}\n{suffix}" if suffix else body
 
 
-def build_prompt_map(suffix: str = "") -> dict[str, str]:
-    """为所有合法模式预生成完整 prompt，供 Pool 做 delta-rebind 时按 mode 查表。"""
-    return {m: compose(m, suffix) for m in VALID_MODES}
+def build_prompt_map(shared_suffix: str = "", coding_extra: str = "") -> dict[str, str]:
+    """为所有合法模式预生成完整 prompt，供 Pool 做 delta-rebind 时按 mode 查表。
+
+    Args:
+        shared_suffix: 所有模式共用的尾部（运行环境块）。
+        coding_extra:  仅 coding 模式追加的尾部（项目指引 PANDAPAL.md 等 coding 专属
+                       内容），office 模式不注入。
+    """
+    return {
+        m: compose(m, shared_suffix + (coding_extra if m == "coding" else ""))
+        for m in VALID_MODES
+    }

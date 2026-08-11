@@ -23,7 +23,7 @@ MathLLMGuide = """安全的数学表达式求值器。
 
 
 @tool.function(
-    tier=ToolTier.ALWAYS,
+    tier=ToolTier.DEFERRED,
     name="math_calculator",
     description=(
         "数学表达式计算器，支持加减乘除和常用数学函数"
