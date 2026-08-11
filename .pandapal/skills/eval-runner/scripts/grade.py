@@ -212,7 +212,7 @@ def main():
     if not run_id:
         run_id = find_latest_run(skill_dir)
     if not run_id:
-        print("❌ 没有找到任何运行目录，请先执行 run_isolated.py")
+        print("❌ 没有找到任何运行目录，请先执行 run_delegate.py")
         sys.exit(1)
 
     run_dir = skill_dir / "eval-runs" / run_id

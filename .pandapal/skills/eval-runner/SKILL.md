@@ -98,7 +98,7 @@ tags: "skill, eval, 评估, 测试, benchmark"
 | `File size <op> N: <path>` | `File size > 1000: report.md` | 文件字节数满足 `<op> ∈ {<, <=, >, >=}` |
 | `Exit code N` | `Exit code 0` | exit_code.txt 值 == N |
 
-3. 骨架无需手动创建——Step 2 的 `run_isolated.py` 会自动建好 `sample-1..sample-N` 的 with/without 目录并自动生成 run 编号。
+3. 骨架无需手动创建——Step 2 的 `run_delegate.py` 会自动建好 `sample-1..sample-N` 的 with/without 目录并自动生成 run 编号。
 
 ### Step 2: 跑样本（脚本自动，with/without 两组一次跑完）
 
@@ -107,25 +107,28 @@ tags: "skill, eval, 评估, 测试, benchmark"
 执行（一条命令跑完两组 + 自动判分 + 聚合）：
 
 ```bash
-python <eval-runner-dir>/scripts/run_isolated.py <target-skill-dir> --samples 3
+python <eval-runner-dir>/scripts/run_delegate.py <target-skill-dir> --samples 3
 ```
 
 脚本内部自动完成：
-- 用 `AgentBuilder` 构建**隔离执行 Agent**：仅 `write_file`/`read_file`/`list_files`/`glob` 四个安全工具（无 bash、无删除），with/without 两组除 skill 注入外完全一致。
-- **无人值守自动应答**：评测 agent 无法屏蔽 `ask_user`（builder 强制注册全部内置工具），且 `ask_user` 的 `requires_user_interaction=True` 会让引擎暂停等待人工回答。脚本用统一自动应答（`resume_state` + `interaction_response`）自动恢复，直到任务完成或轮次上限（5 轮）；每次自动应答的问题摘要与回复原文记录在 transcript 的「AskUser 自动应答记录」段。
-- **with_skill**：把目标 skill 的 `SKILL.md` 正文全文注入 user prompt。
-- **without_skill**：指令隔离——明确"不要加载/引用/使用名为 `<skill-name>` 的 skill、禁止探索其目录"。
-- 自动创建 run 骨架 `eval-runs/run-<N>-isolated/<case-id>/{with_skill,without_skill}/sample-<i>/outputs/` 并自动递增 run 编号。
-- 每 sample 落盘：`transcript.md`（完整 prompt + agent 输出 + 工具轨迹）、`outputs/`、`exit_code.txt`（成功 0 / 失败 1）、`timing.json`（真实墙钟 + AgentResult token 计数）。
+- **子 Agent 通道委派执行**：脚本构建一个编排 Agent（`trust_level=ORCHESTRATOR`）与每个样本一个独立执行子 Agent（`SUB_AGENT`），编排 Agent 通过 `call_agent` 逐个委派样本，**绝不脚本直连**。
+- **样本隔离（关键）**：每个样本子 Agent 的 `agent_id`/`agent_name` 全局唯一（`eval-sample-<run>-<case>-<variant>-sample-<i>`），实例间零状态共享；子 Agent 无 memory（默认不配）——杜绝"同 id 共享上下文"导致的产物雷同（历史 bug：30 样本复用同一 agent + 同 session_id，同 variant 样本产物字节级雷同，统计样本不独立）。
+- **工具白名单**：每个样本子 Agent 仅 `write_file`/`read_file`/`list_files`/`glob` 四个安全工具（无 bash、无删除、无 ask_user），with/without 两组除 skill 注入外完全一致。
+- **with_skill**：目标 skill 的 `SKILL.md` 正文全文注入**子 Agent 的 system prompt**（不进编排 Agent 上下文，避免 N 份 skill 正文重复占用编排上下文）。
+- **without_skill**：指令隔离——子 Agent system prompt 明确"不要加载/引用/使用名为 `<skill-name>` 的 skill、禁止探索其目录"。
+- **无人值守**：子 Agent 无 ask_user 工具（白名单过滤），不会暂停等待人工回答；编排 Agent 被约束"只委派不执行"，单个样本委派失败记录后继续，不中断整体。
+- 自动创建 run 骨架 `eval-runs/run-<N>-delegate/<case-id>/{with_skill,without_skill}/sample-<i>/outputs/` 并自动递增 run 编号。
+- 每 sample 落盘：`transcript.md`（任务 prompt + 产出清单 + 关键决策/假设 + 子 Agent 自述工具调用）、`outputs/`（产物）、`exit_code.txt`（有产物 0 / 无产物 1）、`timing.json`（编排 run 墙钟）。
 
 **关键：** 样本的 transcript 中逐字保留 agent 的**借口原话**（如"太简单了不需要"、"我先让能跑再说"）。这些是 Step 5 改进 skill 的核心证据。
 
 常用参数：
 - `--variants without`：只跑 without 组（先看 baseline）；`--variants with` 同理
-- `--only <case-id>`：单用例调试
+- `--only <case-id>`：单用例调试（样本多时也可分批跑，控制编排上下文）
 - `--skip-judge`：只跑机械断言（省 LLM 费用）
-- `--run-id <id>`：显式命名运行目录（默认自动递增 `run-<N>-isolated`）
+- `--run-id <id>`：显式命名运行目录（默认自动递增 `run-<N>-delegate`）
 - `--credentials-file / --model-id / --provider`：指定 LLM 凭据
+- `--max-steps / --total-timeout`：编排 Agent 步数/总超时（默认 400 步 / 10800s）
 
 > ⚠️ **采样一致性**：with/without 的 sample 数必须一致（脚本默认保证）。benchmark 的 `n_samples` 取最小值并如实记录。
 
@@ -148,7 +151,7 @@ python <eval-runner-dir>/scripts/grade.py <target-skill-dir>
 
 #### 3b. 语义断言（judge.py 双盲裁判，自动）
 
-> `run_isolated.py` 已自动调用 judge.py（对所有 sample 判分）；需要单独重跑时执行：
+> `run_delegate.py` 已自动调用 judge.py（对所有 sample 判分）；需要单独重跑时执行：
 > ```bash
 > python <eval-runner-dir>/scripts/judge.py <target-skill-dir> [--sample all|sample-1|sample-1,sample-2]
 > ```
@@ -239,7 +242,7 @@ python <eval-runner-dir>/scripts/aggregate.py <target-skill-dir>
 2. **补规则**：针对 `grading.json` 中失败的断言，补充具体规则。
 3. **控 token**：修改后 token 增加不超过 10%。
 
-**改进后必须重跑**：修改经用户确认 → 重跑 Step 2（`run_isolated.py` 自动递增生成新的 `run-<N>-isolated`）→ 从 Step 2 重新开始。**只改 skill 不重跑 = 没有证据，不算完成。**
+**改进后必须重跑**：修改经用户确认 → 重跑 Step 2（`run_delegate.py` 自动递增生成新的 `run-<N>-delegate`）→ 从 Step 2 重新开始。**只改 skill 不重跑 = 没有证据，不算完成。**
 
 ---
 
@@ -251,7 +254,7 @@ python <eval-runner-dir>/scripts/aggregate.py <target-skill-dir>
 ├── evals/
 │   └── evals.json
 └── eval-runs/
-    └── run-<N>-isolated/
+    └── run-<N>-delegate/
         ├── <case-id>/
         │   ├── without_skill/
         │   │   ├── sample-1/  {transcript.md, outputs/, exit_code.txt, timing.json}
@@ -267,8 +270,8 @@ python <eval-runner-dir>/scripts/aggregate.py <target-skill-dir>
         └── benchmark.json
 ```
 
-- `run-1-isolated`：首次 baseline 运行（编号自动递增）
-- `run-2-isolated`：改进后的迭代运行，以此类推
+- `run-1-delegate`：首次 baseline 运行（编号自动递增）
+- `run-2-delegate`：改进后的迭代运行，以此类推
 
 ---
 
@@ -281,7 +284,7 @@ python <eval-runner-dir>/scripts/aggregate.py <target-skill-dir>
 3. 每条语义断言都有非空 `evidence` 引用（无 invalid）
 4. 已基于证据向用户提出目标 SKILL.md 的修改建议
 
-时间预算：3 case × 2 组 × 3 采样 = 18 个样本，由 `run_isolated.py` 自动执行，约 3 小时内完成。
+时间预算：3 case × 2 组 × 3 采样 = 18 个样本，由 `run_delegate.py` 自动执行，约 3 小时内完成。
 
 ---
 

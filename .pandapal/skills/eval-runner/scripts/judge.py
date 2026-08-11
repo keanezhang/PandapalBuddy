@@ -77,7 +77,7 @@ _TEXT_EXTS = {
 _EMPTY_TRANSCRIPT = "（该样本无 transcript 文件）"
 
 
-# ─────────────────────────── 凭据（与 run_isolated.py 同款逻辑） ───────────────────────────
+# ─────────────────────────── 凭据（与 run_delegate.py 同款逻辑） ───────────────────────────
 
 def find_credentials_file() -> Path | None:
     appdata = Path.home() / "AppData" / "Roaming"
@@ -518,7 +518,7 @@ async def run(args: argparse.Namespace) -> None:
 
     run_id = args.run_id or find_latest_run(skill_dir)
     if not run_id:
-        print("❌ 没有找到任何运行目录，请先执行 run_isolated.py")
+        print("❌ 没有找到任何运行目录，请先执行 run_delegate.py")
         sys.exit(1)
     run_dir = skill_dir / "eval-runs" / run_id
     if not run_dir.is_dir():
