@@ -50,7 +50,7 @@ _DELETE_FILE_LLM_GUIDE = """删除文件或空目录。
         "仅删除空目录；非空目录请用 bash rm -rf"
     ),
     policy=ToolPolicy(
-        sensitivity=SensitivityLevel.HIGH,
+        sensitivity=SensitivityLevel.CRITICAL,
         sensitive_permission=SensitivePermission.DATA_DELETE,
         is_reversible=False, audit_required=True,
         is_idempotent=False, max_calls_per_turn=10,
