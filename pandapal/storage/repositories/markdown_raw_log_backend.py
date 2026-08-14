@@ -36,8 +36,8 @@ _SECTION_HEADER_RE = re.compile(r"^## (\[Compact\] )?Turn (\d+)\s*$", re.MULTILI
 if TYPE_CHECKING:
     from pandaren.memory.models import CompactBoundaryDict, MessageDict
 
-# 安全上限：防止极端情况 OOM
-_MAX_LOAD_MESSAGES = 500
+# 安全上限：防止极端情况 OOM（默认 5000，可由构造参数覆盖）
+_DEFAULT_MAX_LOAD_MESSAGES = 5000
 
 
 class MarkdownRawLogBackend:
@@ -50,13 +50,16 @@ class MarkdownRawLogBackend:
         base_dir: 存储根目录（**必须已经是 user-scoped**，由 StorageManager 拼装）
     """
 
-    def __init__(self, base_dir: str) -> None:
+    def __init__(
+        self, base_dir: str, max_load_messages: int | None = None,
+    ) -> None:
         if not base_dir:
             raise ValueError(
                 "base_dir is required and cannot be empty. "
                 "Markdown backend requires an explicit storage path."
             )
         self._base_dir = base_dir
+        self._max_load_messages = max_load_messages or _DEFAULT_MAX_LOAD_MESSAGES
         # 会话根目录：{base_dir}/sessions/
         self._sessions_root = os.path.join(base_dir, "sessions")
         os.makedirs(self._sessions_root, exist_ok=True)
@@ -223,7 +226,7 @@ class MarkdownRawLogBackend:
         for sec in sections[start_idx:]:
             if sec["type"] != "message":
                 continue
-            if len(messages) >= _MAX_LOAD_MESSAGES:
+            if len(messages) >= self._max_load_messages:
                 break
 
             msg = sec["message"]
@@ -255,10 +258,10 @@ class MarkdownRawLogBackend:
     # ── v1.4 新增：离线分析数据源 ──
 
     def load_all(self, session_id: str) -> list["MessageDict"]:
-        """加载指定 session 的全部历史消息（离线分析用）。
+        """加载指定 session 的最近 N 条历史消息（离线分析用）。
 
-        返回所有 message 类型的 section，按 turn_index 升序排列。
-        带 _MAX_LOAD_MESSAGES 安全上限。
+        返回所有 message 类型的 section，按 turn_index 升序排列（旧→新）。
+        取「最新」N 条而非最早 N 条，避免超长会话丢最新上下文。
         """
         path = self._get_session_path(session_id)
         if not os.path.exists(path):
@@ -270,11 +273,10 @@ class MarkdownRawLogBackend:
         for sec in sections:
             if sec["type"] != "message":
                 continue
-            if len(messages) >= _MAX_LOAD_MESSAGES:
-                break
             messages.append(sec["message"])
 
-        return messages
+        # 取末尾（最新）N 条，保持旧→新顺序
+        return messages[-self._max_load_messages:]
 
     def list_sessions(self) -> list[str]:
         """枚举所有已存在的 session_id。

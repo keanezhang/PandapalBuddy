@@ -766,13 +766,21 @@ class NormalizedEvent:
         *,
         session_id: str,
         messages: list[dict],
+        offset: int = 0,
+        has_more: bool = False,
     ) -> "NormalizedEvent":
-        """会话历史消息回补（LRU 淘汰后切回该 session 时补齐 buffer）。"""
+        """会话历史消息回补（LRU 淘汰后切回该 session 时补齐 buffer / 向上翻页）。
+
+        offset: 本页首条消息在「全量历史」中的偏移（已加载条数，0 = 最新一页）。
+        has_more: 是否还有更早的历史（供前端向上滚动继续翻页）。
+        """
         return cls(
             event_type=EventType.SESSION_HISTORY_LIST,
             payload={
                 "session_id": session_id,
                 "messages": messages,
+                "offset": offset,
+                "has_more": has_more,
             },
         )
 

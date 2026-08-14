@@ -1142,6 +1142,8 @@ export interface SessionHistoryRequestPayload {
   session_id: string;
   /** 期望回补的最近消息条数，默认 50 */
   limit?: number;
+  /** 分页游标：已加载条数（0 = 最新一页）；缺省按 0 处理 */
+  offset?: number;
 }
 
 
@@ -1235,6 +1237,10 @@ export interface SessionHistoryListMsg extends IpcMessageBase {
   type: "SESSION_HISTORY_LIST";
   session_id: string;
   messages: HistoryMessage[];
+  /** 分页游标：本页首条在全量历史中的偏移（已加载条数，0 = 最新一页） */
+  offset?: number;
+  /** 是否还有更早的历史可继续向上翻页 */
+  has_more?: boolean;
 }
 
 

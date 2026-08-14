@@ -4,29 +4,50 @@
  * 消息列表。使用 per-session buffers（chatStore）。
  * 长会话（数百上千条）只渲染可视区附近的行（@tanstack/react-virtual），
  * 配合 MessageBubble 的 memo：流式输出时历史气泡既不重渲染、也不在 DOM 中。
+ * 支持向上滚动触底加载更早历史（SESSION_HISTORY_REQUEST offset 分页）。
  */
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
+  useChatStore,
   useCurrentMessages,
   type ChatMessage,
   type CompletedMessage,
   type StreamingMessage,
 } from "../../store/chatStore";
+import { useSessionStore } from "../../store/sessionStore";
 import { useConnectionStore } from "../../store/connectionStore";
+import { useBackend } from "../../providers/BackendProvider";
 import { MessageBubble } from "./MessageBubble";
 import { StreamingBubble } from "./StreamingBubble";
 
 /** 初始高度估算：真实高度由 measureElement 动态校正，估算只影响滚动条初值。 */
 const ESTIMATE_ROW_HEIGHT = 120;
+/** 每页加载的历史条数。 */
+const HISTORY_PAGE_SIZE = 50;
+/** 距顶部该像素内触发向上翻页。 */
+const LOAD_MORE_THRESHOLD = 100;
 
 export function MessageList() {
   const { t } = useTranslation();
   const messages: ChatMessage[] = useCurrentMessages();
   const status = useConnectionStore((s) => s.status);
+  const sessionId = useSessionStore((s) => s.currentSessionId);
+  const historyOffset = useChatStore((s) =>
+    sessionId ? (s.buffers.get(sessionId)?.historyOffset ?? 0) : 0,
+  );
+  const hasMoreHistory = useChatStore((s) =>
+    sessionId ? (s.buffers.get(sessionId)?.hasMoreHistory ?? false) : false,
+  );
+  const { requestSessionHistory } = useBackend();
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const [userAtBottom, setUserAtBottom] = useState(true);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const historyLoadingRef = useRef(false);
+  const pendingAnchorIdRef = useRef<string | null>(null);
+  const loadTimerRef = useRef<number>(0);
   const rafId = useRef(0);
 
   // 渲染行：completed 在前、streaming 在后（与旧实现视觉顺序一致）。
@@ -40,6 +61,10 @@ export function MessageList() {
     return [...completed, ...streamings];
   }, [messages]);
 
+  // 用 ref 存最新首条消息 id，供滚动回调读取（避免闭包过期）。
+  const firstRowIdRef = useRef<string | null>(null);
+  firstRowIdRef.current = rows[0]?.id ?? null;
+
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
@@ -52,6 +77,49 @@ export function MessageList() {
     },
   });
 
+  // 会话切换时重置分页锁与锚点。
+  useEffect(() => {
+    historyLoadingRef.current = false;
+    setHistoryLoading(false);
+    pendingAnchorIdRef.current = null;
+    if (loadTimerRef.current) window.clearTimeout(loadTimerRef.current);
+    loadTimerRef.current = 0;
+  }, [sessionId]);
+
+  // 向上翻页：滚到顶部附近 + 还有更早历史 + 未在加载中。
+  const loadMoreHistory = useCallback(() => {
+    if (!sessionId || !hasMoreHistory || historyLoadingRef.current || historyOffset <= 0) {
+      return;
+    }
+    historyLoadingRef.current = true;
+    setHistoryLoading(true);
+    // prepend 前记录锚点（当前第一条可见消息），完成后 scrollToIndex 回到原位。
+    pendingAnchorIdRef.current = firstRowIdRef.current;
+    requestSessionHistory(sessionId, HISTORY_PAGE_SIZE, historyOffset);
+    // 兜底：5s 后无论成败都释放锁，避免网络异常卡死。
+    loadTimerRef.current = window.setTimeout(() => {
+      historyLoadingRef.current = false;
+      setHistoryLoading(false);
+    }, 5000);
+  }, [sessionId, hasMoreHistory, historyOffset, requestSessionHistory]);
+
+  // prepend 完成后恢复视口到锚点消息（防跳变），并释放加载锁。
+  useEffect(() => {
+    const anchorId = pendingAnchorIdRef.current;
+    if (anchorId === null) return;
+    pendingAnchorIdRef.current = null;
+    const idx = rows.findIndex((m) => m.id === anchorId);
+    if (idx >= 0) {
+      rowVirtualizer.scrollToIndex(idx, { align: "start" });
+    }
+    historyLoadingRef.current = false;
+    setHistoryLoading(false);
+    if (loadTimerRef.current) window.clearTimeout(loadTimerRef.current);
+    loadTimerRef.current = 0;
+    // rows 由 messages 派生，仅需监听 messages；rowVirtualizer 为稳定句柄。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages]);
+
   // 用户是否贴在底部：贴底时新内容自动跟随；手动上翻后停止争抢滚动位置。
   useEffect(() => {
     const el = scrollRef.current;
@@ -59,10 +127,11 @@ export function MessageList() {
     const onScroll = () => {
       const d = el.scrollHeight - el.scrollTop - el.clientHeight;
       setUserAtBottom(d < 80);
+      if (el.scrollTop <= LOAD_MORE_THRESHOLD) loadMoreHistory();
     };
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => el.removeEventListener("scroll", onScroll);
-  }, []);
+  }, [loadMoreHistory]);
 
   const hasStreaming = rows.some((r) => r.kind === "streaming");
 
@@ -79,6 +148,7 @@ export function MessageList() {
 
   const isEmpty = messages.length === 0;
   const isConnected = status === "connected";
+  const showTopHint = historyLoading || (!hasMoreHistory && historyOffset > 0);
 
   if (isEmpty) {
     return (
@@ -109,6 +179,14 @@ export function MessageList() {
     <div ref={scrollRef} style={{
       flex: 1, overflowY: "auto", padding: "var(--space-6) 0",
     }}>
+      {showTopHint && (
+        <div style={{
+          textAlign: "center", padding: "var(--space-2) 0",
+          color: "var(--text-tertiary)", fontSize: "var(--text-xs)",
+        }}>
+          {historyLoading ? "正在加载更早的消息…" : "已到最早消息"}
+        </div>
+      )}
       <div style={{
         height: rowVirtualizer.getTotalSize(), width: "100%", position: "relative",
       }}>

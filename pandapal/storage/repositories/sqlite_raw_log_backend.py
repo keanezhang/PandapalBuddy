@@ -18,8 +18,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from pandaren.memory.models import CompactBoundaryDict, MessageDict
 
-# Fix #8: 防止极端情况 OOM 的安全上限
-_MAX_LOAD_ROWS = 500
+# 防止极端情况 OOM 的安全上限（默认 5000，可由构造参数 / 环境变量覆盖）
+_DEFAULT_MAX_LOAD_ROWS = 5000
 
 
 class SQLiteRawLogBackend:
@@ -28,9 +28,12 @@ class SQLiteRawLogBackend:
     同步方法，独立 sqlite3 连接（WAL 模式保证与 aiosqlite 并发安全）。
     """
 
-    def __init__(self, db_path: str, user_id: str) -> None:
+    def __init__(
+        self, db_path: str, user_id: str, max_load_rows: int | None = None,
+    ) -> None:
         self._db_path = db_path
         self._user_id = user_id
+        self._max_load_rows = max_load_rows or _DEFAULT_MAX_LOAD_ROWS
         self._conn = sqlite3.connect(db_path)
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.row_factory = sqlite3.Row
@@ -132,7 +135,7 @@ class SQLiteRawLogBackend:
             "WHERE session_id = ? AND user_id = ? "
             "AND entry_type = 'message' AND turn_index > ? "
             "ORDER BY turn_index ASC LIMIT ?",
-            (session_id, self._user_id, boundary_index, _MAX_LOAD_ROWS),
+            (session_id, self._user_id, boundary_index, self._max_load_rows),
         )
 
         messages: list["MessageDict"] = []
@@ -169,22 +172,25 @@ class SQLiteRawLogBackend:
     # ── v1.4 新增：离线分析数据源 ──
 
     def load_all(self, session_id: str) -> list["MessageDict"]:
-        """加载指定 session 的全部历史消息（离线分析用）。
+        """加载指定 session 的最近 N 条历史消息（离线分析用）。
 
-        返回所有 entry_type='message' 的条目，按 turn_index 升序排列。
-        带 _MAX_LOAD_ROWS 安全上限。
+        返回 entry_type='message' 的条目，按 turn_index 升序排列（旧→新）。
+        取「最新」N 条而非最早 N 条：历史回补消费方需要最新上下文，
+        旧实现取最早 500 条会导致超长会话「最新对话丢失」。
         """
         cursor = self._conn.execute(
             "SELECT content_json FROM raw_log "
             "WHERE session_id = ? AND user_id = ? AND entry_type = 'message' "
-            "ORDER BY turn_index ASC LIMIT ?",
-            (session_id, self._user_id, _MAX_LOAD_ROWS),
+            "ORDER BY turn_index DESC LIMIT ?",
+            (session_id, self._user_id, self._max_load_rows),
         )
 
         messages: list["MessageDict"] = []
         for row in cursor:
             msg: "MessageDict" = json.loads(row[0])
             messages.append(msg)
+        # DESC 取到的是新→旧，反转为旧→新后返回
+        messages.reverse()
 
         return messages
 

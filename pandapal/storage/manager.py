@@ -529,12 +529,28 @@ class StorageManager:
                 "以构造 user_id 为准（数据隔离改造后 user_id 已埋进 storage_path）",
                 user_id, self._user_id,
             )
+
+        # 会话历史回补上限：环境变量 PANDAPAL_RAW_LOG_MAX_ROWS 覆盖，默认 5000（backend 内部默认）。
+        # 非法值 → None（回落 backend 默认），不因拼错而停机。
+        max_load_rows: int | None = None
+        try:
+            _env = os.getenv("PANDAPAL_RAW_LOG_MAX_ROWS")
+            if _env:
+                max_load_rows = max(1, int(_env))
+        except (TypeError, ValueError):
+            max_load_rows = None
+
         if self._storage_mode == "markdown":
             # base_dir 已经是 {data_dir}/users/{uid}，backend 内部按 sessions/{sid}/raw_log.md
-            return MarkdownRawLogBackend(self._storage_path)
+            return MarkdownRawLogBackend(
+                self._storage_path, max_load_messages=max_load_rows,
+            )
         else:
             # SQLite 每 user 一个 db 文件，backend 内部仍需 user_id 用于 schema 兼容（Phase D 再改）
-            return SQLiteRawLogBackend(self._storage_path, self._user_id or user_id)
+            return SQLiteRawLogBackend(
+                self._storage_path, self._user_id or user_id,
+                max_load_rows=max_load_rows,
+            )
 
     # ⚠️ v1.4 废弃：get_summary_backend() 已移除
     # SummaryBackend 已从 SDK 删除（去 summary 化）。

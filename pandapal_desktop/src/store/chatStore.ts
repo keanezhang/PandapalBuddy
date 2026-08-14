@@ -155,6 +155,10 @@ export interface ChatBuffer {
    *  但后端尚未回 REPLY_END(halted)。此期间流式仍在（不本地立即收尾，消除前后端错位），
    *  按钮转 loading。收到后端收尾事件 → finishStreaming 清此标志。 */
   stopping: boolean;
+  /** 已加载的历史条数（分页游标；0 = 尚未加载历史 / 初始加载）。 */
+  historyOffset: number;
+  /** 是否还有更早的历史可向上翻页。 */
+  hasMoreHistory: boolean;
 }
 
 const MAX_BUFFERS = 5;
@@ -192,7 +196,11 @@ interface ChatState {
   // buffer 管理
   setContextStatus: (sessionId: string, status: ChatBuffer["contextStatus"]) => void;
   clearSession: (sessionId: string) => void;
-  loadHistory: (sessionId: string, messages: HistoryMessage[]) => void;
+  loadHistory: (
+    sessionId: string,
+    messages: HistoryMessage[],
+    opts?: { offset?: number; hasMore?: boolean },
+  ) => void;
 }
 
 function makeEmptyBuffer(): ChatBuffer {
@@ -202,6 +210,8 @@ function makeEmptyBuffer(): ChatBuffer {
     lastEventAt: Date.now(),
     contextStatus: null,
     stopping: false,
+    historyOffset: 0,
+    hasMoreHistory: false,
   };
 }
 
@@ -574,17 +584,26 @@ export const useChatStore = create<ChatState>((set) => ({
       return { buffers: next };
     }),
 
-  loadHistory: (sessionId, msgs) =>
+  loadHistory: (sessionId, msgs, opts) =>
     set((state) => {
       const currentSid = useSessionStore.getState().currentSessionId;
       const { buffer, next } = upsertBuffer(state.buffers, sessionId, currentSid);
-      const messages: ChatMessage[] = msgs.map((m, idx) =>
-        historyToCompleted(m, `history-${sessionId}-${idx}`, Date.now() - (msgs.length - idx) * 1000),
-      );
+      const offset = opts?.offset ?? 0;
+      const hasMore = opts?.hasMore ?? false;
+      const incoming: ChatMessage[] = msgs.map((m, idx) => {
+        const parsed = m.timestamp ? Date.parse(m.timestamp) : NaN;
+        const ts = Number.isNaN(parsed) ? Date.now() - (msgs.length - idx) * 1000 : parsed;
+        return historyToCompleted(m, `history-${sessionId}-${offset}-${idx}`, ts);
+      });
+      // offset=0（初始加载）覆盖；offset>0（向上翻页）插到头部（更早的历史在上方）
+      const messages: ChatMessage[] =
+        offset > 0 ? [...incoming, ...buffer.messages] : incoming;
       next.set(sessionId, {
         ...buffer,
         messages,
         contextStatus: "restored",
+        historyOffset: offset + msgs.length,
+        hasMoreHistory: hasMore,
       });
       return { buffers: next };
     }),

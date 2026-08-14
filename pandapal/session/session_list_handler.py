@@ -196,11 +196,17 @@ class SessionListHandler:
     ) -> NormalizedEvent | None:
         session_id = str(data.get("session_id", ""))
         limit = int(data.get("limit", 50))
+        try:
+            offset = int(data.get("offset", 0))
+        except (TypeError, ValueError):
+            offset = 0
+        if offset < 0:
+            offset = 0
         if not session_id:
             return self._build_error_event("session_not_found", "session_id required")
         try:
             await self._mgr.get_session_history(
-                self._user_id, session_id, limit=limit,
+                self._user_id, session_id, limit=limit, offset=offset,
             )
             return None  # 成功事件由 manager 自广播（豁免路径）
         except SessionNotFoundError as e:

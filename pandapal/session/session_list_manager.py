@@ -872,9 +872,13 @@ class SessionListManager:
     # ═══════════════════════════════════════════════════════════
 
     async def get_session_history(
-        self, user_id: str, session_id: str, limit: int = 50
+        self, user_id: str, session_id: str, limit: int = 50, offset: int = 0
     ) -> list[dict[str, Any]]:
-        """从 raw_log 拉取该 session 的最近 N 条消息（前端 LRU 淘汰后回补）。
+        """从 raw_log 拉取该 session 的历史消息（前端 LRU 淘汰后回补 + 向上翻页）。
+
+        Args:
+            limit: 本页返回的「折叠后」消息条数。
+            offset: 已加载条数（0 = 最新一页）；翻页时取更早的切片。
 
         Returns:
             [{"role": "user"|"assistant"|..., "content": "...", "timestamp": iso}, ...]
@@ -908,7 +912,10 @@ class SessionListManager:
                     }
 
         simplified: list[dict[str, Any]] = []
-        for m in messages[-limit:]:
+        # 富投影必须在全量消息上完成（tool_results 索引本就全量），
+        # 最后再按「折叠后条数」取 simplified[-limit:]。若在此处用 messages[-limit:]，
+        # 单回合工具调用多时会把该回合的 user 提问整体切在窗口外，导致「丢最新消息」。
+        for m in messages:
             role = m.get("role", "assistant")
             if role == "tool":
                 continue  # tool 结果已折叠进对应 assistant 的 tool 段
@@ -956,19 +963,30 @@ class SessionListManager:
                 "timeline": timeline,
                 "tool_calls": tool_calls_out,
             })
+        # 分页切片：offset=0 取最新 limit 条；offset>0 取更早的 [-(offset+limit):-offset]
+        if limit <= 0:
+            page: list[dict[str, Any]] = []
+        elif offset <= 0:
+            page = simplified[-limit:]
+        else:
+            page = simplified[-(offset + limit):-offset]
+        has_more = (offset + limit) < len(simplified) if limit > 0 else False
+
         # 广播
         try:
             await self._broadcast.send(
                 NormalizedEvent.session_history_list(
                     session_id=session_id,
-                    messages=simplified,
+                    messages=page,
+                    offset=offset,
+                    has_more=has_more,
                 ),
             )
         except Exception as e:
             logger.warning(
                 "[SessionList] broadcast SESSION_HISTORY_LIST failed: %s", e,
             )
-        return simplified
+        return page
 
     # ═══════════════════════════════════════════════════════════
     # 全局搜索（命令面板 ⌘K）

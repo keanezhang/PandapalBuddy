@@ -149,7 +149,7 @@ interface BackendContextValue {
   deleteSession: (sessionId: string) => void;
   toggleFavoriteSession: (sessionId: string) => void;
   groupMutate: (payload: Record<string, unknown>) => void;
-  requestSessionHistory: (sessionId: string, limit?: number) => void;
+  requestSessionHistory: (sessionId: string, limit?: number, offset?: number) => void;
   // ── 预算额度（按 provider 分账）──────────────
   /** 设/改某 provider 额度（内部记账 USD，用户可设币种，默认 USD） */
   setBudget: (provider: string, currency: string, limitNative: number) => void;
@@ -911,7 +911,10 @@ export function BackendProvider({ children }: { children: React.ReactNode }) {
       case "SESSION_HISTORY_LIST": {
         const hMsg = msg as SessionHistoryListMsg;
         if (hMsg.session_id && Array.isArray(hMsg.messages)) {
-          useChatStore.getState().loadHistory(hMsg.session_id, hMsg.messages);
+          useChatStore.getState().loadHistory(hMsg.session_id, hMsg.messages, {
+            offset: hMsg.offset ?? 0,
+            hasMore: hMsg.has_more ?? false,
+          });
         }
         break;
       }
@@ -1462,12 +1465,13 @@ export function BackendProvider({ children }: { children: React.ReactNode }) {
   );
 
   const requestSessionHistory = useCallback(
-    (sessionId: string, limit: number = 50) => {
+    (sessionId: string, limit: number = 50, offset: number = 0) => {
       sendSessionIpc({
         type: "SESSION_HISTORY_REQUEST",
         msg_id: crypto.randomUUID(),
         session_id: sessionId,
         limit,
+        offset,
       });
     },
     [sendSessionIpc],
