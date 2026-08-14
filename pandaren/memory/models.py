@@ -26,6 +26,7 @@ class MessageDict(TypedDict):
     tool_call_id: NotRequired[str]
     tool_calls: NotRequired[list]
     reasoning_content: NotRequired[str]
+    timestamp: NotRequired[str]
 
 
 class CompactBoundaryDict(TypedDict):

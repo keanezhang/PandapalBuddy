@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS raw_messages (
     tool_calls   TEXT,
     tool_call_id TEXT,
     ts           TEXT    NOT NULL,
+    reasoning_content TEXT,
     run_id       TEXT,
     step         INTEGER
 );
@@ -75,6 +76,12 @@ def _row_to_message(row: sqlite3.Row) -> MessageDict:
     tc_id = row["tool_call_id"]
     if tc_id:
         msg["tool_call_id"] = tc_id
+    # 时间戳：ts 列为 NOT NULL，还原历史消息的真实写入时刻
+    msg["timestamp"] = row["ts"]
+    # 思考内容：raw_log 新增列，旧库迁移前为 NULL
+    rc = row["reasoning_content"]
+    if rc:
+        msg["reasoning_content"] = rc
     return msg
 
 
@@ -153,6 +160,20 @@ class SQLiteRawLogBackend:
         with self._conn:  # 自动 commit
             self._conn.executescript(_SCHEMA_RAW_MESSAGES)
             self._conn.executescript(_SCHEMA_COMPACT_BOUNDARIES)
+            self._migrate_reasoning_content()
+
+    def _migrate_reasoning_content(self) -> None:
+        """旧库补列：raw_messages.reasoning_content（幂等，仅当列缺失时 ALTER）。
+
+        新库走 CREATE TABLE 直接含列；旧库表已存在，CREATE TABLE IF NOT EXISTS 不会补列，
+        故需按 PRAGMA table_info 判断后 ALTER。用列存在性判断而非盲 try/except，
+        避免把非 duplicate column 的 sqlite3.OperationalError 一并吞掉。
+        """
+        cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(raw_messages)")}
+        if "reasoning_content" not in cols:
+            self._conn.execute(
+                "ALTER TABLE raw_messages ADD COLUMN reasoning_content TEXT"
+            )
 
     def _next_seq(self, session_id: str) -> int:
         """计算指定 session 的下一个 seq（在 raw_messages 与 compact_boundaries 之间统一）。"""
@@ -194,14 +215,15 @@ class SQLiteRawLogBackend:
         tool_calls = message.get("tool_calls")
         tc_str = json.dumps(tool_calls, ensure_ascii=False) if tool_calls else None
         tc_id = message.get("tool_call_id") or None
+        reasoning = message.get("reasoning_content") or None
 
         with self._conn:
             seq = self._next_seq(session_id)
             self._conn.execute(
                 "INSERT INTO raw_messages "
-                "(session_id, seq, role, content, tool_calls, tool_call_id, ts, run_id, step) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (session_id, seq, role, content_str, tc_str, tc_id, _now_iso(), run_id or None, step),
+                "(session_id, seq, role, content, tool_calls, tool_call_id, ts, reasoning_content, run_id, step) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (session_id, seq, role, content_str, tc_str, tc_id, _now_iso(), reasoning, run_id or None, step),
             )
 
     def append_compact_boundary(
@@ -257,7 +279,7 @@ class SQLiteRawLogBackend:
 
         # 取该 boundary 之后的所有消息（时间升序）
         cur = self._conn.execute(
-            "SELECT role, content, tool_calls, tool_call_id "
+            "SELECT role, content, tool_calls, tool_call_id, ts, reasoning_content "
             "FROM raw_messages "
             "WHERE session_id = ? AND seq > ? "
             "ORDER BY seq ASC",
@@ -293,7 +315,7 @@ class SQLiteRawLogBackend:
         if not session_id:
             return []
         cur = self._conn.execute(
-            "SELECT role, content, tool_calls, tool_call_id "
+            "SELECT role, content, tool_calls, tool_call_id, ts, reasoning_content "
             "FROM raw_messages "
             "WHERE session_id = ? "
             "ORDER BY seq ASC",

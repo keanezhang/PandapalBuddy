@@ -560,6 +560,18 @@ class Memory:
         self._current_run_id = run_id
         self._current_step = step
 
+    @staticmethod
+    def _with_timestamp(msg: "MessageDict") -> "MessageDict":
+        """给待持久化消息补 timestamp（raw_log 时间戳，不污染 STM/LLM 请求）。
+
+        get_messages() 返回深拷贝（HC2），此处 {**msg, ...} 生成新 dict，
+        STM 内部消息不受影响；MessageBuilder 只消费 STM 的快照，
+        因此 timestamp 不会进入发给 LLM 的 payload。
+        """
+        if "timestamp" not in msg:
+            return {**msg, "timestamp": datetime.now(timezone.utc).isoformat()}
+        return msg
+
     async def _enqueue_message_async(self) -> None:
         """STM 最后一条消息异步写入 RawLogBackend（运行时路径）。"""
         if (
@@ -570,7 +582,7 @@ class Memory:
         messages = self._short_term.get_messages()
         if not messages:
             return
-        msg = messages[-1]
+        msg = self._with_timestamp(messages[-1])
         try:
             await self._flush_policy.enqueue(
                 msg,
@@ -597,7 +609,7 @@ class Memory:
         messages = self._short_term.get_messages()
         if not messages:
             return
-        msg = messages[-1]
+        msg = self._with_timestamp(messages[-1])
         try:
             self._long_term.raw_log_backend.append_raw_message(
                 msg,
