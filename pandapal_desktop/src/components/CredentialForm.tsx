@@ -428,6 +428,11 @@ export function CredentialForm({
                   // 用 mouseDown：input 的 blur 会先于 click 触发
                   onMouseDown={(e) => {
                     e.preventDefault();
+                    // 阻止冒泡到 document：handlePickRecommended 会同步卸载本项，
+                    // 真实浏览器里 mousedown 仍沿原始路径冒泡到 document，触发
+                    // SettingsPanel 的「点外部关闭」检测（contains(e.target) 因
+                    // target 已脱离 DOM 而返回 false）→ 误关面板。见 settingsPanelCrash 测试。
+                    e.stopPropagation();
                     handlePickRecommended(m);
                   }}
                 >

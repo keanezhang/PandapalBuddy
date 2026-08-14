@@ -21,7 +21,12 @@ export function SettingsPanel({ onClose }: Props) {
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (panelRef.current && !panelRef.current.contains(e.target as Node)) onClose();
+      const target = e.target as Node | null;
+      // 防御：target 已在事件传播期间被 React 同步卸载（如 combobox 下拉项选中后
+      // 移除）时，document.contains(target) 为 false，此点击语义已失效，
+      // 不应视为「点外部」——否则会误关面板。
+      if (!target || !document.contains(target)) return;
+      if (panelRef.current && !panelRef.current.contains(target)) onClose();
     };
     const timer = setTimeout(() => document.addEventListener("mousedown", handler), 0);
     return () => { clearTimeout(timer); document.removeEventListener("mousedown", handler); };
