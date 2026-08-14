@@ -644,7 +644,12 @@ class PandaPalApp:
                 from pandapal.config.llm.credentials_store import CredentialStore
                 from pandapal.config.llm.credentials_handler import CredentialsHandler
 
-                _cred_dir = Path(_cred_data_dir)
+                # CredentialStore 的 dir 语义 = users/{uid}/credentials
+                # （文件 = dir / "llm_credentials.toml"，见 credentials_store.py:105），
+                # 与 run_local.py:793 的 USER_DATA_DIR / "credentials" 保持一致；
+                # 漏加该子目录曾导致 LOAD_CREDENTIALS 读到 users/{uid}/llm_credentials.toml
+                # （不存在）→ 设置界面凭据永远空白。
+                _cred_dir = Path(_cred_data_dir) / "credentials"
                 _cred_store = CredentialStore(_cred_dir)
                 self._credentials_handler = CredentialsHandler(
                     store=_cred_store,
