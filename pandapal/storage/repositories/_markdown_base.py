@@ -83,6 +83,12 @@ class MarkdownBaseRepository:
         # 确保实体目录存在
         os.makedirs(self._entity_dir, exist_ok=True)
 
+        # ★ 进程内内存索引（file_path(normpath) → front matter data）。
+        # 根治「按字段过滤查询 = 全目录扫描」：所有读走索引，写操作落盘后增量更新。
+        # 懒加载：首次 _list_entities 时构建；invalidate() 清空后下次重建。
+        self._index: dict[str, dict[str, Any]] | None = None
+        self._index_lock = asyncio.Lock()
+
     # ──────────────────────────────────────────────
     # 文件操作方法（异步接口）
     # ──────────────────────────────────────────────
@@ -209,6 +215,9 @@ class MarkdownBaseRepository:
 
         await asyncio.to_thread(_write)
 
+        # ★ 写穿透：落盘成功后同步更新索引（落盘失败会 raise，不会走到这里）
+        self._index_set(file_path, data)
+
     async def _delete_entity(self, file_path: str) -> bool:
         """删除实体文件。"""
 
@@ -222,36 +231,65 @@ class MarkdownBaseRepository:
                 logger.error("Failed to delete entity at %s: %s", file_path, e)
                 return False
 
-        return await asyncio.to_thread(_delete)
+        deleted = await asyncio.to_thread(_delete)
+        if deleted:
+            self._index_del(file_path)
+        return deleted
 
-    async def _list_entities(self) -> list[dict[str, Any]]:
-        """列出本实体所有记录（读取所有 .md 文件）。
+    def _record_glob_patterns(self) -> list[str]:
+        """返回本实体记录文件的精确 glob 模式列表（用于索引构建）。
 
-        分区模式：只 glob 本实体的分区文件（{base}/sessions/*/{entity_name}/*.md），
-        不会误读同 session 目录下的 session.md / audit.md / 其他实体文件。
-        非分区模式：递归遍历 _entity_dir。
+        默认：平铺 {entity_dir}/*.md；分区模式 {base}/sessions/*/{entity_name}/*.md。
+        子类可重写以适配特殊布局（如 session 的「每 sid 一目录」）。
         """
+        if self._session_partitioned:
+            return [self._entity_glob_pattern()]
+        return [os.path.join(self._entity_dir, "*.md")]
 
-        def _list() -> list[dict[str, Any]]:
-            entities = []
-            try:
-                if self._session_partitioned:
-                    paths = glob.glob(self._entity_glob_pattern())
-                else:
-                    paths = []
-                    for root, _, filenames in os.walk(self._entity_dir):
-                        for filename in filenames:
-                            if filename.endswith(".md"):
-                                paths.append(os.path.join(root, filename))
-                for fp in paths:
+    def invalidate(self) -> None:
+        """清空内存索引，下次查询时重建（供外部手改文件后强制刷新）。"""
+        self._index = None
+
+    async def _ensure_index(self) -> None:
+        """懒加载索引：首次调用时精确 glob + 读记录文件构建一次。"""
+        if self._index is not None:
+            return
+        async with self._index_lock:
+            if self._index is not None:  # double-check，防并发重复构建
+                return
+            self._index = await self._build_index()
+
+    async def _build_index(self) -> dict[str, dict[str, Any]]:
+        """扫描本实体记录文件构建索引（只读记录文件，不误读附属大文件）。"""
+
+        def _build() -> dict[str, dict[str, Any]]:
+            index: dict[str, dict[str, Any]] = {}
+            for pattern in self._record_glob_patterns():
+                for fp in glob.glob(pattern):
                     data = self._sync_read_entity(fp)
                     if data:
-                        entities.append(data)
-            except Exception as e:
-                logger.error("Failed to list entities in %s: %s", self._entity_dir, e)
-            return entities
+                        index[os.path.normpath(fp)] = data
+            return index
 
-        return await asyncio.to_thread(_list)
+        return await asyncio.to_thread(_build)
+
+    def _index_set(self, file_path: str, data: dict[str, Any]) -> None:
+        """写穿透：落盘成功后同步更新索引（索引未构建则跳过，下次构建读磁盘真值）。"""
+        if self._index is None:
+            return
+        self._index[os.path.normpath(file_path)] = data
+
+    def _index_del(self, file_path: str) -> None:
+        """写穿透：删盘成功后同步删索引（索引未构建则跳过）。"""
+        if self._index is None:
+            return
+        self._index.pop(os.path.normpath(file_path), None)
+
+    async def _list_entities(self) -> list[dict[str, Any]]:
+        """列出本实体所有记录（走内存索引，O(1)；首次触发一次精确 glob 构建）。"""
+        await self._ensure_index()
+        assert self._index is not None
+        return list(self._index.values())
 
     def _sync_read_entity(self, file_path: str) -> dict[str, Any] | None:
         """同步读取实体（在 to_thread 中使用）。"""

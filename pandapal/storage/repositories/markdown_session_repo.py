@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import os
 import logging
 from datetime import datetime, timezone
@@ -43,6 +42,17 @@ class MarkdownSessionRepository(MarkdownBaseRepository):
         """旧布局：{base_dir}/sessions/{sid}.md。"""
         safe_id = self._sanitize_id(session_id)
         return os.path.join(self._entity_dir, f"{safe_id}.md")
+
+    def _record_glob_patterns(self) -> list[str]:
+        """session 记录文件清单：每 sid 一目录的 session.md + legacy 平铺 {sid}.md。
+
+        覆盖基类默认（{entity_dir}/*.md），使索引只扫 session 元数据，
+        不再误读同目录下的 raw_log.md / run_states / approvals 等附属大文件。
+        """
+        return [
+            os.path.join(self._entity_dir, "*", "session.md"),
+            os.path.join(self._entity_dir, "*.md"),
+        ]
 
     async def _read_session_entity(self, session_id: str) -> dict[str, Any] | None:
         data = await self._read_entity(self._get_file_path(session_id))
@@ -119,24 +129,24 @@ class MarkdownSessionRepository(MarkdownBaseRepository):
 
     async def delete_expired_sessions(self, before: datetime) -> int:
         """删除过期会话（batch cleanup）。返回删除行数。"""
-        before_str = before.isoformat()
         deleted_count = 0
 
-        # 遍历所有会话文件
-        filenames = await self._list_filenames()
-
-        for filename in filenames:
-            file_path = os.path.join(self._entity_dir, filename)
-            data = await self._read_entity(file_path)
-
-            if data is None:
+        # 走内存索引遍历所有会话（修复 _list_filenames 在新布局下失效的 bug：
+        # 原实现用 os.listdir 平铺列出 .md，但 session.md 现在在 {sid}/ 子目录中）。
+        # 时间比较解析为 datetime（naive 补 UTC），而非字符串比较——存储格式
+        # 存在 _to_iso（本地时间）与 isoformat（带时区）两种，字符串比较会误判。
+        for data in await self._list_entities():
+            session_id = data.get("session_id", "")
+            if not session_id:
                 continue
 
-            # 检查是否过期
-            last_active = data.get("last_active", "")
-            if last_active and last_active < before_str:
-                await self._delete_entity(file_path)
-                deleted_count += 1
+            last_active = self._parse_datetime(data.get("last_active"))
+            if last_active is None or last_active >= before:
+                continue
+
+            await self._delete_entity(self._get_file_path(session_id))
+            await self._delete_legacy_session_file(session_id)
+            deleted_count += 1
 
         return deleted_count
 
@@ -390,46 +400,46 @@ class MarkdownSessionRepository(MarkdownBaseRepository):
     # 辅助方法
     # ──────────────────────────────────────────────
 
-    async def _list_filenames(self) -> list[str]:
-        """列出目录下所有 .md 文件名。"""
+    @staticmethod
+    def _parse_datetime(value: str | None) -> datetime | None:
+        """解析时间字段为 offset-aware datetime。
 
-        def _list() -> list[str]:
+        兼容两种存储格式：_to_iso 的本地时间（"%Y-%m-%d %H:%M:%S"）
+        与 isoformat 的带时区 ISO 格式。
+
+        naive 值（_to_iso 产出，语义是本地时间）用 astimezone() 补本地时区，
+        而非补 UTC——补 UTC 会把本地时间误当 UTC，产生时区偏移，导致
+        delete_expired_sessions 的 last_active < before 比较失真。
+        """
+        if not value:
+            return None
+        try:
+            dt = datetime.fromisoformat(value)
+        except (ValueError, TypeError):
             try:
-                return [f for f in os.listdir(self._entity_dir) if f.endswith(".md")]
-            except Exception:
-                return []
-
-        return await asyncio.to_thread(_list)
+                dt = datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+            except (ValueError, TypeError):
+                return None
+        if dt.tzinfo is None:
+            dt = dt.astimezone()
+        return dt
 
     @staticmethod
     def _dict_to_model(data: dict[str, Any]) -> Session:
         """将字典转换为 Session 模型。"""
 
-        # 解析时间字段（确保始终返回 offset-aware UTC，避免与 aware datetime 做减法报错）
-        def parse_datetime(value: str | None) -> datetime | None:
-            if not value:
-                return None
-            try:
-                dt = datetime.fromisoformat(value)
-                # 历史数据可能是 offset-naive（本地时间），补上 UTC 时区
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=timezone.utc)
-                return dt
-            except (ValueError, TypeError):
-                return None
-
         return Session(
             session_id=data.get("session_id", ""),
             user_id=data.get("user_id", ""),
             device_id=data.get("device_id"),
-            last_active=parse_datetime(data.get("last_active")),
-            created_at=parse_datetime(data.get("created_at")),
+            last_active=MarkdownSessionRepository._parse_datetime(data.get("last_active")),
+            created_at=MarkdownSessionRepository._parse_datetime(data.get("created_at")),
             title=data.get("title", "") or "",
             preview=data.get("preview", "") or "",
             message_count=int(data.get("message_count", 0) or 0),
             is_empty=bool(data.get("is_empty", True)),
             is_favorite=bool(data.get("is_favorite", False)),
             is_deleted=bool(data.get("is_deleted", False)),
-            updated_at=parse_datetime(data.get("updated_at")),
+            updated_at=MarkdownSessionRepository._parse_datetime(data.get("updated_at")),
             group_id=data.get("group_id"),
         )
