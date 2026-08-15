@@ -46,7 +46,7 @@ export function AskUserRenderer({ tc }: { tc: ToolCallState }) {
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", padding: "6px var(--space-3)", fontSize: "var(--text-sm)" }}>
         <span style={{ flexShrink: 0 }}>🙋</span>
-        <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>ask_user</span>
+        <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>Ask_Questions</span>
         <span
           className={answered ? "badge badge-green" : "badge badge-red"}
           style={{ marginLeft: "auto" }}

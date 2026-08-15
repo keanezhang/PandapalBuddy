@@ -107,7 +107,20 @@
     "passed": "通过",
     "failed": "未通过",
     "skillLoaded": "已加载技能",
-    "skillLoadFailed": "加载失败"
+    "skillLoadFailed": "加载失败",
+    "toolLoaded": "已加载工具",
+    "toolLoadFailed": "未找到",
+    "agentDelegated": "已委派 Agent"
+  },
+  "toolLabels": {
+    "in": "输入",
+    "out": "输出",
+    "args": "参数",
+    "result": "结果",
+    "content": "内容",
+    "error": "错误",
+    "permanent": "永久删除",
+    "whenToUse": "适用场景"
   },
   "topbar": {
     "aiThinking": "AI 思考中",

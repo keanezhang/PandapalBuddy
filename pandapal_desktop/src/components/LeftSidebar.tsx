@@ -480,8 +480,8 @@ function MainNav() {
   const onTasksRoute = location.pathname.startsWith("/tasks");
   const onDashboardRoute = location.pathname.startsWith("/dashboard");
 
-  const items: { id: NavId; icon: string; label: string; active: boolean; run: () => void }[] = [
-    { id: "chat",      icon: "🍀", label: t("leftsidebar.nav.chat"),       active: false,             run: () => { createSession(); navigate("/"); } },
+  const items: { id: NavId; icon: React.ReactNode; label: string; active: boolean; run: () => void }[] = [
+    { id: "chat",      icon: <span className="pandapal-icon" aria-hidden="true" />, label: t("leftsidebar.nav.chat"), active: false, run: () => { createSession(); navigate("/"); } },
     { id: "search",    icon: "🔍", label: t("leftsidebar.nav.search"),     active: false,             run: () => openPalette() },
     { id: "dashboard", icon: "🚀", label: "dashboard",                     active: onDashboardRoute,   run: () => navigate("/dashboard") },
     { id: "scheduled", icon: "📋", label: t("leftsidebar.nav.tasks"),      active: onTasksRoute,       run: () => navigate("/tasks") },

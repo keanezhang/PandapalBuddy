@@ -55,6 +55,14 @@ export function lineCount(s?: unknown): number {
   return s.split("\n").length;
 }
 
+/** tool_name → 人类可读名（下划线→空格，各词首字母大写）。 */
+export function toolDisplayName(toolName: string): string {
+  return toolName
+    .split("_")
+    .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
+    .join(" ");
+}
+
 // ── CollapsibleCard：所有工具卡的统一外壳 ────────────────────────────────────
 
 interface CardProps {

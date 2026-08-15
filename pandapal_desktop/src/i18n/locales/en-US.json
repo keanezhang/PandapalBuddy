@@ -107,7 +107,20 @@
     "passed": "Passed",
     "failed": "Failed",
     "skillLoaded": "Skill loaded",
-    "skillLoadFailed": "Load failed"
+    "skillLoadFailed": "Load failed",
+    "toolLoaded": "Tool loaded",
+    "toolLoadFailed": "Not found",
+    "agentDelegated": "Agent delegated"
+  },
+  "toolLabels": {
+    "in": "Input",
+    "out": "Output",
+    "args": "Args",
+    "result": "Result",
+    "content": "Content",
+    "error": "Error",
+    "permanent": "Permanent",
+    "whenToUse": "When to use"
   },
   "topbar": {
     "aiThinking": "AI thinking",

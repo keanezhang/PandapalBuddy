@@ -3,10 +3,12 @@
  * diff 直接来自 args.old_string → args.new_string，无需读文件。
  */
 import React from "react";
+import { useTranslation } from "react-i18next";
 import type { ToolCallState } from "../../../store/chatStore";
 import { CollapsibleCard, DiffView, IOBlock, baseName, diffStat } from "./_primitives";
 
 export function EditRenderer({ tc }: { tc: ToolCallState }) {
+  const { t } = useTranslation();
   const filePath = tc.args?.file_path;
   const oldStr = typeof tc.args?.old_string === "string" ? tc.args.old_string : "";
   const newStr = typeof tc.args?.new_string === "string" ? tc.args.new_string : "";
@@ -30,7 +32,7 @@ export function EditRenderer({ tc }: { tc: ToolCallState }) {
       durationMs={tc.durationMs}
     >
       {isError ? (
-        <IOBlock label="ERROR" text={tc.result?.error ?? tc.result?.preview ?? ""} tone="error" />
+        <IOBlock label={t("toolLabels.error")} text={tc.result?.error ?? tc.result?.preview ?? ""} tone="error" />
       ) : (
         <DiffView oldStr={oldStr} newStr={newStr} />
       )}

@@ -8,6 +8,7 @@
  * 卡片：🌐 URL 做标题，状态行做右侧徽标，正文可折叠。
  */
 import React from "react";
+import { useTranslation } from "react-i18next";
 import type { ToolCallState } from "../../../store/chatStore";
 import { CollapsibleCard, IOBlock } from "./_primitives";
 
@@ -24,6 +25,7 @@ function splitFetchResult(raw: string): { status: string; body: string } {
 }
 
 export function WebFetchRenderer({ tc }: { tc: ToolCallState }) {
+  const { t } = useTranslation();
   const url = typeof tc.args?.url === "string" ? tc.args.url : "";
   const isError = tc.status === "error";
   const raw = isError
@@ -50,7 +52,7 @@ export function WebFetchRenderer({ tc }: { tc: ToolCallState }) {
       durationMs={tc.durationMs}
     >
       <IOBlock
-        label={isError ? "ERROR" : "CONTENT"}
+        label={isError ? t("toolLabels.error") : t("toolLabels.content")}
         text={body}
         tone={isError ? "error" : "default"}
         maxHeight={360}

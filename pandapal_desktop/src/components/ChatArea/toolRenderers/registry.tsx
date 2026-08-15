@@ -16,6 +16,14 @@ import { ReadRenderer } from "./ReadRenderer";
 import { AskUserRenderer } from "./AskUserRenderer";
 import { WebFetchRenderer } from "./WebFetchRenderer";
 import { SearchSkillsRenderer } from "./SearchSkillsRenderer";
+import { SearchToolsRenderer } from "./SearchToolsRenderer";
+import { FileSearchRenderer } from "./FileSearchRenderer";
+import { ListFilesRenderer } from "./ListFilesRenderer";
+import { DeleteFileRenderer } from "./DeleteFileRenderer";
+import { CallAgentRenderer } from "./CallAgentRenderer";
+import { CalculatorRenderer } from "./CalculatorRenderer";
+import { TimeRenderer } from "./TimeRenderer";
+import { PlanRenderer } from "./PlanRenderer";
 import { ToolFeedbackBanner } from "./ToolFeedbackBanner";
 
 /** 该工具是否不在时间线中直接出卡。 */
@@ -43,6 +51,17 @@ const RENDERERS: Record<string, (tc: ToolCallState) => React.ReactNode> = {
   ),
   web_fetch: (tc) => <WebFetchRenderer tc={tc} />,
   search_skills: (tc) => <SearchSkillsRenderer tc={tc} />,
+  search_tools: (tc) => <SearchToolsRenderer tc={tc} />,
+  glob: (tc) => <FileSearchRenderer tc={tc} />,
+  grep: (tc) => <FileSearchRenderer tc={tc} />,
+  list_files: (tc) => <ListFilesRenderer tc={tc} />,
+  delete_file: (tc) => <DeleteFileRenderer tc={tc} />,
+  call_agent: (tc) => <CallAgentRenderer tc={tc} />,
+  math_calculator: (tc) => <CalculatorRenderer tc={tc} />,
+  time_get_current_time: (tc) => <TimeRenderer tc={tc} />,
+  enter_plan_mode: (tc) => <PlanRenderer tc={tc} />,
+  write_plan: (tc) => <PlanRenderer tc={tc} />,
+  exit_plan_mode: (tc) => <PlanRenderer tc={tc} />,
 };
 
 /** 渲染单个工具调用卡片（Timeline 的 tool 段调用）。 */

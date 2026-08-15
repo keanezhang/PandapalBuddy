@@ -5,7 +5,7 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
 import type { ToolCallState } from "../../../store/chatStore";
-import { CollapsibleCard, IOBlock, primaryArg } from "./_primitives";
+import { CollapsibleCard, IOBlock, primaryArg, toolDisplayName } from "./_primitives";
 
 export function DefaultRenderer({ tc }: { tc: ToolCallState }) {
   const { t } = useTranslation();
@@ -17,19 +17,20 @@ export function DefaultRenderer({ tc }: { tc: ToolCallState }) {
     ? (tc.result?.error ?? tc.result?.preview ?? "")
     : (tc.result?.full || tc.result?.preview || "");
   const hasBody = Boolean(argsText || output);
+  const name = toolDisplayName(tc.tool_name);
 
   return (
     <CollapsibleCard
       icon="⚙"
-      name={tc.tool_name}
+      name={name}
       summary={primaryArg(tc.args)}
       status={tc.status}
       durationMs={tc.durationMs}
     >
       {hasBody && (
         <>
-          <IOBlock label="ARGS" text={argsText} />
-          <IOBlock label="RESULT" text={output} tone={isError ? "error" : "default"} />
+          <IOBlock label={t("toolLabels.args")} text={argsText} />
+          <IOBlock label={t("toolLabels.result")} text={output} tone={isError ? "error" : "default"} />
           {tc.result?.truncated && (
             <div style={{ padding: "2px var(--space-3) var(--space-2)", fontSize: "var(--text-2xs)", color: "var(--text-muted)" }}>
               {tc.result.sizeBytes

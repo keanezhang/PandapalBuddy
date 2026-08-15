@@ -37,7 +37,7 @@ export function SearchSkillsRenderer({ tc }: { tc: ToolCallState }) {
   return (
     <CollapsibleCard
       icon="📙"
-      name="search_skills"
+      name="Search_Skills"
       status={tc.status}
       durationMs={tc.durationMs}
       // 技能名徽章：加载成功显示技能名，失败显示红章（加载失败/未找到/门禁拒绝）

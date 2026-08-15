@@ -2,10 +2,12 @@
  * WriteRenderer — write_file 专属。表头显示 文件名 + 行数，展开显示代码预览。
  */
 import React from "react";
+import { useTranslation } from "react-i18next";
 import type { ToolCallState } from "../../../store/chatStore";
 import { CollapsibleCard, CodePreview, IOBlock, baseName, lineCount } from "./_primitives";
 
 export function WriteRenderer({ tc }: { tc: ToolCallState }) {
+  const { t } = useTranslation();
   const filePath = tc.args?.file_path;
   const content = typeof tc.args?.content === "string" ? tc.args.content : "";
   const isError = tc.status === "error";
@@ -17,7 +19,7 @@ export function WriteRenderer({ tc }: { tc: ToolCallState }) {
 
   return (
     <CollapsibleCard
-      icon="✍"
+      icon="📝"
       name="Write"
       summary={baseName(filePath)}
       meta={meta}
@@ -25,7 +27,7 @@ export function WriteRenderer({ tc }: { tc: ToolCallState }) {
       durationMs={tc.durationMs}
     >
       {isError ? (
-        <IOBlock label="ERROR" text={tc.result?.error ?? tc.result?.preview ?? ""} tone="error" />
+        <IOBlock label={t("toolLabels.error")} text={tc.result?.error ?? tc.result?.preview ?? ""} tone="error" />
       ) : content ? (
         <CodePreview code={content} />
       ) : null}

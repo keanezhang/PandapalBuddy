@@ -34,12 +34,16 @@ export function categorizeTool(toolName: string): ToolCategory {
     case "create_agent_task":
       return "task_create";
     case "update_agent_task":
+    case "list_agent_tasks":
+    case "get_agent_task":
+    case "delete_agent_task":
       return "task_update";
     case "web_search":
-      return "search";
     case "search_tools":
+      return "search";
     case "set_task_dependency":
     case "report_progress":
+    case "delete_scheduled_task":
       return "infra";
     default:
       return "misc";
