@@ -106,6 +106,8 @@ HIDDEN_IMPORTS = [
     "pandapal.session",
     "pandapal.session.manager",
     "pandapal.session.exceptions",
+    "pandapal.session.session_group_handler",
+    "pandapal.session.session_group_manager",
     "pandapal.session.session_list_handler",
     "pandapal.session.session_list_manager",
     # pandapal.router

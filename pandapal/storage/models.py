@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 
@@ -90,7 +90,7 @@ class Session:
     title: str = ""
     preview: str = ""
     message_count: int = 0
-    is_empty: bool = True
+    is_empty: bool = False
     is_favorite: bool = False
     is_deleted: bool = False
     updated_at: datetime | None = None
@@ -109,6 +109,7 @@ class SessionGroup:
     user_id: str
     name: str
     created_at: datetime
+    session_ids: list[str] = field(default_factory=list)  # 正向记录：组内会话 id 列表
 
 
 @dataclass(frozen=True)

@@ -1,24 +1,28 @@
-"""SessionListManager — UI 会话列表管理（v003）。
+"""SessionListManager — UI 会话列表管理（v004）。
 
 职责：
-- 会话元数据 CRUD（title/preview/is_favorite/is_deleted/group_id）
+- 会话元数据 CRUD（title/preview/is_favorite/is_deleted/group_id 回填）
 - 会话列表的排序/分页/筛选查询
 - "当前会话"视图切换的路由决策
 - 空会话节流复用
 - 50 上限的容量校验和淘汰触发
-- 分组 CRUD 和 1:1 关联
 - 启动引导（清 is_empty 遗留 + 建新空 session + 加载列表）
+- 会话删除时通过 on_session_removed 回调通知分组层同步正向记录
 
 ⚠️ 与 SessionManager 的区别：
 - SessionManager 管"消息 session"生命周期（超时/心跳）
 - SessionListManager 管"UI 会话"元数据（用户视角话题）
 - 共用 sessions 表但语义正交
 
+⚠️ 与 SessionGroupManager 的区别（v004 拆分）：
+- 分组 CRUD / 1:1 关联 / 正向记录 / 组内会话列表 → SessionGroupManager
+- 本类保留 group_id 字段的只读回填（session_to_info 的 group_name）
+
 设计约束：
 - BL1: 单一职责 —— 只做元数据 + 路由，不做并发/STM/审批状态机
 - BL2: 无状态 —— 实例字段仅存注入依赖，无请求上下文（currentSessionId 在前端）
-- BL4: 依赖注入 —— 7 个依赖全部构造参数注入
-- BL5: 业务异常语义化 —— SessionQuotaExceeded/GroupNameConflict 等独立类型
+- BL4: 依赖注入 —— 依赖全部构造参数注入
+- BL5: 业务异常语义化 —— SessionQuotaExceeded 等独立类型
 - D3: 禁止 N+1 —— list_visible_sessions 单次 SQL
 """
 
@@ -30,22 +34,17 @@ import os
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Literal, Protocol
+from typing import Any, Awaitable, Callable, Literal, Protocol
 
 from pandapal.broadcast.broadcaster import MessageBroadcast
 from pandapal.config.system.manager import ConfigManager
 from pandapal import session_id as session_id_mod
 from pandapal.events.normalized import NormalizedEvent
 from pandapal.session.exceptions import (
-    GroupNameConflict,
-    GroupNameInvalid,
-    GroupNotFoundError,
-    GroupQuotaExceeded,
     InvalidPageSize,
     SessionNotFoundError,
     SessionQuotaExceeded,
 )
-from pandapal.storage.exceptions import StorageDuplicateError
 from pandapal.storage.models import (
     ApprovalDecision,
     Session,
@@ -100,6 +99,23 @@ class SessionInfo:
             "updated_at": self.updated_at,
             "created_at": self.created_at,
         }
+
+
+def session_to_info(session: Session, group_map: dict[str, str]) -> SessionInfo:
+    """把 Session 转换为前端传输格式 SessionInfo（模块级，供 Manager 复用）。"""
+    updated_at = session.updated_at or session.last_active
+    return SessionInfo(
+        session_id=session.session_id,
+        title=session.title,
+        preview=session.preview,
+        message_count=session.message_count,
+        is_favorite=session.is_favorite,
+        is_empty=session.is_empty,
+        group_id=session.group_id,
+        group_name=group_map.get(session.group_id) if session.group_id else None,
+        updated_at=updated_at.isoformat() if updated_at else "",
+        created_at=session.created_at.isoformat() if session.created_at else "",
+    )
 
 
 @dataclass(frozen=True)
@@ -191,6 +207,9 @@ class SessionListManager:
         agent_task_repo: Any = None,
         clock: _ClockLike | None = None,
         id_generator: _IdGeneratorLike | None = None,
+        on_session_removed: (
+            Callable[[str, str | None], Awaitable[None]] | None
+        ) = None,
     ) -> None:
         if session_repo is None:
             raise ValueError("SessionListManager requires session_repo")
@@ -216,6 +235,7 @@ class SessionListManager:
 
         self._clock: _ClockLike = clock or SystemClock()
         self._id_gen: _IdGeneratorLike = id_generator or DefaultIdGenerator()
+        self._on_session_removed = on_session_removed
 
     # ═══════════════════════════════════════════════════════════
     # 生命周期钩子
@@ -460,6 +480,16 @@ class SessionListManager:
         # 5. soft delete
         await self._session_repo.soft_delete_session(session_id)
 
+        # 5b. 通知 group 层同步正向记录（best-effort，不阻塞删除流程）
+        if self._on_session_removed is not None:
+            try:
+                await self._on_session_removed(session_id, session.group_id)
+            except Exception as e:
+                logger.warning(
+                    "[SessionList] on_session_removed failed session=%s: %s",
+                    session_id, e,
+                )
+
         # 6. 路由
         routing = await self._route_after_delete(
             deleted_session_id=session_id,
@@ -621,154 +651,8 @@ class SessionListManager:
                     "[SessionList] list_groups_by_user failed: %s", e,
                 )
 
-        infos = [self._session_to_info(s, group_map) for s in sessions_raw]
+        infos = [session_to_info(s, group_map) for s in sessions_raw]
         return infos, has_more
-
-    # ═══════════════════════════════════════════════════════════
-    # 分组管理
-    # ═══════════════════════════════════════════════════════════
-
-    async def create_group(self, user_id: str, name: str) -> str:
-        if self._group_repo is None:
-            raise RuntimeError("Group management not supported in markdown mode")
-        name = (name or "").strip()
-        if not name:
-            raise GroupNameInvalid(name, "empty")
-        if len(name) > MAX_GROUP_NAME_LENGTH:
-            raise GroupNameInvalid(name, f"exceeds {MAX_GROUP_NAME_LENGTH} chars")
-
-        count = await self._group_repo.count_groups_by_user(user_id)
-        if count >= DEFAULT_MAX_GROUPS:
-            raise GroupQuotaExceeded(user_id, count, DEFAULT_MAX_GROUPS)
-
-        existing = await self._group_repo.find_group_by_name(user_id, name)
-        if existing is not None:
-            raise GroupNameConflict(user_id, name)
-
-        group_id = self._id_gen.new_group_id()
-        group = SessionGroup(
-            id=group_id,
-            user_id=user_id,
-            name=name,
-            created_at=self._clock.now(),
-        )
-        try:
-            await self._group_repo.create_group(group)
-        except StorageDuplicateError:
-            # 竞态：并发创建同名分组，转为语义化异常
-            raise GroupNameConflict(user_id, name)
-
-        await self._broadcast_group_list(user_id)
-        return group_id
-
-    async def rename_group(
-        self, user_id: str, group_id: str, new_name: str
-    ) -> None:
-        if self._group_repo is None:
-            raise RuntimeError("Group management not supported in markdown mode")
-        new_name = (new_name or "").strip()
-        if not new_name:
-            raise GroupNameInvalid(new_name, "empty")
-        if len(new_name) > MAX_GROUP_NAME_LENGTH:
-            raise GroupNameInvalid(new_name, f"exceeds {MAX_GROUP_NAME_LENGTH} chars")
-
-        group = await self._group_repo.find_group(group_id)
-        if group is None or group.user_id != user_id:
-            raise GroupNotFoundError(group_id)
-
-        try:
-            ok = await self._group_repo.rename_group(group_id, new_name)
-        except StorageDuplicateError:
-            raise GroupNameConflict(user_id, new_name)
-        if not ok:
-            raise GroupNotFoundError(group_id)
-
-        await self._broadcast_group_list(user_id)
-
-        # 逐个广播 SESSION_UPDATED，否则前端会话列表里的分组标签仍显示旧名。
-        all_sessions = await self._session_repo.find_sessions_by_user(user_id)
-        for s in all_sessions:
-            if s.group_id == group_id and not s.is_deleted:
-                await self._broadcast_session_updated(s, "group_changed")
-
-    async def delete_group(
-        self, user_id: str, group_id: str, delete_sessions: bool = False,
-    ) -> None:
-        """删除分组。
-
-        delete_sessions=False（默认）：仅删分组，先把组内会话 group_id 置 NULL
-            （会话保留，变为「无分组」）。
-        delete_sessions=True：连同组内会话一并软删除——逐个走 soft_delete_session
-            （拒绝待审批 / 取消 Agent / 清理附属数据 / 广播 SESSION_DELETED + 路由），
-            再删分组。
-        """
-        if self._group_repo is None:
-            raise RuntimeError("Group management not supported in markdown mode")
-        group = await self._group_repo.find_group(group_id)
-        if group is None or group.user_id != user_id:
-            raise GroupNotFoundError(group_id)
-
-        if delete_sessions:
-            # 级联软删除组内会话：每个会话独立广播 SESSION_DELETED 并处理路由，
-            # 前端据此逐条从列表移除并在必要时切换当前会话。
-            all_sessions = await self._session_repo.find_sessions_by_user(user_id)
-            victims = [
-                s for s in all_sessions
-                if s.group_id == group_id and not s.is_deleted
-            ]
-            for s in victims:
-                try:
-                    await self.soft_delete_session(s.session_id)
-                except SessionNotFoundError:
-                    pass  # 并发已删除，忽略
-                except Exception:
-                    logger.warning(
-                        "[SessionList] cascade delete session failed sid=%s",
-                        s.session_id,
-                    )
-        else:
-            # 先解除关联（会话保留），并逐个广播 SESSION_UPDATED，
-            # 否则前端会话列表会残留旧的 group_id/group_name（分组标签不消失）。
-            all_sessions = await self._session_repo.find_sessions_by_user(user_id)
-            affected = [
-                s for s in all_sessions
-                if s.group_id == group_id and not s.is_deleted
-            ]
-            await self._session_repo.clear_group_id_for_group(group_id)
-            for s in affected:
-                updated = await self._session_repo.find_session(s.session_id)
-                if updated is not None:
-                    await self._broadcast_session_updated(updated, "group_changed")
-
-        # 再删分组
-        await self._group_repo.delete_group(group_id)
-        await self._broadcast_group_list(user_id)
-
-    async def list_groups(self, user_id: str) -> list[SessionGroup]:
-        if self._group_repo is None:
-            return []
-        return await self._group_repo.list_groups_by_user(user_id)
-
-    async def assign_to_group(
-        self, user_id: str, session_id: str, group_id: str | None
-    ) -> None:
-        """1:1 分组关联。group_id=None 表示解除关联。"""
-        session = await self._session_repo.find_session(session_id)
-        if session is None or session.is_deleted or session.user_id != user_id:
-            raise SessionNotFoundError(session_id)
-        if group_id is not None and self._group_repo is not None:
-            g = await self._group_repo.find_group(group_id)
-            if g is None or g.user_id != user_id:
-                raise GroupNotFoundError(group_id)
-        await self._session_repo.update_session_meta(
-            session_id,
-            group_id=group_id,
-            group_id_touched=True,
-            touch_updated_at=False,
-        )
-        updated = await self._session_repo.find_session(session_id)
-        if updated is not None:
-            await self._broadcast_session_updated(updated, "group_changed")
 
     # ═══════════════════════════════════════════════════════════
     # 启动引导
@@ -825,7 +709,11 @@ class SessionListManager:
 
         # 4. 加载分组
         try:
-            groups = await self.list_groups(user_id)
+            groups = (
+                await self._group_repo.list_groups_by_user(user_id)
+                if self._group_repo is not None
+                else []
+            )
         except Exception as e:
             logger.warning("[SessionList] startup list_groups failed: %s", e)
             groups = []
@@ -1175,25 +1063,6 @@ class SessionListManager:
             return "degraded"
         return "restored"
 
-    def _session_to_info(
-        self, session: Session, group_map: dict[str, str]
-    ) -> SessionInfo:
-        updated_at = session.updated_at or session.last_active
-        return SessionInfo(
-            session_id=session.session_id,
-            title=session.title,
-            preview=session.preview,
-            message_count=session.message_count,
-            is_favorite=session.is_favorite,
-            is_empty=session.is_empty,
-            group_id=session.group_id,
-            group_name=group_map.get(session.group_id) if session.group_id else None,
-            updated_at=updated_at.isoformat() if updated_at else "",
-            created_at=(
-                session.created_at.isoformat() if session.created_at else ""
-            ),
-        )
-
     async def _broadcast_session_updated(
         self, session: Session, reason: str
     ) -> None:
@@ -1205,7 +1074,7 @@ class SessionListManager:
                     group_map[g.id] = g.name
             except Exception:
                 pass
-        info = self._session_to_info(session, group_map)
+        info = session_to_info(session, group_map)
         try:
             await self._broadcast.send(
                 NormalizedEvent.session_updated(
@@ -1220,7 +1089,11 @@ class SessionListManager:
 
     async def _broadcast_group_list(self, user_id: str) -> None:
         try:
-            groups = await self.list_groups(user_id)
+            groups = (
+                await self._group_repo.list_groups_by_user(user_id)
+                if self._group_repo is not None
+                else []
+            )
             payload = [
                 {
                     "id": g.id,

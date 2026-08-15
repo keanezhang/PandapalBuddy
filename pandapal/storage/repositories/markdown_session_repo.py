@@ -187,7 +187,7 @@ class MarkdownSessionRepository(MarkdownBaseRepository):
         # 过滤：可见且非空
         visible = [
             e for e in entities
-            if not bool(e.get("is_empty", True))
+            if not bool(e.get("is_empty", False))
             and not bool(e.get("is_deleted", False))
         ]
 
@@ -208,6 +208,43 @@ class MarkdownSessionRepository(MarkdownBaseRepository):
         sessions = [self._dict_to_model(e) for e in result[:limit]]
         return sessions, has_more
 
+    async def list_visible_sessions_by_ids(
+        self,
+        user_id: str,
+        session_ids: list[str],
+        page: int,
+        limit: int,
+    ) -> tuple[list[Session], bool]:
+        """按 session_id 列表精准查可见会话（正向记录快路径）。
+
+        与 list_visible_sessions 的全量过滤不同，这里只按组内 session_id
+        逐个读文件，避免全量遍历（组内大小 << 总会话数时收益显著）。
+
+        Returns:
+            (sessions, has_more)
+        """
+        if not session_ids:
+            return [], False
+
+        matched: list[dict[str, Any]] = []
+        for sid in session_ids:
+            data = await self._read_session_entity(sid)
+            if data is None:
+                continue
+            if data.get("user_id") != user_id:
+                continue
+            if bool(data.get("is_empty", False)) or bool(data.get("is_deleted", False)):
+                continue
+            matched.append(data)
+
+        # 排序：created_at DESC（缺失时排最后）
+        matched.sort(key=lambda e: e.get("created_at") or "", reverse=True)
+
+        offset = max(0, (page - 1) * limit)
+        result = matched[offset:offset + limit + 1]
+        has_more = len(result) > limit
+        return [self._dict_to_model(e) for e in result[:limit]], has_more
+
     async def search_by_title(
         self, user_id: str, query: str, limit: int = 15
     ) -> list[Session]:
@@ -222,7 +259,7 @@ class MarkdownSessionRepository(MarkdownBaseRepository):
         entities = await self._filter_entities(user_id=user_id)
         matched = [
             e for e in entities
-            if not bool(e.get("is_empty", True))
+            if not bool(e.get("is_empty", False))
             and not bool(e.get("is_deleted", False))
             and q in str(e.get("title", "")).lower()
         ]
@@ -269,7 +306,7 @@ class MarkdownSessionRepository(MarkdownBaseRepository):
         entities = await self._filter_entities(user_id=user_id)
         visible = [
             e for e in entities
-            if not bool(e.get("is_empty", True))
+            if not bool(e.get("is_empty", False))
             and not bool(e.get("is_deleted", False))
         ]
         return len(visible)
@@ -285,7 +322,7 @@ class MarkdownSessionRepository(MarkdownBaseRepository):
         entities = await self._filter_entities(user_id=user_id)
         visible = [
             e for e in entities
-            if not bool(e.get("is_empty", True))
+            if not bool(e.get("is_empty", False))
             and not bool(e.get("is_deleted", False))
             and e.get("session_id") != exclude_session_id
         ]
@@ -437,7 +474,7 @@ class MarkdownSessionRepository(MarkdownBaseRepository):
             title=data.get("title", "") or "",
             preview=data.get("preview", "") or "",
             message_count=int(data.get("message_count", 0) or 0),
-            is_empty=bool(data.get("is_empty", True)),
+            is_empty=bool(data.get("is_empty", False)),
             is_favorite=bool(data.get("is_favorite", False)),
             is_deleted=bool(data.get("is_deleted", False)),
             updated_at=MarkdownSessionRepository._parse_datetime(data.get("updated_at")),

@@ -15,7 +15,7 @@ from pandapal.storage.manager import StorageManager
 async def storage_manager(tmp_path):
     """提供初始化完成的 StorageManager（使用临时文件）。"""
     db_path = str(tmp_path / "test.db")
-    manager = StorageManager(storage_path=db_path)
+    manager = StorageManager(storage_path=db_path, storage_mode="sqlite")
     await manager.initialize_storage()
     yield manager
     await manager.shutdown_storage()
@@ -24,7 +24,7 @@ async def storage_manager(tmp_path):
 @pytest_asyncio.fixture
 async def memory_storage():
     """提供 :memory: StorageManager 用于纯内存测试。"""
-    manager = StorageManager(storage_path=":memory:")
+    manager = StorageManager(storage_path=":memory:", storage_mode="sqlite")
     await manager.initialize_storage()
     yield manager
     await manager.shutdown_storage()

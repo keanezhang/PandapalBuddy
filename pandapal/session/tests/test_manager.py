@@ -21,7 +21,7 @@ async def setup(tmp_path):
     """提供完整的 SessionManager + 依赖（StorageManager + ConfigManager）。"""
     # Storage
     db_path = str(tmp_path / "test.db")
-    storage = StorageManager(storage_path=db_path)
+    storage = StorageManager(storage_path=db_path, storage_mode="sqlite")
     await storage.initialize_storage()
 
     # Config（使用有效 .env.development）

@@ -10,6 +10,7 @@ UNIQUE(user_id, name) 由 DDL 层保证防重名。
 
 from __future__ import annotations
 
+import json
 import sqlite3
 
 import aiosqlite
@@ -22,7 +23,7 @@ from pandapal.storage.repositories._sqlite_base import BaseRepository
 class SessionGroupRepository(BaseRepository):
     """会话分组持久化操作。"""
 
-    _COLUMNS = "id, user_id, name, created_at"
+    _COLUMNS = "id, user_id, name, created_at, session_ids"
 
     def __init__(self, conn: aiosqlite.Connection, timeout: float = 5.0) -> None:
         super().__init__(conn, timeout)
@@ -31,13 +32,14 @@ class SessionGroupRepository(BaseRepository):
         """新建分组（INSERT，重名抛 StorageDuplicateError）。"""
         try:
             await self._execute(
-                "INSERT INTO session_groups (id, user_id, name, created_at) "
-                "VALUES (?, ?, ?, ?)",
+                "INSERT INTO session_groups (id, user_id, name, created_at, session_ids) "
+                "VALUES (?, ?, ?, ?, ?)",
                 (
                     group.id,
                     group.user_id,
                     group.name,
                     self._to_iso(group.created_at),
+                    json.dumps(group.session_ids or []),
                 ),
                 operation="create_group",
             )
@@ -107,9 +109,38 @@ class SessionGroupRepository(BaseRepository):
         await self._commit()
         return (cursor.rowcount or 0) > 0
 
+    async def get_session_ids(self, group_id: str) -> list[str]:
+        """读组内会话 id 列表（正向记录）。不存在或损坏返回 []。"""
+        row = await self._fetchone(
+            "SELECT session_ids FROM session_groups WHERE id = ?",
+            (group_id,),
+            operation="get_session_ids",
+        )
+        return self._parse_session_ids(row[0] if row else None)
+
+    async def set_session_ids(self, group_id: str, session_ids: list[str]) -> None:
+        """整体覆写组内会话 id 列表（正向记录）。"""
+        await self._execute(
+            "UPDATE session_groups SET session_ids = ? WHERE id = ?",
+            (json.dumps(session_ids or []), group_id),
+            operation="set_session_ids",
+        )
+        await self._commit()
+
     # ─────────────────────────────────────────────────────
     # 内部转换
     # ─────────────────────────────────────────────────────
+
+    @staticmethod
+    def _parse_session_ids(raw: str | None) -> list[str]:
+        """解析 session_ids JSON 列，损坏/空返回 []。"""
+        if not raw:
+            return []
+        try:
+            data = json.loads(raw)
+            return data if isinstance(data, list) else []
+        except (json.JSONDecodeError, TypeError):
+            return []
 
     @staticmethod
     def _row_to_model(row: tuple) -> SessionGroup:
@@ -118,4 +149,7 @@ class SessionGroupRepository(BaseRepository):
             user_id=row[1],
             name=row[2],
             created_at=BaseRepository._from_iso(row[3]),  # type: ignore[arg-type]
+            session_ids=SessionGroupRepository._parse_session_ids(
+                row[4] if len(row) > 4 else None
+            ),
         )

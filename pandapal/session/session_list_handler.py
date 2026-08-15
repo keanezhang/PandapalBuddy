@@ -9,9 +9,11 @@
 事件出口约定（直通路径集中式转发改造）：
 - 请求-响应事件（SESSION_LIST / SESSION_SWITCHED / 各 ERROR）：本类只构建并返回，
   由 InboundDispatcher 统一 broadcast.send() 并注入 origin_channel_id；
-- 状态变更事件（SESSION_UPDATED / SESSION_DELETED / SESSION_HISTORY_LIST / 分组列表）：
+- 状态变更事件（SESSION_UPDATED / SESSION_DELETED / SESSION_HISTORY_LIST）：
   由 SessionListManager 内部自广播（豁免路径——manager 同时服务 executor 钩子与
-  bootstrap 等非请求触发源），对应 handler 成功路径返回 None。
+  bootstrap 等非请求触发源），对应 handler 成功路径返回 None；
+- 分组相关事件（SESSION_GROUP_LIST / 组内 SESSION_UPDATED）由 SessionGroupManager
+  自广播，其 handler 见 session_group_handler.py（本类只负责会话列表与会话操作）。
 """
 
 from __future__ import annotations
@@ -21,14 +23,12 @@ from typing import Any
 
 from pandapal.events.normalized import NormalizedEvent
 from pandapal.session.exceptions import (
-    GroupNameConflict,
-    GroupNameInvalid,
     GroupNotFoundError,
-    GroupQuotaExceeded,
     InvalidPageSize,
     SessionNotFoundError,
     SessionQuotaExceeded,
 )
+from pandapal.session.session_group_manager import SessionGroupManager
 from pandapal.session.session_list_manager import SessionListManager
 
 logger = logging.getLogger(__name__)
@@ -40,11 +40,15 @@ class SessionListHandler:
     def __init__(
         self,
         manager: SessionListManager,
+        group_manager: SessionGroupManager,
         user_id: str,
     ) -> None:
         if manager is None:
             raise ValueError("SessionListHandler requires manager")
+        if group_manager is None:
+            raise ValueError("SessionListHandler requires group_manager")
         self._mgr = manager
+        self._group_mgr = group_manager
         self._user_id = user_id  # sidecar 单用户，启动时确定
 
     async def handle_session_list_request(
@@ -63,12 +67,22 @@ class SessionListHandler:
             page = int(data.get("page", 1))
             limit = int(data.get("limit", 10))
 
-            infos, has_more = await self._mgr.list_sessions(
-                user_id=self._user_id,
-                group_id=group_id,
-                page=page,
-                limit=limit,
-            )
+            # 具体分组 → 走正向记录快路径（SessionGroupManager）；
+            # all / 无分组 → 走全量过滤（SessionListManager）。
+            if group_id not in (None, ""):
+                infos, has_more = await self._group_mgr.list_group_sessions(
+                    user_id=self._user_id,
+                    group_id=group_id,
+                    page=page,
+                    limit=limit,
+                )
+            else:
+                infos, has_more = await self._mgr.list_sessions(
+                    user_id=self._user_id,
+                    group_id=group_id,
+                    page=page,
+                    limit=limit,
+                )
             return NormalizedEvent.session_list(
                 sessions=[s.to_dict() for s in infos],
                 has_more=has_more,
@@ -77,6 +91,12 @@ class SessionListHandler:
             )
         except InvalidPageSize as e:
             return self._build_error_event(e.error_code, str(e))
+        except GroupNotFoundError as e:
+            # 分组已被并发删除：返回空列表（保持旧 list_sessions 的"组不存在→空"语义）
+            return NormalizedEvent.session_list(
+                sessions=[], has_more=False, page=int(data.get("page", 1)),
+                group_id=str(data.get("group_id", "all")),
+            )
         except Exception:
             logger.exception("[SessionList] handle_session_list_request failed")
             return self._build_error_event("session_list_request_failed", "")
@@ -146,50 +166,6 @@ class SessionListHandler:
         except Exception:
             logger.exception("[SessionList] handle_session_favorite_toggle failed")
             return self._build_error_event("session_favorite_failed", "")
-
-    async def handle_session_group_mutate(
-        self, data: dict[str, Any]
-    ) -> NormalizedEvent | None:
-        op = data.get("op", "")
-        try:
-            if op == "create":
-                await self._mgr.create_group(
-                    self._user_id, str(data.get("name", "")),
-                )
-            elif op == "rename":
-                await self._mgr.rename_group(
-                    self._user_id,
-                    str(data.get("group_id", "")),
-                    str(data.get("new_name", "")),
-                )
-            elif op == "delete":
-                await self._mgr.delete_group(
-                    self._user_id,
-                    str(data.get("group_id", "")),
-                    delete_sessions=bool(data.get("delete_sessions", False)),
-                )
-            elif op == "assign":
-                gid = data.get("group_id")
-                await self._mgr.assign_to_group(
-                    user_id=self._user_id,
-                    session_id=str(data.get("session_id", "")),
-                    group_id=(str(gid) if gid else None),
-                )
-            else:
-                return self._build_error_event(
-                    "group_op_invalid", f"unknown op: {op}",
-                )
-            return None  # 成功事件由 manager 自广播（豁免路径）
-        except (
-            GroupNameConflict, GroupQuotaExceeded, GroupNameInvalid,
-            GroupNotFoundError, SessionNotFoundError,
-        ) as e:
-            return self._build_error_event(e.error_code, str(e))
-        except Exception:
-            logger.exception(
-                "[SessionList] handle_session_group_mutate failed op=%s", op,
-            )
-            return self._build_error_event("group_mutate_failed", "")
 
     async def handle_session_history_request(
         self, data: dict[str, Any]

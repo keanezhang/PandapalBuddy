@@ -183,6 +183,44 @@ class SessionRepository(BaseRepository):
         rows_take = rows[:limit]
         return [self._row_to_model(r) for r in rows_take], has_more
 
+    async def list_visible_sessions_by_ids(
+        self,
+        user_id: str,
+        session_ids: list[str],
+        page: int,
+        limit: int,
+    ) -> tuple[list[Session], bool]:
+        """按 session_id 列表精准查可见会话（正向记录快路径）。
+
+        用于「加载某分组」：先用 group 的正向记录拿 id 列表，再按 id 精准查，
+        避免全表按 group_id 过滤。
+
+        Args:
+            session_ids: 组内会话 id 列表（正向记录）
+            page / limit: 分页
+
+        Returns:
+            (sessions, has_more)
+        """
+        if not session_ids:
+            return [], False
+        offset = max(0, (page - 1) * limit)
+        placeholders = ", ".join("?" for _ in session_ids)
+        sql = (
+            f"SELECT {self._SESSION_COLUMNS} FROM sessions "
+            f"WHERE user_id = ? AND is_empty = 0 AND is_deleted = 0 "
+            f"AND session_id IN ({placeholders}) "
+            f"ORDER BY created_at DESC LIMIT ? OFFSET ?"
+        )
+        args: list = [user_id, *session_ids, limit + 1, offset]
+        rows = await self._fetchall(
+            sql,
+            tuple(args),
+            operation="list_visible_sessions_by_ids",
+        )
+        has_more = len(rows) > limit
+        return [self._row_to_model(r) for r in rows[:limit]], has_more
+
     async def search_by_title(
         self, user_id: str, query: str, limit: int = 15
     ) -> list[Session]:

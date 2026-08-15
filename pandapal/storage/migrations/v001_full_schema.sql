@@ -1,9 +1,10 @@
--- pandapal Storage Schema v001 - Initial Schema
--- 12 tables + indexes
--- Date: 2026-05-19
--- Updated 2026-06-14:
---   - merged agent_tasks table (was v002)
---   - added session_id to task_definitions (was v003)
+-- pandapal Storage Schema — 完整建表（单文件合并版）
+-- 12 tables + indexes，一次建全，幂等（CREATE TABLE IF NOT EXISTS）。
+-- 合并自：v001_initial_schema / v002_add_task_verification /
+--          v003_session_list / v004_group_members。
+--
+-- ★ is_empty 语义：0=非空（默认，安全侧），1=空会话（显式设置，启动时清除）。
+--   默认值取 0：避免裸 INSERT / 旧行迁移时被误标为「空」而被 hard_delete_empty_sessions 硬删。
 
 -- ──────────────────────────────────────────────
 -- Schema Version Tracking (single-row)
@@ -16,7 +17,7 @@ CREATE TABLE IF NOT EXISTS schema_version (
 );
 
 -- ──────────────────────────────────────────────
--- Sessions
+-- Sessions（含 UI 会话列表元数据）
 -- ──────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS sessions (
@@ -24,10 +25,24 @@ CREATE TABLE IF NOT EXISTS sessions (
     user_id TEXT NOT NULL,
     device_id TEXT NOT NULL,
     last_active TEXT NOT NULL,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    title TEXT NOT NULL DEFAULT '',
+    preview TEXT NOT NULL DEFAULT '',
+    message_count INTEGER NOT NULL DEFAULT 0,
+    is_empty INTEGER NOT NULL DEFAULT 0,
+    is_favorite INTEGER NOT NULL DEFAULT 0,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT '',
+    group_id TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_visible_updated
+    ON sessions(user_id, is_empty, is_deleted, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sessions_group
+    ON sessions(user_id, group_id, is_empty, is_deleted, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sessions_empty_flag
+    ON sessions(user_id, is_empty);
 
 -- ──────────────────────────────────────────────
 -- Task Definitions
@@ -83,10 +98,6 @@ CREATE INDEX IF NOT EXISTS idx_device_registrations_user_online ON device_regist
 
 -- ──────────────────────────────────────────────
 -- Approval Requests (HITL Bridge)
--- BL7: resolve_approval_request must be atomic compare-and-update
--- session_id: S3 cross-session forgery protection
--- source_channel_id: HITLBridge broadcast without reverse-engineering from session_id
--- No timeout: approvals persist in SQLite until explicit user decision
 -- ──────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS approval_requests (
@@ -133,12 +144,8 @@ CREATE TABLE IF NOT EXISTS run_states (
 
 -- ──────────────────────────────────────────────
 -- Raw Log (pandaren SDK RawLogBackend)
--- entry_type: 'message' | 'compact_boundary'
--- content_json: serialized MessageDict or CompactBoundaryDict
 -- ──────────────────────────────────────────────
 
--- run_id / step: 与 traces 的 (run_id, step) 对齐的 join key（离线分析用）。
---   step 为 NULL 表示 run 起始的 user 消息（无对应 llm_call），天然作 run 边界。
 CREATE TABLE IF NOT EXISTS raw_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id TEXT NOT NULL,
@@ -156,7 +163,6 @@ CREATE INDEX IF NOT EXISTS idx_raw_log_user_id ON raw_log(user_id);
 
 -- ──────────────────────────────────────────────
 -- Session Summaries (pandaren SDK SummaryBackend)
--- id: entry_id (UUID), supports per-entry delete
 -- ──────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS session_summaries (
@@ -173,8 +179,6 @@ CREATE INDEX IF NOT EXISTS idx_session_summaries_user_id ON session_summaries(us
 
 -- ──────────────────────────────────────────────
 -- Agent Tasks（AI 会话内的步骤拆解与进度追踪）
--- blocks / blocked_by: JSON 数组，存储 task_id 列表
--- status: pending / in_progress / completed / cancelled
 -- ──────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS agent_tasks (
@@ -190,9 +194,30 @@ CREATE TABLE IF NOT EXISTS agent_tasks (
     "order" INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
-    completed_at TEXT
+    completed_at TEXT,
+    verify_hint TEXT NOT NULL DEFAULT '',
+    verified INTEGER NOT NULL DEFAULT 0,
+    verify_evidence TEXT NOT NULL DEFAULT ''
 );
 
 CREATE INDEX IF NOT EXISTS idx_agent_tasks_session_id ON agent_tasks(session_id);
 CREATE INDEX IF NOT EXISTS idx_agent_tasks_session_status ON agent_tasks(session_id, status);
 CREATE INDEX IF NOT EXISTS idx_agent_tasks_user_id ON agent_tasks(user_id);
+
+-- ──────────────────────────────────────────────
+-- Session Groups（用户自定义会话分组）
+-- ──────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS session_groups (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    session_ids TEXT NOT NULL DEFAULT '[]'
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_session_groups_user_name
+    ON session_groups(user_id, name);
+
+CREATE INDEX IF NOT EXISTS idx_session_groups_user_id
+    ON session_groups(user_id);

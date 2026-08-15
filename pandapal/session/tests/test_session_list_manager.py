@@ -26,10 +26,6 @@ import pytest
 import pytest_asyncio
 
 from pandapal.session.exceptions import (
-    GroupNameConflict,
-    GroupNameInvalid,
-    GroupNotFoundError,
-    GroupQuotaExceeded,
     SessionNotFoundError,
 )
 from pandapal.session.session_list_manager import (
@@ -466,121 +462,6 @@ async def test_startup_bootstrap_cleans_empty_and_creates_new(
 
 
 # ═══════════════════════════════════════════════════════════
-# 用例 11: 分组
-# ═══════════════════════════════════════════════════════════
-
-
-@pytest.mark.asyncio
-async def test_create_group_and_assign_to_session(session_list_mgr, storage):
-    mgr, *_ = session_list_mgr
-    sid = await mgr.create_empty_session("alice")
-    await mgr.on_first_message(sid, "hi")
-
-    gid = await mgr.create_group("alice", "工作")
-    assert gid.startswith("grp-")
-
-    await mgr.assign_to_group(user_id="alice", session_id=sid, group_id=gid)
-    s = await storage.get_session_repo().find_session(sid)
-    assert s.group_id == gid
-
-
-@pytest.mark.asyncio
-async def test_rename_group_broadcasts_session_updated(session_list_mgr):
-    """重命名分组后，组内会话应收到 SESSION_UPDATED 携带新 group_name。"""
-    mgr, broadcast, *_ = session_list_mgr
-    sid = await mgr.create_empty_session("alice")
-    await mgr.on_first_message(sid, "hi")
-    gid = await mgr.create_group("alice", "工作")
-    await mgr.assign_to_group("alice", sid, gid)
-
-    broadcast.events.clear()
-    await mgr.rename_group("alice", gid, "生活")
-
-    updated = [
-        e for e in broadcast.events
-        if getattr(e, "event_type", None) is not None
-        and e.event_type.value == "session_updated"
-        and e.payload.get("session_info", {}).get("session_id") == sid
-    ]
-    assert updated, "重命名分组后应广播 SESSION_UPDATED"
-    assert updated[-1].payload["session_info"]["group_name"] == "生活"
-
-
-@pytest.mark.asyncio
-async def test_create_group_duplicate_name_raises(session_list_mgr):
-    mgr, *_ = session_list_mgr
-    await mgr.create_group("alice", "工作")
-    with pytest.raises(GroupNameConflict):
-        await mgr.create_group("alice", "工作")
-
-
-@pytest.mark.asyncio
-async def test_create_group_quota_exceeded(session_list_mgr):
-    """达到分组数量上限（DEFAULT_MAX_GROUPS）后再创建应抛 GroupQuotaExceeded。"""
-    from pandapal.session.session_list_manager import DEFAULT_MAX_GROUPS
-    mgr, *_ = session_list_mgr
-    for i in range(DEFAULT_MAX_GROUPS):
-        await mgr.create_group("alice", f"分组{i}")
-    with pytest.raises(GroupQuotaExceeded):
-        await mgr.create_group("alice", "溢出分组")
-
-
-@pytest.mark.asyncio
-async def test_create_group_invalid_name_empty(session_list_mgr):
-    mgr, *_ = session_list_mgr
-    with pytest.raises(GroupNameInvalid):
-        await mgr.create_group("alice", "   ")
-
-
-@pytest.mark.asyncio
-async def test_delete_group_clears_association(session_list_mgr, storage):
-    mgr, broadcast, *_ = session_list_mgr
-    sid = await mgr.create_empty_session("alice")
-    await mgr.on_first_message(sid, "hi")
-    gid = await mgr.create_group("alice", "工作")
-    await mgr.assign_to_group("alice", sid, gid)
-
-    broadcast.events.clear()
-    await mgr.delete_group("alice", gid)
-
-    # 会话 group_id 应被清空
-    s = await storage.get_session_repo().find_session(sid)
-    assert s.group_id is None
-
-    # 必须广播 SESSION_UPDATED，否则前端会话列表残留旧分组标签
-    updated = [
-        e for e in broadcast.events
-        if getattr(e, "event_type", None) is not None
-        and e.event_type.value == "session_updated"
-        and e.payload.get("session_info", {}).get("session_id") == sid
-    ]
-    assert updated, "detach 删除分组后应广播 SESSION_UPDATED"
-    assert updated[-1].payload["session_info"]["group_id"] is None
-
-
-@pytest.mark.asyncio
-async def test_delete_group_cascade_deletes_sessions(session_list_mgr, storage):
-    """delete_sessions=True 时组内会话应被级联软删除。"""
-    mgr, *_ = session_list_mgr
-    sid_a = await mgr.create_empty_session("alice")
-    await mgr.on_first_message(sid_a, "in-group")
-    sid_b = await mgr.create_empty_session("alice")
-    await mgr.on_first_message(sid_b, "out-of-group")
-    gid = await mgr.create_group("alice", "工作")
-    await mgr.assign_to_group("alice", sid_a, gid)
-
-    await mgr.delete_group("alice", gid, delete_sessions=True)
-
-    repo = storage.get_session_repo()
-    # 组内会话被软删除
-    a = await repo.find_session(sid_a)
-    assert a is None or a.is_deleted
-    # 组外会话不受影响
-    b = await repo.find_session(sid_b)
-    assert b is not None and not b.is_deleted
-
-
-# ═══════════════════════════════════════════════════════════
 # 用例 12: toggle_favorite
 # ═══════════════════════════════════════════════════════════
 
@@ -611,12 +492,3 @@ async def test_toggle_favorite_not_found_raises(session_list_mgr):
     mgr, *_ = session_list_mgr
     with pytest.raises(SessionNotFoundError):
         await mgr.toggle_favorite("ghost-sess-id")
-
-
-@pytest.mark.asyncio
-async def test_assign_group_not_found_raises(session_list_mgr):
-    mgr, *_ = session_list_mgr
-    with pytest.raises(GroupNotFoundError):
-        sid = await mgr.create_empty_session("alice")
-        await mgr.on_first_message(sid, "hi")
-        await mgr.assign_to_group("alice", sid, "ghost-group")

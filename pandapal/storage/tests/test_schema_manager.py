@@ -23,10 +23,9 @@ async def test_migrations_are_idempotent(memory_storage):
 
 @pytest.mark.asyncio
 async def test_tables_created(memory_storage):
-    """验证所有 11 个表已创建。"""
+    """验证所有 12 个表已创建。"""
     expected_tables = {
         "schema_version",
-        "user_configs",
         "sessions",
         "task_definitions",
         "task_executions",
@@ -36,6 +35,8 @@ async def test_tables_created(memory_storage):
         "run_states",
         "raw_log",
         "session_summaries",
+        "agent_tasks",
+        "session_groups",
     }
 
     conn = memory_storage._connection

@@ -36,6 +36,7 @@ from pandapal.scheduler.hitl_manager import HITLManager
 from pandapal.scheduler.interaction_manager import InteractionManager
 from pandapal.scheduler.plan_manager import PlanModeManager
 from pandapal.scheduler.scheduler import AgentScheduler
+from pandapal.session.session_group_manager import SessionGroupManager
 from pandapal.session.session_list_manager import SessionListManager
 from pandapal.task_scheduler.task_scheduler import TaskScheduler
 from pandapal.tools.agent_task_tools import AgentTaskTools, set_resume_provider
@@ -282,9 +283,34 @@ def _make_session_pool(
     )
 
 
+def _make_session_group_manager(
+    broadcast: MessageBroadcast,
+    context: AppContext,
+) -> SessionGroupManager:
+    """SessionGroupManager（分组 CRUD + 正向记录维护）。
+
+    依赖：
+      - broadcast 广播 SESSION_GROUP_LIST / SESSION_UPDATED
+      - 从 context.storage_manager 取 session_repo / group_repo
+    """
+    sm = context.storage_manager
+    if sm is None:
+        raise RuntimeError(
+            "SessionGroupManager requires storage_manager in context"
+        )
+    session_repo = sm.get_session_repo()
+    group_repo = sm.get_session_group_repo()  # SQLite / Markdown 均返回实例
+    return SessionGroupManager(
+        session_repo=session_repo,
+        group_repo=group_repo,
+        broadcast=broadcast,
+    )
+
+
 def _make_session_list_manager(
     pool: SessionAgentPool,
     broadcast: MessageBroadcast,
+    group_manager: SessionGroupManager,
     context: AppContext,
 ) -> SessionListManager:
     """SessionListManager（UI 会话列表元数据管理）。
@@ -292,6 +318,7 @@ def _make_session_list_manager(
     依赖：
       - Pool 用于 soft_delete 时 cancel_session
       - broadcast 广播 SESSION_* 事件
+      - group_manager 提供 on_session_removed 回调（同步正向记录）
       - 从 context.storage_manager 取 session_repo / group_repo /
         approval_repo / run_state_repo / raw_log_backend
     """
@@ -341,6 +368,7 @@ def _make_session_list_manager(
         raw_log_backend=raw_log_backend,
         working_memory_backend=working_memory_backend,
         agent_task_repo=agent_task_repo,
+        on_session_removed=group_manager.on_session_removed,
     )
 
 
@@ -470,11 +498,20 @@ def register_pandapal_subsystems(container: SubsystemContainer) -> None:
         start=True,  # 启动后台 evict 循环
     ))
 
-    # 8.6 SessionListManager（UI 会话列表元数据；依赖 Pool + broadcast + storage）
+    # 8.55 SessionGroupManager（分组 CRUD + 正向记录；依赖 broadcast + storage）
+    container.register(SubsystemSpec(
+        name="session_group_manager",
+        factory=_make_session_group_manager,
+        needs=(MessageBroadcast,),
+        context_needs=(AppContext,),
+        start=False,
+    ))
+
+    # 8.6 SessionListManager（UI 会话列表元数据；依赖 Pool + broadcast + GroupManager + storage）
     container.register(SubsystemSpec(
         name="session_list_manager",
         factory=_make_session_list_manager,
-        needs=(SessionAgentPool, MessageBroadcast),
+        needs=(SessionAgentPool, MessageBroadcast, SessionGroupManager),
         context_needs=(AppContext,),
         start=False,
     ))

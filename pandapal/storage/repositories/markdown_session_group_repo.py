@@ -49,6 +49,7 @@ class MarkdownSessionGroupRepository(MarkdownBaseRepository):
             "user_id": group.user_id,
             "name": group.name,
             "created_at": self._to_iso(group.created_at) or self._now_iso(),
+            "session_ids": list(group.session_ids or []),
         }
         await self._write_entity(file_path, data, f"Group: {group.name}")
 
@@ -99,15 +100,34 @@ class MarkdownSessionGroupRepository(MarkdownBaseRepository):
         file_path = self._get_file_path(group_id)
         return await self._delete_entity(file_path)
 
+    async def get_session_ids(self, group_id: str) -> list[str]:
+        """读组内会话 id 列表（正向记录）。不存在返回 []。"""
+        data = await self._read_entity(self._get_file_path(group_id))
+        if data is None:
+            return []
+        raw = data.get("session_ids")
+        return list(raw) if isinstance(raw, list) else []
+
+    async def set_session_ids(self, group_id: str, session_ids: list[str]) -> None:
+        """整体覆写组内会话 id 列表（正向记录）。"""
+        file_path = self._get_file_path(group_id)
+        data = await self._read_entity(file_path)
+        if data is None:
+            return
+        data["session_ids"] = list(session_ids or [])
+        await self._write_entity(file_path, data, f"Group: {data.get('name', '')}")
+
     # ──────────────────────────────────────────────
     # 内部转换
     # ──────────────────────────────────────────────
 
     @staticmethod
     def _dict_to_model(data: dict[str, Any]) -> SessionGroup:
+        raw_ids = data.get("session_ids")
         return SessionGroup(
             id=data.get("id", ""),
             user_id=data.get("user_id", ""),
             name=data.get("name", ""),
             created_at=MarkdownBaseRepository._from_iso(data.get("created_at")),
+            session_ids=list(raw_ids) if isinstance(raw_ids, list) else [],
         )

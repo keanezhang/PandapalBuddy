@@ -221,6 +221,7 @@ class SessionManager:
             device_id=device_id,
             last_active=now,
             created_at=now,
+            is_empty=False,
         )
         await self._session_repo.save_session(new_session)
         logger.info(

@@ -120,6 +120,8 @@ class PandaPalApp:
         self._ipc_server: StdioIpcServer | None = None
         # SessionListHandler（会话列表 IPC 处理）
         self._session_list_handler: Any = None
+        # SessionGroupHandler（会话分组 IPC 处理）
+        self._session_group_handler: Any = None
 
     # ══════════════════════════════════════════════════════════════════════════════
     # 启动 / 关闭（★ 层次 3：委托给容器，11 步手写 → 1 行启动）
@@ -599,13 +601,24 @@ class PandaPalApp:
         # ★ 注入 SessionListManager + SessionListHandler（UI 会话列表）
         try:
             from pandapal.session.session_list_handler import SessionListHandler
+            from pandapal.session.session_group_handler import SessionGroupHandler
             session_list_mgr = self._container.get("session_list_manager")
+            session_group_mgr = self._container.get("session_group_manager")
             broadcast = self._container.get("broadcast")
             session_handler = SessionListHandler(
                 manager=session_list_mgr,
+                group_manager=session_group_mgr,
                 user_id=self._config.get("user_id", ""),
             )
             self._session_list_handler = session_handler
+
+            # 分组 handler（SESSION_GROUP_MUTATE 独立分派；级联软删在 handler 层编排）
+            group_handler = SessionGroupHandler(
+                group_manager=session_group_mgr,
+                session_list_manager=session_list_mgr,
+                user_id=self._config.get("user_id", ""),
+            )
+            self._session_group_handler = group_handler
 
             # ★ 看板 handler（复用 session_list 分派通道）。数据源按 storage_mode 二分：
             #   markdown → _storage_path 是 pandapal_md/users/{uid} 目录（扫 .md）
@@ -693,7 +706,7 @@ class PandaPalApp:
                 elif msg_type == IpcMessageType.SESSION_FAVORITE_TOGGLE:
                     return await session_handler.handle_session_favorite_toggle(data)
                 elif msg_type == IpcMessageType.SESSION_GROUP_MUTATE:
-                    return await session_handler.handle_session_group_mutate(data)
+                    return await group_handler.handle_group_mutate(data)
                 elif msg_type == IpcMessageType.SESSION_HISTORY_REQUEST:
                     return await session_handler.handle_session_history_request(data)
                 return None
@@ -764,6 +777,7 @@ class PandaPalApp:
             # HC3 Fail-Safe：会话列表故障不阻塞其他功能
             logger.exception("SessionListHandler injection failed: %s", e)
             self._session_list_handler = None
+            self._session_group_handler = None
 
         # ★ 入站归一化：所有直通 handler 注册完毕，冻结后运行期只读
         dispatcher.freeze()
@@ -777,6 +791,14 @@ class PandaPalApp:
                 logger.info("SessionList bootstrap completed")
             except Exception as e:
                 logger.warning("SessionList bootstrap failed: %s", e)
+
+        # ★ 分组正向记录启动 backfill：幂等重建（升级后 session_ids 为空/漂移兜底）
+        if self._session_group_handler is not None:
+            try:
+                await self._session_group_handler.bootstrap()
+                logger.info("SessionGroup backfill completed")
+            except Exception as e:
+                logger.warning("SessionGroup backfill failed: %s", e)
 
         # ★ 预算额度启动引导：连接后首屏推一次 BUDGET_STATUS（额度条初始态）
         _bh = getattr(self, "_budget_handler", None)
