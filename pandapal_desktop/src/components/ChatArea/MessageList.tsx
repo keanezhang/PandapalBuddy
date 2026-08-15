@@ -77,13 +77,15 @@ export function MessageList() {
     },
   });
 
-  // 会话切换时重置分页锁与锚点。
+  // 会话切换时重置分页锁、锚点与贴底状态：新会话应直接定位到最近可视区，
+  // 而非沿袭上一会话的滚动位置（否则可能停在列表中部或漏触发回到底部）。
   useEffect(() => {
     historyLoadingRef.current = false;
     setHistoryLoading(false);
     pendingAnchorIdRef.current = null;
     if (loadTimerRef.current) window.clearTimeout(loadTimerRef.current);
     loadTimerRef.current = 0;
+    setUserAtBottom(true);
   }, [sessionId]);
 
   // 向上翻页：滚到顶部附近 + 还有更早历史 + 未在加载中。
@@ -133,18 +135,18 @@ export function MessageList() {
     return () => el.removeEventListener("scroll", onScroll);
   }, [loadMoreHistory]);
 
-  const hasStreaming = rows.some((r) => r.kind === "streaming");
-
+  // 贴底时新内容跟随。定位统一用 auto（瞬移）：
+  // 切会话加载历史若用 smooth，会把最近几十条从头到尾滚一遍，体验差且无意义。
   useEffect(() => {
     if (!userAtBottom || rows.length === 0) return;
     cancelAnimationFrame(rafId.current);
     rafId.current = requestAnimationFrame(() => {
       rowVirtualizer.scrollToIndex(rows.length - 1, {
         align: "end",
-        behavior: hasStreaming ? "auto" : "smooth",
+        behavior: "auto",
       });
     });
-  }, [messages, userAtBottom, hasStreaming, rowVirtualizer]);
+  }, [messages, userAtBottom, rowVirtualizer]);
 
   const isEmpty = messages.length === 0;
   const isConnected = status === "connected";
