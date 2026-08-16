@@ -132,7 +132,7 @@ export function SessionGroupPage() {
                     style={s.session_id === currentSessionId ? { background: "var(--bg-elevated)" } : undefined}
                   >
                     <span className={`skill-card-icon ${iconClassFor(s.title || s.session_id)}`}>
-                      {s.is_favorite ? "⭐" : "💬"}
+                      {"💬"}
                     </span>
                     <div className="skill-card-body">
                       <div className="skill-card-name">{s.title || t("sessionGroup.newSession")}</div>

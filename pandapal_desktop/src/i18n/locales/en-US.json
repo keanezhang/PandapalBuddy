@@ -70,8 +70,8 @@
     "permanentDelete": "Delete permanently",
     "deleteGroup": "Delete group",
     "newSessionFallback": "New session",
-    "unfavorite": "Unfavorite",
-    "favorite": "Favorite",
+    "renameSession": "Rename session",
+    "sessionNamePlaceholder": "Enter session name",
     "deleteSession": "Delete session",
     "deleteSessionConfirm": "Delete session \"{{title}}\"?",
     "emptyHint": "No sessions yet — click \"+\" to start",
@@ -150,6 +150,7 @@
     "sectionWorkspace": "Workspace",
     "sectionFiles": "Files",
     "sectionSessions": "Sessions",
+    "sessionResizeHint": "Drag to resize sessions, double-click to reset",
     "refreshFileTree": "Refresh file tree",
     "expand": "Expand",
     "nav": {

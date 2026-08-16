@@ -130,7 +130,7 @@ export function CommandPalette() {
           .map((s) => ({
             kind: "session" as const,
             id: s.session_id,
-            icon: s.is_favorite ? "⭐" : "💬",
+            icon: "💬",
             title: s.title || t("commandPalette.newSession"),
             subtitle: s.group_name ?? undefined,
             run: () => { switchSession(s.session_id); closePalette(); },
@@ -138,7 +138,7 @@ export function CommandPalette() {
       : backendSessions.map((s) => ({
           kind: "session" as const,
           id: s.session_id,
-          icon: s.is_favorite ? "⭐" : "💬",
+          icon: "💬",
           title: s.title || t("commandPalette.newSession"),
           subtitle: s.preview || undefined,
           run: () => { switchSession(s.session_id); closePalette(); },

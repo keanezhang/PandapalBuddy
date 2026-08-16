@@ -1401,22 +1401,25 @@ select {
   color: var(--accent);
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  border-top: 1px solid var(--border-default);
 }
 .sidebar-section-header.purple { color: var(--text-secondary); }
 .sidebar-section-header .section-add {
-  width: 20px; height: 20px;
-  border-radius: var(--radius-xs);
+  width: 26px; height: 26px;
+  border-radius: var(--radius-sm);
   display: flex; align-items: center; justify-content: center;
-  font-size: var(--text-md);
-  color: var(--text-muted);
-  background: transparent;
-  border: none;
+  font-size: var(--text-lg);
+  line-height: 1;
+  color: var(--text-secondary);
+  background: var(--bg-hover);
+  border: 1px solid var(--border-default);
   cursor: pointer;
-  transition: background var(--duration-fast), color var(--duration-fast);
+  transition: background var(--duration-fast), color var(--duration-fast), border-color var(--duration-fast);
 }
 .sidebar-section-header .section-add:hover {
-  background: var(--bg-hover);
+  background: var(--bg-elevated);
   color: var(--text-primary);
+  border-color: var(--border-strong);
 }
 
 /* ── 滚动区域 ─────────────────────────────────────────────────────────── */

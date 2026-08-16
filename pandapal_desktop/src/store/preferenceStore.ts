@@ -29,6 +29,8 @@ interface PreferenceState {
   sidebarCollapsed: boolean;
   /** 侧边栏宽度（拖拽调节），默认 260，范围 [180, 400] */
   sidebarWidth: number;
+  /** 对话列表区高度（px），null = 各模式默认；拖拽后写 px，范围 [120, 600] */
+  sessionPanelHeight: number | null;
   /** 各 Section 折叠状态，文件 Section 默认折叠 */
   sectionCollapsed: Record<SectionId, boolean>;
   /** 界面语言（默认中文） */
@@ -44,6 +46,7 @@ interface PreferenceState {
   toggleViewer: () => void;
   toggleSidebar: () => void;
   setSidebarWidth: (width: number) => void;
+  setSessionPanelHeight: (height: number | null) => void;
   toggleSection: (sectionId: SectionId) => void;
   setLocale: (locale: AppLocale) => void;
 }
@@ -57,6 +60,7 @@ export const usePreferenceStore = create<PreferenceState>()(
       splitRatio: 0.6,
       sidebarCollapsed: false,
       sidebarWidth: 260,
+      sessionPanelHeight: null,
       sectionCollapsed: { task: false, skill: false, session: false, file: true, quick_apps: false },
       locale: "zh-CN",
 
@@ -98,6 +102,12 @@ export const usePreferenceStore = create<PreferenceState>()(
 
       setSidebarWidth: (width) =>
         set({ sidebarWidth: Math.min(400, Math.max(180, width)) }),
+
+      setSessionPanelHeight: (height) =>
+        set({
+          sessionPanelHeight:
+            height === null ? null : Math.min(600, Math.max(120, height)),
+        }),
 
       toggleSection: (sectionId) =>
         set((s) => ({

@@ -113,7 +113,7 @@ export const ApiMessageType = {
   SESSION_CREATE:            "SESSION_CREATE",
   SESSION_SWITCH:            "SESSION_SWITCH",
   SESSION_DELETE:            "SESSION_DELETE",
-  SESSION_FAVORITE_TOGGLE:   "SESSION_FAVORITE_TOGGLE",
+  SESSION_RENAME:            "SESSION_RENAME",
   SESSION_GROUP_MUTATE:      "SESSION_GROUP_MUTATE",
   SESSION_HISTORY_REQUEST:   "SESSION_HISTORY_REQUEST",
 
@@ -367,7 +367,7 @@ export type InboundApiMessage =
   | SessionCreatePayload
   | SessionSwitchPayload
   | SessionDeletePayload
-  | SessionFavoriteTogglePayload
+  | SessionRenamePayload
   | SessionGroupMutatePayload
   | SessionHistoryRequestPayload
   | LoadCredentialsPayload
@@ -808,7 +808,6 @@ export interface SearchSessionHit {
   session_id: string;
   title: string;
   preview: string;
-  is_favorite: boolean;
   updated_at: string;
 }
 
@@ -1117,10 +1116,11 @@ export interface SessionDeletePayload {
   current_view_session_id: string | null;
 }
 
-export interface SessionFavoriteTogglePayload {
-  type: "SESSION_FAVORITE_TOGGLE";
+export interface SessionRenamePayload {
+  type: "SESSION_RENAME";
   msg_id: string;
   session_id: string;
+  title: string;
 }
 
 export type SessionGroupOp =
@@ -1156,7 +1156,6 @@ export interface SessionInfo {
   title: string;
   preview: string;
   message_count: number;
-  is_favorite: boolean;
   is_empty: boolean;
   group_id: string | null;
   group_name: string | null;
@@ -1195,7 +1194,7 @@ export interface SessionSwitchedMsg extends IpcMessageBase {
 export interface SessionUpdatedMsg extends IpcMessageBase {
   type: "SESSION_UPDATED";
   session_info: SessionInfo;
-  reason: "created" | "first_message" | "activity" | "favorite" | "group_changed";
+  reason: "created" | "first_message" | "activity" | "renamed" | "group_changed";
 }
 
 export interface SessionDeletedMsg extends IpcMessageBase {

@@ -70,8 +70,8 @@
     "permanentDelete": "永久删除",
     "deleteGroup": "删除分组",
     "newSessionFallback": "新会话",
-    "unfavorite": "取消星标",
-    "favorite": "星标",
+    "renameSession": "重命名会话",
+    "sessionNamePlaceholder": "输入会话名称",
     "deleteSession": "删除会话",
     "deleteSessionConfirm": "删除会话「{{title}}」？",
     "emptyHint": "还没有会话，点击左上角「+」开始",
@@ -150,6 +150,7 @@
     "sectionWorkspace": "工作目录",
     "sectionFiles": "文件",
     "sectionSessions": "对话列表",
+    "sessionResizeHint": "拖动调整对话区高度，双击复位",
     "refreshFileTree": "刷新文件树",
     "expand": "展开",
     "nav": {

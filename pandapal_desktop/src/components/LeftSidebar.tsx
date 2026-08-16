@@ -304,6 +304,11 @@ function SidebarBody({ mode }: { mode: AgentMode }) {
   const { t } = useTranslation();
   const loadFileTree = useFileStore((s) => s.loadFileTree);
   const workspace = useWorkspaceStore((s) => s.current);
+  const sessionPanelHeight = usePreferenceStore((s) => s.sessionPanelHeight);
+  const setSessionPanelHeight = usePreferenceStore((s) => s.setSessionPanelHeight);
+  const sessionRef = useRef<HTMLDivElement>(null);
+  const upperRef = useRef<HTMLDivElement>(null);
+  const fixed = sessionPanelHeight !== null;
 
   if (mode === "coding") {
     return (
@@ -324,11 +329,19 @@ function SidebarBody({ mode }: { mode: AgentMode }) {
         </div>
 
         {/* 编码模式下对话列表退居次要：固定矮区,不抢文件树的空间 */}
+        <ResizeHandle
+          targetRef={sessionRef}
+          onCommit={setSessionPanelHeight}
+          onReset={() => setSessionPanelHeight(null)}
+        />
         <SectionHeader theme="purple" label={t("leftsidebar.sectionSessions")} />
-        <div style={{
-          maxHeight: 180, overflowY: "auto", flexShrink: 0,
-          borderTop: "1px solid var(--border-subtle)",
-        }}>
+        <div
+          ref={sessionRef}
+          style={{
+            height: sessionPanelHeight ?? 180, overflowY: "auto", flexShrink: 0,
+            borderTop: "1px solid var(--border-subtle)",
+          }}
+        >
           <SessionListPanel />
         </div>
       </>
@@ -338,17 +351,110 @@ function SidebarBody({ mode }: { mode: AgentMode }) {
   // office（默认）
   return (
     <>
-      <SectionHeader theme="purple" label={t("leftsidebar.sectionWorkspace")}>
-        <ProjectSection />
-      </SectionHeader>
+      {/* 上方「工作目录 + 分组」：拖拽后变滚动容器，未拖拽则内容自适应 */}
+      <div ref={upperRef} style={fixed ? { flex: "1 1 auto", overflowY: "auto", minHeight: 0 } : { flex: "0 0 auto" }}>
+        <SectionHeader theme="purple" label={t("leftsidebar.sectionWorkspace")}>
+          <ProjectSection />
+        </SectionHeader>
 
-      <SessionGroupsWrapper />
+        <SessionGroupsWrapper />
+      </div>
 
+      <ResizeHandle
+        targetRef={sessionRef}
+        upperRef={upperRef}
+        onCommit={setSessionPanelHeight}
+        onReset={() => setSessionPanelHeight(null)}
+      />
       <SectionHeader theme="purple" label={t("leftsidebar.sectionSessions")} />
-      <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
+      <div
+        ref={sessionRef}
+        style={fixed
+          ? { height: sessionPanelHeight, flexShrink: 0, overflowY: "auto", minHeight: 0 }
+          : { flex: 1, overflowY: "auto", minHeight: 0 }}
+      >
         <SessionListPanel />
       </div>
     </>
+  );
+}
+
+// ── ResizeHandle ─ 对话区高度拖拽手柄 ──────────────────────────────
+
+function ResizeHandle({
+  targetRef,
+  upperRef,
+  onCommit,
+  onReset,
+}: {
+  targetRef: React.RefObject<HTMLDivElement | null>;
+  upperRef?: React.RefObject<HTMLDivElement | null>;
+  onCommit: (height: number) => void;
+  onReset: () => void;
+}) {
+  const { t } = useTranslation();
+  const [dragging, setDragging] = useState(false);
+  const dragStartY = useRef(0);
+  const dragStartH = useRef(0);
+
+  useEffect(() => {
+    if (!dragging) return;
+    const onMove = (e: MouseEvent) => {
+      const el = targetRef.current;
+      if (!el) return;
+      // 向上拖 → 高度增加
+      const delta = dragStartY.current - e.clientY;
+      const h = Math.min(600, Math.max(120, dragStartH.current + delta));
+      el.style.height = `${h}px`;
+    };
+    const onUp = () => {
+      const el = targetRef.current;
+      if (el) {
+        const h = parseInt(el.style.height, 10);
+        if (!Number.isNaN(h)) onCommit(h);
+      }
+      setDragging(false);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [dragging, targetRef, onCommit]);
+
+  return (
+    <div
+      title={t("leftsidebar.sessionResizeHint")}
+      onMouseDown={(e) => {
+        e.preventDefault();
+        const el = targetRef.current;
+        if (!el) return;
+        dragStartY.current = e.clientY;
+        dragStartH.current = el.offsetHeight;
+        // 拖拽期间固定高度（关掉 flex），让 style.height 立即生效
+        el.style.flex = "0 0 auto";
+        el.style.height = `${dragStartH.current}px`;
+        // 让上方区域在拖拽期间可收缩/可增长，吸收会话区的高度变化，
+        // 避免底部 Dock（设置/头像/退出）被顶下去或跟着上移
+        if (upperRef?.current) {
+          upperRef.current.style.flex = "1 1 auto";
+          upperRef.current.style.minHeight = "0";
+          upperRef.current.style.overflowY = "auto";
+        }
+        setDragging(true);
+      }}
+      onDoubleClick={onReset}
+      style={{
+        height: 5,
+        cursor: "row-resize",
+        flexShrink: 0,
+        background: dragging ? "var(--accent)" : "transparent",
+        transition: "background var(--duration-fast)",
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = "var(--accent)"; }}
+      onMouseLeave={(e) => { if (!dragging) e.currentTarget.style.background = "transparent"; }}
+    />
   );
 }
 

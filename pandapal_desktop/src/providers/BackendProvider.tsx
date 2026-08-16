@@ -147,7 +147,7 @@ interface BackendContextValue {
   createSession: () => void;
   switchSession: (targetSessionId: string) => void;
   deleteSession: (sessionId: string) => void;
-  toggleFavoriteSession: (sessionId: string) => void;
+  renameSession: (sessionId: string, newTitle: string) => void;
   groupMutate: (payload: Record<string, unknown>) => void;
   requestSessionHistory: (sessionId: string, limit?: number, offset?: number) => void;
   // ── 预算额度（按 provider 分账）──────────────
@@ -824,11 +824,15 @@ export function BackendProvider({ children }: { children: React.ReactNode }) {
           // else：陈旧分组响应，丢弃
           break;
         }
-          useSessionStore.getState().setSessions(
-            listMsg.sessions ?? [],
-            !!listMsg.has_more,
-          listMsg.page ?? 1,
-          );
+        // 侧边栏对话列表：与分组详情页对齐——page>1 是「加载更多」，须追加而非替换。
+        // 后端是单页分页（只回传本页数据），若一律 setSessions 替换，第 2 页会覆盖
+        // 第 1 页，表现为「看不到更多历史会话」。
+        const sidebarPage = listMsg.page ?? 1;
+        if (sidebarPage > 1) {
+          useSessionStore.getState().appendSessions(listMsg.sessions ?? [], !!listMsg.has_more);
+        } else {
+          useSessionStore.getState().setSessions(listMsg.sessions ?? [], !!listMsg.has_more, sidebarPage);
+        }
         // group_filter 只在前端主动 REQUEST 时才切；这里不覆盖
         break;
       }
@@ -1442,12 +1446,13 @@ export function BackendProvider({ children }: { children: React.ReactNode }) {
     [sendSessionIpc],
   );
 
-  const toggleFavoriteSession = useCallback(
-    (sessionId: string) => {
+  const renameSession = useCallback(
+    (sessionId: string, newTitle: string) => {
       sendSessionIpc({
-        type: "SESSION_FAVORITE_TOGGLE",
+        type: "SESSION_RENAME",
         msg_id: crypto.randomUUID(),
         session_id: sessionId,
+        title: newTitle,
       });
     },
     [sendSessionIpc],
@@ -1527,7 +1532,7 @@ export function BackendProvider({ children }: { children: React.ReactNode }) {
         createSession,
         switchSession,
         deleteSession,
-        toggleFavoriteSession,
+        renameSession,
         groupMutate,
         requestSessionHistory,
         setBudget,

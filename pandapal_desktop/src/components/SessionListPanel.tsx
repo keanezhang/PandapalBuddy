@@ -7,20 +7,19 @@
  *   - Header：标题 + 「+」按钮
  *   - Filter：分组下拉（"全部" / "无分组" / 各分组）
  *   - Groups：分组区（内联新建 + 每个分组的更多操作）
- *   - Sessions：会话条目列表（title/preview/badge/删除）
- *   - LoadMore：分页加载更多
+ *   - Sessions：会话条目列表（无限滚动）
  *   - Empty：空状态引导
  *
  * 交互：
  *   - 点击「+」→ createSession()（后端建 → SESSION_SWITCHED 会自动切）
  *   - 点击会话 → switchSession(id)（前端乐观切，后端广播 SESSION_SWITCHED）
- *   - Hover 会话 → 显示删除按钮 → 点击 → 二次确认 → deleteSession(id)
- *   - 星标 → toggleFavoriteSession(id)
+ *   - 右键会话 → 重命名 / 移动到分组 / 删除
+ *   - 滚动到底 → 自动加载更多（无限滚动）
  *   - 分组筛选下拉切换 → setGroupFilter + requestSessionList
  *   - Streaming 徽标：useIsStreamingIn(sid)
  *   - HITL 徽标：useHasPending(sid)
  */
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import i18n from "../i18n";
@@ -50,17 +49,21 @@ export function SessionListPanel() {
     createSession,
     switchSession,
     deleteSession,
-    toggleFavoriteSession,
+    renameSession,
     groupMutate,
   } = useBackend();
 
   // ── 右键菜单状态（统一管理，避免多实例冲突）──
   const [ctxMenu, setCtxMenu] = useState<{
     sessionId: string;
+    title: string;
     currentGroupId: string | null;
     x: number;
     y: number;
   } | null>(null);
+
+  // ── 会话重命名弹窗 ──
+  const [renameTarget, setRenameTarget] = useState<{ sessionId: string; title: string } | null>(null);
 
   useEffect(() => {
     if (!ctxMenu) return;
@@ -84,17 +87,28 @@ export function SessionListPanel() {
     [setGroupFilter, requestSessionList],
   );
 
+  const scrollRef = useRef<HTMLDivElement>(null);
+
   const onLoadMore = useCallback(() => {
+    if (loading || !hasMore) return;
     requestSessionList(
       currentGroupFilter === "all" ? "all" : currentGroupFilter,
       page + 1,
       PAGE_SIZE,
     );
-  }, [currentGroupFilter, page, requestSessionList]);
+  }, [loading, hasMore, currentGroupFilter, page, requestSessionList]);
+
+  const onScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 80) {
+      onLoadMore();
+    }
+  }, [onLoadMore]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", position: "relative" }}>
-      <div style={{ flex: 1, overflowY: "auto" }}>
+      <div ref={scrollRef} onScroll={onScroll} style={{ flex: 1, overflowY: "auto" }}>
         {sessions.length === 0 ? (
           <SessionListEmpty />
         ) : (
@@ -104,15 +118,10 @@ export function SessionListPanel() {
               session={s}
               selected={s.session_id === currentSessionId}
               onClick={() => { switchSession(s.session_id); navigate("/"); }}
-              onDelete={() => {
-                if (window.confirm(t("sessions.deleteSessionConfirm", { title: s.title || s.session_id }))) {
-                  deleteSession(s.session_id);
-                }
-              }}
-              onToggleFavorite={() => toggleFavoriteSession(s.session_id)}
               onContextMenu={(x, y) =>
                 setCtxMenu({
                   sessionId: s.session_id,
+                  title: s.title,
                   currentGroupId: s.group_id ?? null,
                   x,
                   y,
@@ -121,7 +130,12 @@ export function SessionListPanel() {
             />
           ))
         )}
-        {hasMore && sessions.length > 0 && (
+        {loading && sessions.length > 0 && (
+          <div style={{ padding: "9px 16px", textAlign: "center", color: "var(--text-muted)", fontSize: "var(--text-base)" }}>
+            {t("sessions.loading")}
+          </div>
+        )}
+        {!loading && hasMore && sessions.length > 0 && (
           <LoadMoreButton loading={loading} onClick={onLoadMore} />
         )}
       </div>
@@ -144,6 +158,16 @@ export function SessionListPanel() {
           }}
           onClick={(e) => e.stopPropagation()}
         >
+          <div
+            className="dropdown-item"
+            onClick={() => {
+              setRenameTarget({ sessionId: ctxMenu.sessionId, title: ctxMenu.title });
+              setCtxMenu(null);
+            }}
+          >
+            ✏️ {t("sessions.rename")}
+          </div>
+          <div className="dropdown-divider" />
           <div style={{
             padding: "4px 10px",
             fontSize: "var(--text-2xs)",
@@ -188,7 +212,38 @@ export function SessionListPanel() {
               {t("sessions.noGroupsHint")}
             </div>
           )}
+          <div className="dropdown-divider" />
+          <div
+            className="dropdown-item"
+            style={{ color: "var(--danger)" }}
+            onClick={() => {
+              if (window.confirm(t("sessions.deleteSessionConfirm", { title: ctxMenu.title || ctxMenu.sessionId }))) {
+                deleteSession(ctxMenu.sessionId);
+              }
+              setCtxMenu(null);
+            }}
+          >
+            🗑 {t("sessions.deleteSession")}
+          </div>
         </div>
+      )}
+
+      {/* ── 会话重命名弹窗 ── */}
+      {renameTarget && (
+        <NameModal
+          title={t("sessions.renameSession")}
+          confirmLabel={t("sessions.save")}
+          initialValue={renameTarget.title}
+          maxLength={40}
+          placeholder={t("sessions.sessionNamePlaceholder")}
+          onClose={() => setRenameTarget(null)}
+          onConfirm={(name) => {
+            if (name !== renameTarget.title) {
+              renameSession(renameTarget.sessionId, name);
+            }
+            setRenameTarget(null);
+          }}
+        />
       )}
     </div>
   );
@@ -439,10 +494,12 @@ export function SessionGroupSection({
 
       {/* ── 新建 / 重命名弹窗 ── */}
       {modal && (
-        <GroupNameModal
+        <NameModal
           title={modal.mode === "create" ? t("sessions.createGroup") : t("sessions.renameGroup")}
           confirmLabel={modal.mode === "create" ? t("sessions.create") : t("sessions.save")}
           initialValue={modal.mode === "rename" ? modal.current : ""}
+          maxLength={20}
+          placeholder={t("sessions.groupNamePlaceholder")}
           onClose={() => setModal(null)}
           onConfirm={(name) => {
             if (modal.mode === "create") onCreate(name);
@@ -496,18 +553,22 @@ function GroupItem({
   );
 }
 
-// ── 分组名弹窗（新建 / 重命名共用）────────────────────────
+// ── 名称弹窗（新建 / 重命名共用，分组与会话通用）──────────
 
-function GroupNameModal({
+function NameModal({
   title,
   confirmLabel,
   initialValue,
+  maxLength = 20,
+  placeholder,
   onConfirm,
   onClose,
 }: {
   title: string;
   confirmLabel: string;
   initialValue: string;
+  maxLength?: number;
+  placeholder: string;
   onConfirm: (name: string) => void;
   onClose: () => void;
 }) {
@@ -532,8 +593,8 @@ function GroupNameModal({
           <input
             autoFocus
             value={name}
-            maxLength={20}
-            placeholder={t("sessions.groupNamePlaceholder")}
+            maxLength={maxLength}
+            placeholder={placeholder}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") submit();
@@ -668,19 +729,14 @@ function SessionItem({
   session,
   selected,
   onClick,
-  onDelete,
-  onToggleFavorite,
   onContextMenu,
 }: {
   session: SessionInfo;
   selected: boolean;
   onClick: () => void;
-  onDelete: () => void;
-  onToggleFavorite: () => void;
   onContextMenu: (x: number, y: number) => void;
 }) {
   const { t } = useTranslation();
-  const [hover, setHover] = useState(false);
 
   return (
     <div
@@ -690,14 +746,10 @@ function SessionItem({
         e.stopPropagation();
         onContextMenu(e.clientX, e.clientY);
       }}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
       className={`sidebar-chat-item${selected ? " active" : ""}`}
       style={{ position: "relative" }}
     >
-      <span className="chat-icon">
-        {session.is_favorite ? "⭐" : "🍀"}
-      </span>
+      <span className="chat-icon">🍀</span>
       <span
         className="chat-title"
         style={{ fontWeight: selected ? 600 : 400 }}
@@ -707,29 +759,11 @@ function SessionItem({
       {session.group_name && (
         <span className="session-group-tag">{session.group_name}</span>
       )}
-      {hover && (
-        <div style={{ display: "flex", gap: 4, alignItems: "center" }} onClick={(e) => e.stopPropagation()}>
-          <button
-            title={session.is_favorite ? t("sessions.unfavorite") : t("sessions.favorite")}
-            onClick={onToggleFavorite}
-            style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: 0, fontSize: "var(--text-sm)", fontFamily: "inherit" }}
-          >
-            {session.is_favorite ? "☆" : "⭐"}
-          </button>
-          <button
-            title={t("sessions.deleteSession")}
-            onClick={onDelete}
-            style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: 0, fontSize: "var(--text-sm)", fontFamily: "inherit" }}
-          >
-            ✕
-          </button>
-        </div>
-      )}
     </div>
   );
 }
 
-// ── Empty / LoadMore ──────────────────────────────────────
+// ── Empty ─────────────────────────────────────────────────
 
 function SessionListEmpty() {
   const { t } = useTranslation();
@@ -747,6 +781,8 @@ function SessionListEmpty() {
     </div>
   );
 }
+
+// ── 工具 ─────────────────────────────────────────────────
 
 function LoadMoreButton({
   onClick,
@@ -774,8 +810,6 @@ function LoadMoreButton({
     </button>
   );
 }
-
-// ── 工具 ─────────────────────────────────────────────────
 
 function formatTime(iso: string): string {
   if (!iso) return "";
