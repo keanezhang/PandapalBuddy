@@ -49,7 +49,7 @@ _ALLOWED_TYPES: frozenset[str] = frozenset({
     IpcMessageType.SESSION_CREATE,
     IpcMessageType.SESSION_SWITCH,
     IpcMessageType.SESSION_DELETE,
-    IpcMessageType.SESSION_FAVORITE_TOGGLE,
+    IpcMessageType.SESSION_RENAME,
     IpcMessageType.SESSION_GROUP_MUTATE,
     IpcMessageType.SESSION_HISTORY_REQUEST,
     IpcMessageType.SEARCH,

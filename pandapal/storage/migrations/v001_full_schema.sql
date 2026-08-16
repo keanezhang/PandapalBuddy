@@ -30,7 +30,6 @@ CREATE TABLE IF NOT EXISTS sessions (
     preview TEXT NOT NULL DEFAULT '',
     message_count INTEGER NOT NULL DEFAULT 0,
     is_empty INTEGER NOT NULL DEFAULT 0,
-    is_favorite INTEGER NOT NULL DEFAULT 0,
     is_deleted INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL DEFAULT '',
     group_id TEXT

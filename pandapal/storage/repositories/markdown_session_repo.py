@@ -98,7 +98,6 @@ class MarkdownSessionRepository(MarkdownBaseRepository):
             "preview": session.preview,
             "message_count": session.message_count,
             "is_empty": session.is_empty,
-            "is_favorite": session.is_favorite,
             "is_deleted": session.is_deleted,
             "updated_at": self._to_iso(session.updated_at or session.last_active),
             "group_id": session.group_id,
@@ -356,7 +355,6 @@ class MarkdownSessionRepository(MarkdownBaseRepository):
         preview: str | None = None,
         message_count: int | None = None,
         is_empty: bool | None = None,
-        is_favorite: bool | None = None,
         group_id: str | None = None,
         group_id_touched: bool = False,
         touch_updated_at: bool = True,
@@ -383,8 +381,6 @@ class MarkdownSessionRepository(MarkdownBaseRepository):
             data["message_count"] = message_count
         if is_empty is not None:
             data["is_empty"] = is_empty
-        if is_favorite is not None:
-            data["is_favorite"] = is_favorite
         if group_id_touched:
             data["group_id"] = group_id
         if touch_updated_at:
@@ -475,7 +471,6 @@ class MarkdownSessionRepository(MarkdownBaseRepository):
             preview=data.get("preview", "") or "",
             message_count=int(data.get("message_count", 0) or 0),
             is_empty=bool(data.get("is_empty", False)),
-            is_favorite=bool(data.get("is_favorite", False)),
             is_deleted=bool(data.get("is_deleted", False)),
             updated_at=MarkdownSessionRepository._parse_datetime(data.get("updated_at")),
             group_id=data.get("group_id"),

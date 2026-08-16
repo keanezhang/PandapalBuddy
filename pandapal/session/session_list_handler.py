@@ -152,20 +152,21 @@ class SessionListHandler:
             logger.exception("[SessionList] handle_session_delete failed")
             return self._build_error_event("session_delete_failed", "")
 
-    async def handle_session_favorite_toggle(
+    async def handle_session_rename(
         self, data: dict[str, Any]
     ) -> NormalizedEvent | None:
         session_id = str(data.get("session_id", ""))
+        title = str(data.get("title", "") or "")
         if not session_id:
             return self._build_error_event("session_not_found", "session_id required")
         try:
-            await self._mgr.toggle_favorite(session_id)
+            await self._mgr.rename_session(session_id, title)
             return None  # 成功事件由 manager 自广播（豁免路径）
         except SessionNotFoundError as e:
             return self._build_error_event(e.error_code, str(e))
         except Exception:
-            logger.exception("[SessionList] handle_session_favorite_toggle failed")
-            return self._build_error_event("session_favorite_failed", "")
+            logger.exception("[SessionList] handle_session_rename failed")
+            return self._build_error_event("session_rename_failed", "")
 
     async def handle_session_history_request(
         self, data: dict[str, Any]

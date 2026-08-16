@@ -703,8 +703,8 @@ class PandaPalApp:
                     return await session_handler.handle_session_switch(data)
                 elif msg_type == IpcMessageType.SESSION_DELETE:
                     return await session_handler.handle_session_delete(data)
-                elif msg_type == IpcMessageType.SESSION_FAVORITE_TOGGLE:
-                    return await session_handler.handle_session_favorite_toggle(data)
+                elif msg_type == IpcMessageType.SESSION_RENAME:
+                    return await session_handler.handle_session_rename(data)
                 elif msg_type == IpcMessageType.SESSION_GROUP_MUTATE:
                     return await group_handler.handle_group_mutate(data)
                 elif msg_type == IpcMessageType.SESSION_HISTORY_REQUEST:
@@ -715,7 +715,7 @@ class PandaPalApp:
             for _t in (
                 IpcMessageType.SESSION_LIST_REQUEST, IpcMessageType.SESSION_CREATE,
                 IpcMessageType.SESSION_SWITCH, IpcMessageType.SESSION_DELETE,
-                IpcMessageType.SESSION_FAVORITE_TOGGLE, IpcMessageType.SESSION_GROUP_MUTATE,
+                IpcMessageType.SESSION_RENAME, IpcMessageType.SESSION_GROUP_MUTATE,
                 IpcMessageType.SESSION_HISTORY_REQUEST, IpcMessageType.DASHBOARD_REQUEST,
                 IpcMessageType.SET_BUDGET, IpcMessageType.BUDGET_QUERY,
             ):

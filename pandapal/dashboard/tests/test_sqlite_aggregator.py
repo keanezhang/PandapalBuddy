@@ -123,7 +123,7 @@ def _build_pandapal_db(path: Path) -> None:
             session_id TEXT PRIMARY KEY, user_id TEXT, device_id TEXT,
             last_active TEXT, created_at TEXT, title TEXT DEFAULT '',
             preview TEXT DEFAULT '', message_count INTEGER DEFAULT 0,
-            is_empty INTEGER DEFAULT 1, is_favorite INTEGER DEFAULT 0,
+            is_empty INTEGER DEFAULT 0,
             is_deleted INTEGER DEFAULT 0, updated_at TEXT DEFAULT '', group_id TEXT
         );
         CREATE TABLE session_groups (id TEXT PRIMARY KEY, user_id TEXT, name TEXT, created_at TEXT);

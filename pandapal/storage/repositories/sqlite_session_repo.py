@@ -4,7 +4,7 @@ D3: 提供 batch 方法 find_sessions_by_user（避免 N+1）。
 I3: save 操作使用 UPSERT（幂等）。
 
 v003 扩展（SessionListManager 支持）：
-- 新增字段：title / preview / message_count / is_empty / is_favorite / is_deleted /
+- 新增字段：title / preview / message_count / is_empty / is_deleted /
             updated_at / group_id
 - 新增方法：list_visible_sessions / soft_delete_session / hard_delete_empty_sessions /
             find_current_empty_session / update_session_meta /
@@ -33,7 +33,7 @@ class SessionRepository(BaseRepository):
     # ── 全字段选择列表（内部复用，避免 SELECT * 与列漂移）──
     _SESSION_COLUMNS = (
         "session_id, user_id, device_id, last_active, created_at, "
-        "title, preview, message_count, is_empty, is_favorite, is_deleted, "
+        "title, preview, message_count, is_empty, is_deleted, "
         "updated_at, group_id"
     )
 
@@ -67,9 +67,9 @@ class SessionRepository(BaseRepository):
         await self._execute(
             "INSERT OR REPLACE INTO sessions "
             "(session_id, user_id, device_id, last_active, created_at, "
-            " title, preview, message_count, is_empty, is_favorite, is_deleted, "
+            " title, preview, message_count, is_empty, is_deleted, "
             " updated_at, group_id) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 session.session_id,
                 session.user_id,
@@ -80,7 +80,6 @@ class SessionRepository(BaseRepository):
                 session.preview,
                 session.message_count,
                 1 if session.is_empty else 0,
-                1 if session.is_favorite else 0,
                 1 if session.is_deleted else 0,
                 self._to_iso(updated_at),
                 session.group_id,
@@ -334,7 +333,6 @@ class SessionRepository(BaseRepository):
         preview: str | None = None,
         message_count: int | None = None,
         is_empty: bool | None = None,
-        is_favorite: bool | None = None,
         group_id: str | None = None,
         group_id_touched: bool = False,
         touch_updated_at: bool = True,
@@ -363,9 +361,6 @@ class SessionRepository(BaseRepository):
         if is_empty is not None:
             fields.append("is_empty = ?")
             args.append(1 if is_empty else 0)
-        if is_favorite is not None:
-            fields.append("is_favorite = ?")
-            args.append(1 if is_favorite else 0)
         if group_id_touched:
             fields.append("group_id = ?")
             args.append(group_id)
@@ -418,7 +413,7 @@ class SessionRepository(BaseRepository):
     @staticmethod
     def _row_to_model(row: tuple) -> Session:
         """将数据库行转换为 Session 模型。"""
-        updated_at_raw = row[11] if len(row) > 11 else None
+        updated_at_raw = row[10] if len(row) > 10 else None
         return Session(
             session_id=row[0],
             user_id=row[1],
@@ -429,11 +424,10 @@ class SessionRepository(BaseRepository):
             preview=row[6] if len(row) > 6 else "",
             message_count=int(row[7]) if len(row) > 7 else 0,
             is_empty=bool(row[8]) if len(row) > 8 else True,
-            is_favorite=bool(row[9]) if len(row) > 9 else False,
-            is_deleted=bool(row[10]) if len(row) > 10 else False,
+            is_deleted=bool(row[9]) if len(row) > 9 else False,
             updated_at=(
                 BaseRepository._from_iso(updated_at_raw)
                 if updated_at_raw else None
             ),
-            group_id=row[12] if len(row) > 12 else None,
+            group_id=row[11] if len(row) > 11 else None,
         )

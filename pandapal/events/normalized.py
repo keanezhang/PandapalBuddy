@@ -723,7 +723,7 @@ class NormalizedEvent:
         session_info: dict,
         reason: str,
     ) -> "NormalizedEvent":
-        """会话元数据变更（created/first_message/activity/favorite/group_changed）。"""
+        """会话元数据变更（created/first_message/activity/renamed/group_changed）。"""
         return cls(
             event_type=EventType.SESSION_UPDATED,
             payload={

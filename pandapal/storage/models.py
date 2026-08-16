@@ -76,7 +76,7 @@ class Session:
 
     ⚠️ 两套语义共用一张表：
     - SessionManager 关注 last_active（消息 session 超时判断）
-    - SessionListManager 关注 title/preview/is_empty/is_favorite/is_deleted/group_id
+    - SessionListManager 关注 title/preview/is_empty/is_deleted/group_id
       （UI 会话元数据）
     Repo 写入时 last_active 与 updated_at 保持同步（防漂移）。
     """
@@ -91,7 +91,6 @@ class Session:
     preview: str = ""
     message_count: int = 0
     is_empty: bool = False
-    is_favorite: bool = False
     is_deleted: bool = False
     updated_at: datetime | None = None
     group_id: str | None = None

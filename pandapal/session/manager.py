@@ -192,7 +192,7 @@ class SessionManager:
           —— 与 Rust 侧已拆分的 create_session_id（造身份）语义完全不同，见 SESSION_ID 契约。
 
         ★ 非破坏性：即使已存在的会话已过期也**原样返回，绝不删表重建**。sessions 表由
-          SessionListManager 共管（title/preview/favorite/group 等元数据），此处删表会
+          SessionListManager 共管（title/preview/group 等元数据），此处删表会
           静默清空用户的会话元数据（数据丢失）。过期判定交给 validate_session 显式处理，
           由调用方决策，不在 ensure 里夹带破坏性副作用。
 

@@ -12,7 +12,6 @@
   9. _route_after_delete 删唯一
  10. startup_bootstrap 清 is_empty 遗留
  11. 分组：create / rename / delete / assign
- 12. toggle_favorite
 
 用 sqlite :memory: + Fake broadcast/pool/config 隔离测试。
 """
@@ -200,7 +199,6 @@ async def test_create_triggers_eviction_when_at_capacity(session_list_mgr, stora
             preview="",
             message_count=1,
             is_empty=False,
-            is_favorite=False,
             is_deleted=False,
             updated_at=ts,
         ))
@@ -336,17 +334,17 @@ async def test_on_first_message_all_whitespace_defaults_title(session_list_mgr, 
 async def test_list_sessions_orders_by_created_at_desc(
     session_list_mgr, storage,
 ):
-    """用例 6：created_at DESC 单键排序（收藏不置顶、活跃时间不影响顺序）。"""
+    """用例 6：created_at DESC 单键排序（活跃时间不影响顺序）。"""
     mgr, *_ = session_list_mgr
 
     from pandapal.storage.models import Session
     repo = storage.get_session_repo()
 
-    # 建 3 个会话：fav_old 收藏且活跃最新但创建最早；new 创建最新但活跃最旧
-    for sid, created_h, active_h, fav in [
-        ("fav_old", 10, 14, True),
-        ("mid", 11, 13, False),
-        ("new", 12, 12, False),
+    # 建 3 个会话：old 活跃最新但创建最早；new 创建最新但活跃最旧
+    for sid, created_h, active_h in [
+        ("old", 10, 14),
+        ("mid", 11, 13),
+        ("new", 12, 12),
     ]:
         created = datetime(2026, 7, 1, created_h, 0, 0, tzinfo=timezone.utc)
         active = datetime(2026, 7, 1, active_h, 0, 0, tzinfo=timezone.utc)
@@ -354,13 +352,13 @@ async def test_list_sessions_orders_by_created_at_desc(
             session_id=sid, user_id="alice", device_id="d1",
             last_active=active, created_at=created, updated_at=active,
             title=sid, preview="", message_count=1,
-            is_empty=False, is_favorite=fav, is_deleted=False,
+            is_empty=False, is_deleted=False,
         ))
 
     infos, has_more = await mgr.list_sessions(
         "alice", group_id=None, page=1, limit=10,
     )
-    assert [i.session_id for i in infos] == ["new", "mid", "fav_old"]
+    assert [i.session_id for i in infos] == ["new", "mid", "old"]
     assert has_more is False
 
 
@@ -379,7 +377,7 @@ async def test_list_sessions_pagination(session_list_mgr, storage):
             user_id="alice", device_id="d1",
             last_active=ts, created_at=ts, updated_at=ts,
             title=f"t{i}", preview="", message_count=1,
-            is_empty=False, is_favorite=False, is_deleted=False,
+            is_empty=False, is_deleted=False,
         ))
 
     page1, has_more1 = await mgr.list_sessions("alice", None, 1, 10)
@@ -445,7 +443,7 @@ async def test_startup_bootstrap_cleans_empty_and_creates_new(
             user_id="alice", device_id="d1",
             last_active=ts, created_at=ts, updated_at=ts,
             title="", preview="", message_count=0,
-            is_empty=True, is_favorite=False, is_deleted=False,
+            is_empty=True, is_deleted=False,
         ))
 
     payload = await mgr.startup_bootstrap("alice")
@@ -460,35 +458,3 @@ async def test_startup_bootstrap_cleans_empty_and_creates_new(
     assert new_sess is not None
     assert new_sess.is_empty is True
 
-
-# ═══════════════════════════════════════════════════════════
-# 用例 12: toggle_favorite
-# ═══════════════════════════════════════════════════════════
-
-
-@pytest.mark.asyncio
-async def test_toggle_favorite_flips_flag(session_list_mgr, storage):
-    mgr, *_ = session_list_mgr
-    sid = await mgr.create_empty_session("alice")
-    await mgr.on_first_message(sid, "hi")
-
-    new_val = await mgr.toggle_favorite(sid)
-    assert new_val is True
-
-    s = await storage.get_session_repo().find_session(sid)
-    assert s.is_favorite is True
-
-    new_val2 = await mgr.toggle_favorite(sid)
-    assert new_val2 is False
-
-
-# ═══════════════════════════════════════════════════════════
-# 越权保护
-# ═══════════════════════════════════════════════════════════
-
-
-@pytest.mark.asyncio
-async def test_toggle_favorite_not_found_raises(session_list_mgr):
-    mgr, *_ = session_list_mgr
-    with pytest.raises(SessionNotFoundError):
-        await mgr.toggle_favorite("ghost-sess-id")

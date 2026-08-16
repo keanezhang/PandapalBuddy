@@ -1,7 +1,7 @@
 """SessionListManager — UI 会话列表管理（v004）。
 
 职责：
-- 会话元数据 CRUD（title/preview/is_favorite/is_deleted/group_id 回填）
+- 会话元数据 CRUD（title/preview/is_deleted/group_id 回填）
 - 会话列表的排序/分页/筛选查询
 - "当前会话"视图切换的路由决策
 - 空会话节流复用
@@ -61,6 +61,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_MAX_SESSIONS = 300
 DEFAULT_MAX_GROUPS = 10
 MAX_TITLE_LENGTH = 10
+MAX_SESSION_TITLE_LENGTH = 50
 MAX_PREVIEW_LENGTH = 40
 MAX_GROUP_NAME_LENGTH = 20
 DEFAULT_PAGE_SIZE = 10
@@ -79,7 +80,6 @@ class SessionInfo:
     title: str
     preview: str
     message_count: int
-    is_favorite: bool
     is_empty: bool
     group_id: str | None
     group_name: str | None
@@ -92,7 +92,6 @@ class SessionInfo:
             "title": self.title,
             "preview": self.preview,
             "message_count": self.message_count,
-            "is_favorite": self.is_favorite,
             "is_empty": self.is_empty,
             "group_id": self.group_id,
             "group_name": self.group_name,
@@ -109,7 +108,6 @@ def session_to_info(session: Session, group_map: dict[str, str]) -> SessionInfo:
         title=session.title,
         preview=session.preview,
         message_count=session.message_count,
-        is_favorite=session.is_favorite,
         is_empty=session.is_empty,
         group_id=session.group_id,
         group_name=group_map.get(session.group_id) if session.group_id else None,
@@ -315,7 +313,6 @@ class SessionListManager:
             preview="",
             message_count=0,
             is_empty=True,
-            is_favorite=False,
             is_deleted=False,
             updated_at=now,
             group_id=None,
@@ -588,19 +585,34 @@ class SessionListManager:
                     session_id, session_dir, e,
                 )
 
-    async def toggle_favorite(self, session_id: str) -> bool:
-        """翻转收藏标记。返回翻转后值。"""
+    async def rename_session(self, session_id: str, title: str) -> None:
+        """重命名会话标题。
+
+        规则（对齐 rename_session.design.md）：
+        - 先 strip 首尾空白，空标题幂等（不修改、不报错）
+        - 超长截断到 MAX_SESSION_TITLE_LENGTH（先 strip 再截断）
+        - 目标会话不存在或已删除 → SessionNotFoundError
+        - touch_updated_at=False，不污染时间戳
+        - 成功后广播 SESSION_UPDATED reason="renamed"
+        """
         session = await self._session_repo.find_session(session_id)
         if session is None or session.is_deleted:
             raise SessionNotFoundError(session_id)
-        new_val = not session.is_favorite
+
+        title = (title or "").strip()
+        if not title:
+            return  # 空标题幂等：不修改
+        if len(title) > MAX_SESSION_TITLE_LENGTH:
+            title = title[:MAX_SESSION_TITLE_LENGTH]
+        if title == session.title:
+            return  # 无变化幂等
+
         await self._session_repo.update_session_meta(
-            session_id, is_favorite=new_val, touch_updated_at=False,
+            session_id, title=title, touch_updated_at=False,
         )
         updated = await self._session_repo.find_session(session_id)
         if updated is not None:
-            await self._broadcast_session_updated(updated, "favorite")
-        return new_val
+            await self._broadcast_session_updated(updated, "renamed")
 
     # ═══════════════════════════════════════════════════════════
     # 列表查询
@@ -911,7 +923,6 @@ class SessionListManager:
                     "session_id": s.session_id,
                     "title": s.title or "新会话",
                     "preview": s.preview or "",
-                    "is_favorite": bool(s.is_favorite),
                     "updated_at": s.updated_at or "",
                 })
         except Exception as e:

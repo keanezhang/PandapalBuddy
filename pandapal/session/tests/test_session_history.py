@@ -434,7 +434,6 @@ async def test_c5b_deleted_session_raises(storage):
         preview="",
         message_count=1,
         is_empty=False,
-        is_favorite=False,
         is_deleted=True,
     ))
     with pytest.raises(SessionNotFoundError):
