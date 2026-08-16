@@ -28,7 +28,7 @@
     "trayIcon": {
       "id": "main-tray",
       "iconPath": "icons/tray.png",
-      "iconAsTemplate": true,
+      "iconAsTemplate": false,
       "menuOnLeftClick": false
     },
     "security": {

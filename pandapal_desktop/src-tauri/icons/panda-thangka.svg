@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <!-- 额头火焰纹：底部圆润、中下鼓、顶部收尖的火苗形，外焰朱砂 + 内焰金黄 -->
+    <g id="flame-lg">
+      <path d="M 0 40 C -16 40 -28 24 -32 4 C -36 -20 -28 -46 -14 -60 C -8 -68 -3 -72 0 -74 C 3 -72 8 -68 14 -60 C 28 -46 36 -20 32 4 C 28 24 16 40 0 40 Z" fill="#B03A2E" stroke="#D4AF37" stroke-width="3" stroke-linejoin="round"/>
+      <path d="M 0 27 C -11 27 -19 16 -22 2 C -25 -14 -19 -32 -10 -42 C -6 -48 -2 -51 0 -52 C 2 -51 6 -48 10 -42 C 19 -32 25 -14 22 2 C 19 16 11 27 0 27 Z" fill="#E0A825" stroke="#D4AF37" stroke-width="2.5" stroke-linejoin="round"/>
+    </g>
+    <!-- 额头火焰纹（侧焰，略小） -->
+    <g id="flame-sm">
+      <path d="M 0 28 C -11 28 -20 17 -22 3 C -25 -14 -20 -32 -10 -42 C -6 -48 -2 -51 0 -52 C 2 -51 6 -48 10 -42 C 20 -32 25 -14 22 3 C 20 17 11 28 0 28 Z" fill="#B03A2E" stroke="#D4AF37" stroke-width="3" stroke-linejoin="round"/>
+      <path d="M 0 19 C -8 19 -14 12 -16 2 C -18 -10 -14 -22 -7 -29 C -4 -33 -1 -35 0 -36 C 1 -35 4 -33 7 -29 C 14 -22 18 -10 16 2 C 14 12 8 19 0 19 Z" fill="#E0A825" stroke="#D4AF37" stroke-width="2.5" stroke-linejoin="round"/>
+    </g>
+    <!-- 祥云（线描如意云：螺旋云头 + 飘尾 + 云心金点，藏青线描） -->
+    <g id="cloud" fill="none" stroke="#1B2A6B" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M 2 8 C 20 4 34 -8 34 -26 C 34 -46 16 -60 -4 -56 C -24 -52 -34 -30 -26 -14 C -18 2 -2 0 4 -14 C 10 -28 0 -40 -10 -36 C -18 -33 -20 -23 -14 -16"/>
+      <path d="M 2 8 C -14 11 -30 17 -46 27"/>
+      <circle cx="-4" cy="-28" r="4" fill="#E0A825" stroke="#D4AF37" stroke-width="1.5"/>
+    </g>
+  </defs>
+
+  <!-- 米白底 -->
+  <rect width="1024" height="1024" fill="#F7F2E7"/>
+
+  <!-- 头部衬线（藏青外描边，双勾边外层） -->
+  <circle cx="512" cy="530" r="306" fill="none" stroke="#1B2A6B" stroke-width="12"/>
+
+  <!-- 双耳（先画，脸圆覆盖其下缘，只露头顶弧形） -->
+  <circle cx="337" cy="300" r="95" fill="#1A1A1A" stroke="#D4AF37" stroke-width="5"/>
+  <circle cx="687" cy="300" r="95" fill="#1A1A1A" stroke="#D4AF37" stroke-width="5"/>
+  <!-- 内耳层次（金黄描金） -->
+  <circle cx="352" cy="312" r="48" fill="#E0A825" stroke="#D4AF37" stroke-width="3"/>
+  <circle cx="672" cy="312" r="48" fill="#E0A825" stroke="#D4AF37" stroke-width="3"/>
+
+  <!-- 圆脸（米白 + 金线内描边） -->
+  <circle cx="512" cy="530" r="300" fill="#F7F2E7" stroke="#D4AF37" stroke-width="5"/>
+
+  <!-- 斜长黑眼圈 + 外侧下垂（熊猫标志眼斑） -->
+  <ellipse cx="376" cy="552" rx="44" ry="34" fill="#1A1A1A" stroke="#D4AF37" stroke-width="3" transform="rotate(-20 376 552)"/>
+  <ellipse cx="648" cy="552" rx="44" ry="34" fill="#1A1A1A" stroke="#D4AF37" stroke-width="3" transform="rotate(20 648 552)"/>
+  <ellipse cx="415" cy="500" rx="82" ry="58" fill="#1A1A1A" stroke="#D4AF37" stroke-width="3" transform="rotate(-20 415 500)"/>
+  <ellipse cx="609" cy="500" rx="82" ry="58" fill="#1A1A1A" stroke="#D4AF37" stroke-width="3" transform="rotate(20 609 500)"/>
+
+  <!-- 眼睛：金黄点睛 + 竖瞳 + 高光点 -->
+  <circle cx="422" cy="496" r="21" fill="#E0A825" stroke="#D4AF37" stroke-width="3"/>
+  <circle cx="602" cy="496" r="21" fill="#E0A825" stroke="#D4AF37" stroke-width="3"/>
+  <ellipse cx="422" cy="496" rx="9" ry="16" fill="#1A1A1A"/>
+  <ellipse cx="602" cy="496" rx="9" ry="16" fill="#1A1A1A"/>
+  <circle cx="415" cy="488" r="6" fill="#F7F2E7"/>
+  <circle cx="595" cy="488" r="6" fill="#F7F2E7"/>
+
+  <!-- 鼻头 -->
+  <ellipse cx="512" cy="600" rx="42" ry="27" fill="#1A1A1A" stroke="#D4AF37" stroke-width="3"/>
+
+  <!-- 嘴巴（金线，ω 形微笑） -->
+  <path d="M 512 628 L 512 656" fill="none" stroke="#D4AF37" stroke-width="3" stroke-linecap="round"/>
+  <path d="M 512 656 Q 470 690 434 660" fill="none" stroke="#D4AF37" stroke-width="3" stroke-linecap="round"/>
+  <path d="M 512 656 Q 554 690 590 660" fill="none" stroke="#D4AF37" stroke-width="3" stroke-linecap="round"/>
+
+  <!-- 额头三道火焰纹：中焰高、侧焰低，左右对称 -->
+  <use href="#flame-lg" x="512" y="314"/>
+  <use href="#flame-sm" x="432" y="318"/>
+  <use href="#flame-sm" x="592" y="318"/>
+
+  <!-- 腮红（朱砂宝珠点） -->
+  <circle cx="330" cy="612" r="22" fill="#B03A2E" stroke="#D4AF37" stroke-width="3"/>
+  <circle cx="694" cy="612" r="22" fill="#B03A2E" stroke="#D4AF37" stroke-width="3"/>
+
+  <!-- ============ 背景零星点缀（对称） ============ -->
+
+  <!-- 四角松石绿菱形（几何纹，金线勾边） -->
+  <rect x="86" y="86" width="18" height="18" fill="#148F77" stroke="#D4AF37" stroke-width="2" transform="rotate(45 95 95)"/>
+  <rect x="920" y="86" width="18" height="18" fill="#148F77" stroke="#D4AF37" stroke-width="2" transform="rotate(45 929 95)"/>
+  <rect x="86" y="920" width="18" height="18" fill="#148F77" stroke="#D4AF37" stroke-width="2" transform="rotate(45 95 929)"/>
+  <rect x="920" y="920" width="18" height="18" fill="#148F77" stroke="#D4AF37" stroke-width="2" transform="rotate(45 929 929)"/>
+
+  <!-- 祥云六朵（上、中、下三对，左右镜像） -->
+  <use href="#cloud" transform="translate(170 176)"/>
+  <use href="#cloud" transform="translate(854 176) scale(-1 1)"/>
+  <use href="#cloud" transform="translate(105 521)"/>
+  <use href="#cloud" transform="translate(919 521) scale(-1 1)"/>
+  <use href="#cloud" transform="translate(170 876)"/>
+  <use href="#cloud" transform="translate(854 876) scale(-1 1)"/>
+
+  <!-- 散落金点星（金黄填色 + 金线勾边，天象/几何点缀） -->
+  <circle cx="512" cy="105" r="10" fill="#E0A825" stroke="#D4AF37" stroke-width="2.5"/>
+  <circle cx="320" cy="130" r="7" fill="#E0A825" stroke="#D4AF37" stroke-width="2"/>
+  <circle cx="704" cy="130" r="7" fill="#E0A825" stroke="#D4AF37" stroke-width="2"/>
+  <circle cx="210" cy="260" r="10" fill="#E0A825" stroke="#D4AF37" stroke-width="2.5"/>
+  <circle cx="814" cy="260" r="10" fill="#E0A825" stroke="#D4AF37" stroke-width="2.5"/>
+  <circle cx="70" cy="380" r="5" fill="#E0A825" stroke="#D4AF37" stroke-width="1.5"/>
+  <circle cx="954" cy="380" r="5" fill="#E0A825" stroke="#D4AF37" stroke-width="1.5"/>
+  <circle cx="50" cy="600" r="7" fill="#E0A825" stroke="#D4AF37" stroke-width="2"/>
+  <circle cx="974" cy="600" r="7" fill="#E0A825" stroke="#D4AF37" stroke-width="2"/>
+  <circle cx="300" cy="930" r="5" fill="#E0A825" stroke="#D4AF37" stroke-width="1.5"/>
+  <circle cx="724" cy="930" r="5" fill="#E0A825" stroke="#D4AF37" stroke-width="1.5"/>
+  <circle cx="512" cy="985" r="7" fill="#E0A825" stroke="#D4AF37" stroke-width="2"/>
+</svg>
