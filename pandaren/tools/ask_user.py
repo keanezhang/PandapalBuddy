@@ -42,7 +42,8 @@ INPUT_SCHEMA = {
                 "header (短标签, 最多12字符), "
                 "options (选项数组，每个有 label + description), "
                 "multiSelect (可选布尔值，允许多选)。"
-                "每题始终附带一个固定的'自由输入'选项（不计入 options 数量限制），用户可自行填写想法。"
+                "options 中必须包含一个 label 固定为「自由输入」的选项，"
+                "允许用户自行填写想法。"
             ),
         }
     },
@@ -62,8 +63,8 @@ ASK_USER_LLM_GUIDE = """向用户发起结构化提问。
 - header 用简短标签概括主题，最多 12 字符
 - 推荐选项放在第一个
 - 使用 multiSelect: true 允许多选
-- 每题 2-4 个选项，每轮 1-6 个问题，根据需要调整数量
-  （每题始终附带一个固定的"自由输入"选项，用户可自行填写想法，不占 2-4 个名额）
+- 每题 1-5 个选项（含自由输入），每轮 1-6 个问题，根据需要调整数量
+- 每个问题的 options 里必须包含一个 label 固定为「自由输入」的选项（用户可自行填写想法）
 - description 说明该选项的含义或影响
 - 字段名必须用 "options"（复数），不要写成 "option"（单数）
 """
@@ -103,13 +104,24 @@ def _validate_questions(
 
         question_text = q.get("question", f"问题 {i + 1}")
 
-        # options 校验（自由输入为固定内置选项，不计入数量限制）
+        # options 校验：1-5 个，且必须包含一个 label 为「自由输入」的选项
         opts = q.get("options", [])
-        if not isinstance(opts, list) or len(opts) < 2 or len(opts) > 4:
+        if not isinstance(opts, list) or len(opts) < 1 or len(opts) > 5:
             return ValidationResult(
                 False,
-                f"'{question_text}' 的 options 数量必须在 2-4，当前为 {len(opts)}",
+                f"'{question_text}' 的 options 数量必须在 1-5，当前为 {len(opts)}",
                 error_code=5,
+            )
+
+        # 自由输入选项必须存在（label 固定为「自由输入」）
+        if not any(
+            isinstance(o, dict) and o.get("label") == "自由输入"
+            for o in opts
+        ):
+            return ValidationResult(
+                False,
+                f"'{question_text}' 的 options 必须包含一个 label 为「自由输入」的选项",
+                error_code=8,
             )
 
         # label 唯一性校验
@@ -157,7 +169,6 @@ def _format_questions(questions: list[dict]) -> str:
                 f"   {'ABCDEFGH'[j]}. {label}"
                 + (f" — {desc}" if desc else "")
             )
-        lines.append(f"   {len(opts) + 1}. 💬 自由输入（直接输入你的想法）")
         lines.append("")
     return "\n".join(lines)
 
@@ -204,7 +215,7 @@ ask_user_tool = Tool(
     name="ask_user",
     description=(
         "向用户发起结构化提问，用于收集偏好、澄清歧义、提供选项。奥卡姆剃刀原则，如无必要不要调用"
-        "支持单选和多选，每轮 1-6 个问题，每题 2-4 个选项，根据需要调整数量"
+        "支持单选和多选，每轮 1-6 个问题，每题 1-5 个选项，根据需要调整数量，但每个问题的 options 里必须包含一个 label 固定为「自由输入」的选项（用户可自行填写想法）"
     ),
     executor=_ask_user_executor,
     input_schema=INPUT_SCHEMA,

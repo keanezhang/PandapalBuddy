@@ -530,7 +530,7 @@ export interface QuestionOption {
 }
 
 /** 单个问题结构（与 Python ask_user 工具的 question schema 对齐）
- *  每题始终附带一个固定的"自由输入"选项（不计入 options 数量），前端渲染为最后一项。
+ *  options 中必须包含一个 label 固定为「自由输入」的选项，前端识别后渲染为自由输入框。
  */
 export interface QuestionItem {
   question: string;

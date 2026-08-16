@@ -115,6 +115,8 @@ export function InteractionInline({ questions, run_id, tool_name, sessionId, onR
 }
 
 const FREE_INPUT_PREFIX = "__free_input__";
+/** 自由输入选项的固定 label（与 pandaren/tools/ask_user.py 的 validator 约定一致）。 */
+const FREE_INPUT_LABEL = "自由输入";
 const stripFreePrefix = (text: string) =>
   text.startsWith(FREE_INPUT_PREFIX) ? text.slice(FREE_INPUT_PREFIX.length) : text;
 
@@ -129,6 +131,10 @@ function QuestionCard({
   const freeSelected = selected.length === 1 && selected[0].startsWith(FREE_INPUT_PREFIX);
   const freeText = freeSelected ? selected[0].slice(FREE_INPUT_PREFIX.length) : "";
   const [freeInputActive, setFreeInputActive] = useState(false);
+
+  // 从 options 中分离「自由输入」选项与普通选项（label 固定，后端 validator 强制要求含此选项）
+  const freeInputOption = question.options.find((o) => o.label === FREE_INPUT_LABEL);
+  const normalOptions = question.options.filter((o) => o.label !== FREE_INPUT_LABEL);
 
   const handleOptionClick = (label: string) => { if (disabled) return; setFreeInputActive(false); onSelect(label); };
   const handleFreeInputToggle = () => { if (disabled) return; setFreeInputActive(true); onSelect(""); };
@@ -159,7 +165,7 @@ function QuestionCard({
 
       {!freeInputActive ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          {question.options.map((opt, oi) => {
+          {normalOptions.map((opt, oi) => {
             const isSelected = selected.includes(opt.label);
             return (
               <div
@@ -179,9 +185,11 @@ function QuestionCard({
               </div>
             );
           })}
-          <div onClick={handleFreeInputToggle} className="interaction-option">
-            <span className="radio" /> {t("interaction.freeInput")}
-          </div>
+          {freeInputOption && (
+            <div onClick={handleFreeInputToggle} className="interaction-option">
+              <span className="radio" /> {freeInputOption.label}
+            </div>
+          )}
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
