@@ -310,9 +310,20 @@ function SidebarBody({ mode }: { mode: AgentMode }) {
   const upperRef = useRef<HTMLDivElement>(null);
   const fixed = sessionPanelHeight !== null;
 
+  // 中部区域统一包一层 flex 吸收容器：占满 Header/Nav/Dock 之外的全部剩余空间，
+  // 内部高度冲突（会话区拖高、内容超长）由本容器 self-消化，保证底部 SidebarDock
+  // （登录/设置/退出）始终固定在可视区内，不会被顶出。
+  const bodyStyle: React.CSSProperties = {
+    flex: "1 1 0%",
+    minHeight: 0,
+    display: "flex",
+    flexDirection: "column",
+    overflow: "hidden",
+  };
+
   if (mode === "coding") {
     return (
-      <>
+      <div style={bodyStyle}>
         <SectionHeader theme="purple" label={t("leftsidebar.sectionWorkspace")}>
           <ProjectSection />
         </SectionHeader>
@@ -344,13 +355,13 @@ function SidebarBody({ mode }: { mode: AgentMode }) {
         >
           <SessionListPanel />
         </div>
-      </>
+      </div>
     );
   }
 
   // office（默认）
   return (
-    <>
+    <div style={bodyStyle}>
       {/* 上方「工作目录 + 分组」：拖拽后变滚动容器，未拖拽则内容自适应 */}
       <div ref={upperRef} style={fixed ? { flex: "1 1 auto", overflowY: "auto", minHeight: 0 } : { flex: "0 0 auto" }}>
         <SectionHeader theme="purple" label={t("leftsidebar.sectionWorkspace")}>
@@ -375,7 +386,7 @@ function SidebarBody({ mode }: { mode: AgentMode }) {
       >
         <SessionListPanel />
       </div>
-    </>
+    </div>
   );
 }
 
