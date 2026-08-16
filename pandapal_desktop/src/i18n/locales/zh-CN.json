@@ -528,7 +528,9 @@
     "errNoServer": "未配置服务器地址，请使用本地模式",
     "errLoginFailed": "登录失败（{{status}}）",
     "errNetwork": "无法连接服务器，请检查网络",
-    "errRegisterFailed": "注册失败（{{status}}）"
+    "errRegisterFailed": "注册失败（{{status}}）",
+    "errTls": "服务器安全证书已过期，请联系管理员续期",
+    "errBadResponse": "服务器返回了异常响应，请稍后重试"
   },
   "tasks": {
     "title": "任务安排",

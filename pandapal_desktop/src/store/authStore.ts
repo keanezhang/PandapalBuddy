@@ -37,6 +37,19 @@ const RELAY_AUTH_BASE_URL = import.meta.env.DEV
   ? "/auth"
   : import.meta.env.VITE_RELAY_AUTH_URL;
 
+/** 防御式解析 JSON 响应体。
+ *  直接用 response.json() 时，若响应体非 JSON（如代理/网关返回的 HTML 错误页），
+ *  Safari/WebKit 会抛出模糊的 "The string did not match the expected pattern"，
+ *  这里改为 text + JSON.parse，失败时转成明确的中性错误信息。 */
+async function readResponseJson<T>(response: Response): Promise<T> {
+  const text = await response.text();
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error(i18n.t("auth.errBadResponse"));
+  }
+}
+
 // ── 类型定义 ──────────────────────────────────────────────────────────────────
 
 interface AuthCommandResult {
@@ -207,13 +220,18 @@ export const useAuthStore = create<AuthState>((set) => ({
       });
 
       if (!response.ok) {
-        const err: RelayAuthError = await response.json();
-        const message = err.detail?.error || i18n.t("auth.errLoginFailed", { status: response.status });
+        let message = i18n.t("auth.errLoginFailed", { status: response.status });
+        try {
+          const err = await readResponseJson<RelayAuthError>(response);
+          message = err.detail?.error || message;
+        } catch (e) {
+          message = e instanceof Error ? e.message : message;
+        }
         set({ error: message });
         return false;
       }
 
-      const data: RelayAuthResponse = await response.json();
+      const data = await readResponseJson<RelayAuthResponse>(response);
 
       // 通知 Rust 保存凭据并携带参数启动 sidecar
       await invoke("auth_notify_ready", {
@@ -234,7 +252,16 @@ export const useAuthStore = create<AuthState>((set) => ({
       return true;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      set({ error: msg.includes("fetch") ? i18n.t("auth.errNetwork") : msg });
+      const lower = msg.toLowerCase();
+      let error: string;
+      if (lower.includes("certificate") || lower.includes("tls")) {
+        error = i18n.t("auth.errTls");
+      } else if (lower.includes("fetch") || lower.includes("network")) {
+        error = i18n.t("auth.errNetwork");
+      } else {
+        error = msg;
+      }
+      set({ error });
       return false;
     }
   },
@@ -253,13 +280,18 @@ export const useAuthStore = create<AuthState>((set) => ({
       });
 
       if (!response.ok) {
-        const err: RelayAuthError = await response.json();
-        const message = err.detail?.error || i18n.t("auth.errRegisterFailed", { status: response.status });
+        let message = i18n.t("auth.errRegisterFailed", { status: response.status });
+        try {
+          const err = await readResponseJson<RelayAuthError>(response);
+          message = err.detail?.error || message;
+        } catch (e) {
+          message = e instanceof Error ? e.message : message;
+        }
         set({ error: message });
         return false;
       }
 
-      const data: RelayAuthResponse = await response.json();
+      const data = await readResponseJson<RelayAuthResponse>(response);
 
       // 通知 Rust 保存凭据并携带参数启动 sidecar（注册即登录）
       await invoke("auth_notify_ready", {
@@ -279,7 +311,16 @@ export const useAuthStore = create<AuthState>((set) => ({
       return true;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      set({ error: msg.includes("fetch") ? i18n.t("auth.errNetwork") : msg });
+      const lower = msg.toLowerCase();
+      let error: string;
+      if (lower.includes("certificate") || lower.includes("tls")) {
+        error = i18n.t("auth.errTls");
+      } else if (lower.includes("fetch") || lower.includes("network")) {
+        error = i18n.t("auth.errNetwork");
+      } else {
+        error = msg;
+      }
+      set({ error });
       return false;
     }
   },

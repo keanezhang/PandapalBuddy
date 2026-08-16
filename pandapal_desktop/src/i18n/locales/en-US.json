@@ -528,7 +528,9 @@
     "errNoServer": "No server configured, use local mode",
     "errLoginFailed": "Login failed ({{status}})",
     "errNetwork": "Cannot reach server, check your network",
-    "errRegisterFailed": "Registration failed ({{status}})"
+    "errRegisterFailed": "Registration failed ({{status}})",
+    "errTls": "Server SSL certificate has expired, contact the administrator to renew it",
+    "errBadResponse": "Server returned an unexpected response, please try again later"
   },
   "tasks": {
     "title": "Task Schedule",
