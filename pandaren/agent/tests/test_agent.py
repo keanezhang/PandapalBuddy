@@ -181,6 +181,21 @@ def _make_agent(
     return builder.build()
 
 
+class _Blueprint:
+    """测试蓝图：包装 Agent 实例，materialize 返回同一实例（测试无需并发隔离）。
+
+    register() 自 v0.2 起仅接受蓝图（有 materialize()），Agent 实例注册
+    已移除——测试统一经本类包装后再注册。
+    """
+
+    def __init__(self, agent):
+        self.identity = agent.identity
+        self._agent = agent
+
+    def materialize(self):
+        return self._agent
+
+
 # ════════════════════════════════════════════════════
 #  1. 数据模型测试（AgentStatus / SubAgentSource 等）
 # ════════════════════════════════════════════════════
@@ -266,15 +281,15 @@ def test_registry():
 
     @assert_no_raises("首次注册 agent.1 成功")
     def _():
-        reg.register(a1)
+        reg.register(_Blueprint(a1))
 
     @assert_raises(SubAgentRegistrationError, "AR1: 重复注册同一 agent_id → SubAgentRegistrationError")
     def _():
-        reg.register(a1)
+        reg.register(_Blueprint(a1))
 
     @assert_no_raises("首次注册 agent.2 成功")
     def _():
-        reg.register(a2)
+        reg.register(_Blueprint(a2))
 
     assert_true(reg.agent_count() == 2, "注册后 agent_count == 2")
 
@@ -282,7 +297,7 @@ def test_registry():
     print("\n  · AR7: 注销幂等")
     reg2 = SubAgentRegistry()
     ag = _make_agent("unreg.agent", "注销测试", "测试注销用")
-    reg2.register(ag)
+    reg2.register(_Blueprint(ag))
     assert_true(reg2.agent_count() == 1, "注销前 count == 1")
     reg2.unregister("unreg.agent")
     assert_true(reg2.agent_count() == 0, "注销后 count == 0")
@@ -295,7 +310,7 @@ def test_registry():
     print("\n  · AR8: 状态管理")
     reg3 = SubAgentRegistry()
     ag3 = _make_agent("status.agent", "状态测试", "测试状态用")
-    reg3.register(ag3)
+    reg3.register(_Blueprint(ag3))
     assert_true(reg3.get_status("status.agent") == AgentStatus.HEALTHY, "注册后默认 HEALTHY")
 
     reg3.set_status("status.agent", AgentStatus.UNHEALTHY)
@@ -312,7 +327,7 @@ def test_registry():
     print("\n  · AR5: refresh_health")
     reg4 = SubAgentRegistry()
     ag4 = _make_agent("health.agent", "健康测试", "测试健康刷新")
-    reg4.register(ag4)
+    reg4.register(_Blueprint(ag4))
     reg4.set_status("health.agent", AgentStatus.UNHEALTHY)
     assert_true(reg4.get_status("health.agent") == AgentStatus.UNHEALTHY, "手动设 UNHEALTHY")
     reg4.refresh_health()
@@ -333,7 +348,7 @@ def test_registry():
             f"摘要代理{i}",
             f"负责任务{i}类型的工作",
         )
-        reg5.register(ag)
+        reg5.register(_Blueprint(ag))
 
     summaries = reg5.build_agent_summaries(context_window=128_000)
     assert_true(len(summaries) > 0, "AR2: summaries 非空")
@@ -361,8 +376,8 @@ def test_registry():
     reg6 = SubAgentRegistry()
     writer = _make_agent("code.writer", "代码生成器", "编写 Python 代码", TrustLevel.SUB_AGENT)
     reviewer = _make_agent("code.reviewer", "代码审查员", "审查代码质量", TrustLevel.SUB_AGENT)
-    reg6.register(writer)
-    reg6.register(reviewer)
+    reg6.register(_Blueprint(writer))
+    reg6.register(_Blueprint(reviewer))
 
     ctx = ToolContext(run_id="r1", step_n=1, agent_id="caller.agent")
 
@@ -394,7 +409,7 @@ def test_registry():
     tool_reg = create_tool_registry()
     reg7 = SubAgentRegistry(tool_registry=tool_reg)
     ag7 = _make_agent("builtin.agent", "内置工具测试", "测试内置工具注册")
-    reg7.register(ag7)
+    reg7.register(_Blueprint(ag7))
 
     @assert_no_raises("AR6: 首次 register_builtin_tools 不抛异常")
     def _():
@@ -424,9 +439,9 @@ def test_registry():
         orchestrator = _make_agent("orch.agent", "编排器", "主编排 Agent", TrustLevel.ORCHESTRATOR)
         sub = _make_agent("sub.worker", "子工作器", "具体工作", TrustLevel.SUB_AGENT)
         external = _make_agent("ext.user", "外部用户", "外部接入", TrustLevel.EXTERNAL)
-        reg8.register(orchestrator)
-        reg8.register(sub)
-        reg8.register(external)
+        reg8.register(_Blueprint(orchestrator))
+        reg8.register(_Blueprint(sub))
+        reg8.register(_Blueprint(external))
 
         # EXTERNAL 不可委派
         ctx_ext = ToolContext(
@@ -468,8 +483,8 @@ def test_registry():
         reg9 = SubAgentRegistry()
         a = _make_agent("cycle.a", "A代理", "循环测试A", TrustLevel.SUB_AGENT)
         b = _make_agent("cycle.b", "B代理", "循环测试B", TrustLevel.ORCHESTRATOR)
-        reg9.register(a)
-        reg9.register(b)
+        reg9.register(_Blueprint(a))
+        reg9.register(_Blueprint(b))
 
         # 人工注入循环状态（模拟 A→B 正在执行中）
         reg9._delegate_stack.append("cycle.a")
@@ -496,7 +511,7 @@ def test_registry():
 
         reg10 = SubAgentRegistry(max_delegate_depth=2)
         target = _make_agent("depth.target", "目标代理", "深度测试", TrustLevel.SUB_AGENT)
-        reg10.register(target)
+        reg10.register(_Blueprint(target))
 
         # 人工注入超深度调用栈
         reg10._delegate_stack.extend(["agent.0", "agent.1"])
@@ -955,7 +970,7 @@ def test_integration():
         )
 
         reg = SubAgentRegistry()
-        reg.register(sub_agent)
+        reg.register(_Blueprint(sub_agent))
 
         ctx = ToolContext(
             run_id="delegate-run-1",

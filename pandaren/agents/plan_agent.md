@@ -16,6 +16,7 @@ when_to_use: >-
   Skip when: the change is trivial (1-2 files, obvious approach), or the LLM
   has not yet gathered enough exploration context to provide meaningful input.
 trust_level: sub_agent
+model: deepseek-v4-flash
 tools: glob, grep, read_file, bash
 skills: "*"
 ---

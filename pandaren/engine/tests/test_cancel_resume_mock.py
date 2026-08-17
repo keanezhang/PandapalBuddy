@@ -133,8 +133,20 @@ def _make_registry_with_child():
     reg = SubAgentRegistry()
     child_identity = _FakeIdentity("code-explorer.v1", "code-explorer", TrustLevel.SUB_AGENT)
     child_agent = _FakeSubAgent(child_identity)
-    reg.register(child_agent)
+    # register() 仅接受蓝图（materialize 工厂）；_FakeSubAgent 直接注册已移除
+    reg.register(_SubAgentBlueprint(child_agent))
     return reg, child_agent
+
+
+class _SubAgentBlueprint:
+    """测试蓝图：包装 _FakeSubAgent，materialize 返回同一实例。"""
+
+    def __init__(self, agent):
+        self.identity = agent.identity
+        self._agent = agent
+
+    def materialize(self):
+        return self._agent
 
 
 def _make_ctx(metadata: dict):

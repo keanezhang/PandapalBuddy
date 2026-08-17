@@ -7,6 +7,7 @@ when_to_use: >
   Python → pytest；TypeScript → vitest + testing-library + playwright。
   输入为设计文档路径；产出测试代码文件，返回其路径 + 一段摘要。
 trust_level: sub_agent
+model: deepseek-v4-flash
 tools:
 ---
 

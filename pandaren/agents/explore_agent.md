@@ -9,6 +9,7 @@ when_to_use: >-
 
   跳过：探索很琐碎（1-2 个文件读取），或目标不清晰、需主 LLM 反复判断细化。
 trust_level: sub_agent
+model: deepseek-v4-flash
 tools: glob, grep, read_file, bash
 ---
 

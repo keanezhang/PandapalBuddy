@@ -44,6 +44,7 @@ SQLiteRawLogBackend 内置实现）：
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 from pathlib import Path
 from typing import Any, Callable, TYPE_CHECKING
@@ -1167,10 +1168,10 @@ class AgentBuilder:
                     s_cnt = len([n for n in bp.skills if n in pool_names])
                 summary_parts.append(f"{bp.agent_id}(tools={t_cnt}, skills={s_cnt})")
             except Exception as e:
-                logger.warning("Sub-agent 构建失败（跳过）: %s → %s", bp.agent_id, e)
+                logger.warning("Sub-agent 蓝图构建失败（跳过）: %s → %s", bp.agent_id, e)
 
         if summary_parts:
-            logger.info("子 Agent 加载完成: %s", ", ".join(summary_parts))
+            logger.info("子 Agent 蓝图加载完成: %s", ", ".join(summary_parts))
 
         # 内置工具统一注册
         from .tool.builtin import AgentToolFactory
@@ -1283,4 +1284,25 @@ class AgentBuilder:
             
         )
 
-        return builder.build()
+        # ── 子 Agent LLM 调参：默认继承父级 settings，蓝图显式字段逐字段覆盖；
+        #    model 顶层字段只覆盖 target_model（其余继续继承）。──
+        # 走 builder._llm_settings 而非 public .llm_settings()：后者无 target_model
+        # 参数（子 Agent 需经 LLMRouter 路由到指定模型）。
+        sub_settings: ModelSettings | None = self._llm_settings          # 1. 父级作底
+        if bp.llm_settings is not None:                                  # 2. 蓝图字段覆盖
+            override_kw = {
+                f.name: getattr(bp.llm_settings, f.name)
+                for f in dataclasses.fields(bp.llm_settings)
+                if getattr(bp.llm_settings, f.name) is not None
+            }
+            sub_settings = dataclasses.replace(sub_settings, **override_kw) if sub_settings is not None \
+                else bp.llm_settings
+        if bp.model:                                                     # 3. model → target_model
+            sub_settings = dataclasses.replace(sub_settings, target_model=bp.model) if sub_settings is not None \
+                else ModelSettings(target_model=bp.model)
+        if sub_settings is not None:
+            builder._llm_settings = sub_settings
+
+        # 返回 AgentBlueprint 而非 Agent 实例：registry 委派时每次 materialize
+        # 全新实例（独立 Memory / Hooks）→ 多会话并发隔离（见 sub_agent/registry.py）。
+        return builder.build_blueprint()

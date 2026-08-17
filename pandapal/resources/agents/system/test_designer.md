@@ -6,6 +6,7 @@ when_to_use: >
   设计文档，不产可执行代码）时委派。测试流程的第一步。输入为待测目标（文件路径/
   函数签名/需求描述）；产出一份设计文档文件，返回其路径 + 一段摘要。
 trust_level: sub_agent
+model: deepseek-v4-flash
 tools:
 ---
 

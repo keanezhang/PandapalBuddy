@@ -14,6 +14,7 @@ from typing import Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..identity.models import TrustLevel, SensitivePermission
+    from ..llm.types import ModelSettings
 
 
 # ════════════════════════════════════════════════
@@ -102,6 +103,10 @@ class SubAgentBlueprint:
     sensitive_permissions: frozenset[SensitivePermission] = field(default_factory=frozenset)  # 默认空权限（Fail-Safe）
     source: SubAgentSource = SubAgentSource.DIRECTORY        # 来源标记
     source_path: str | None = None                     # 源文件路径（调试 / 审计用）
+
+    # ── LLM 配置（可选；None = 默认继承父级 settings / provider 默认）──
+    model: str | None = None                           # 顶层 model 字段 → 构建时映射 ModelSettings.target_model
+    llm_settings: "ModelSettings | None" = None        # 蓝图显式 LLM 调参；逐字段覆盖父级（None = 全继承父级）
 
     # ── 资源声明（最小权限，Fail-Safe 默认值）──
     tools: tuple[str, ...] = ()                        # 工具名列表；空=不用工具；("*",)=继承全部

@@ -8,6 +8,7 @@ when_to_use: >
   触发词："审查PRD""review PRD""检查需求文档""prd review"。
   前提：已有一份 prd-design 产出的完整 PRD 文档（通常在 docs/{name}/{name}-PRD.md）。
 trust_level: sub_agent
+model: deepseek-v4-flash
 namespace: user
 tags: 需求文档审查
 tools: read_file, glob

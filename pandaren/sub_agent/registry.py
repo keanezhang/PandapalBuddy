@@ -1,14 +1,19 @@
 """pandaren/agent/registry.py — SubAgentRegistry 核心实现
 
 职责：
-  - Agent 注册与注册时校验（AR1）
+  - Agent 蓝图注册与注册时校验（AR1）
   - Agent 注销（AR7）
   - Agent 状态管理（AR8）
   - Agent 摘要列表构建（AR2, 1% 上下文预算）
-  - Agent 搜索（AR3, search_agents）
   - Agent 委派执行（AR4, delegate_task）
   - 健康刷新（AR5, refresh_health）
   - call_agent 内置 Tool 由 AgentToolFactory 统一注册（见 builder），本类不再自注册
+
+生命周期（多会话并发隔离）：
+  - 启动时注册子 Agent 的 **materialize 工厂**（蓝图），不持有常驻实例
+  - 每次委派（call_agent）时调用工厂产出一个**全新 Agent 实例**（独立 Memory / Hooks），
+    run 完即弃（实例由 GC 回收，共享 llm_client 不关）——不同会话/并发委派天然物理隔离
+  - register() 仅接受蓝图（有 materialize()），Agent 实例注册已彻底移除（TypeError）
 
 与 SkillRegistry / ToolRegistry 形成对称三件套设计。
 """
@@ -47,10 +52,11 @@ class SubAgentRegistry:
     """Agent 系统核心管理器。
 
     生命周期：
-      - Agent 构建时创建，注册 sub-agent
+      - 启动时注册子 Agent 的 materialize 工厂（蓝图），不持有常驻实例
       - 每轮 Phase 1 调用 build_agent_summaries() 注入 system prompt
       - call_agent 作为 ALWAYS 级 Tool 注册到 ToolRegistry
       - 每轮开始时 refresh_health() 刷新健康状态
+      - 每次委派时工厂产出全新 Agent 实例（独立 Memory），run 完即弃（多会话并发隔离）
 
     与 SkillRegistry / ToolRegistry 形成对称三件套：
       Tool   = 我能做什么（原子操作）
@@ -72,7 +78,10 @@ class SubAgentRegistry:
         max_delegate_depth: int = _DEFAULT_MAX_DELEGATE_DEPTH,
     ) -> None:
         # ── A 类：Agent 定义存储 ──
-        self._agents: dict[str, Agent] = {}        # agent_id → Agent 实例（委派时查找）
+        # materialize 工厂（agent_id → Callable[[], Agent]，委派时产出全新实例）
+        self._factories: dict[str, Any] = {}
+        # Identity 元数据缓存（agent_id → Identity，只读共享，供摘要/查询/审计）
+        self._identities: dict[str, Identity] = {}
 
         # ── 配置（构造后只读）──
         self._max_description_chars = max_description_chars
@@ -112,30 +121,46 @@ class SubAgentRegistry:
         return self._version
 
     # ════════════════════════════════════════════════
-    #  AR1：Agent 注册
+    #  AR1：Agent 蓝图注册
     # ════════════════════════════════════════════════
 
-    def register(self, agent: Agent) -> None:
-        """注册 Agent。
-
-        从 agent.identity 提取元数据用于唯一性校验。
-        agent_id 唯一性检查（已存在 → 抛 SubAgentRegistrationError）。
+    def register(self, blueprint: Any) -> None:
+        """注册子 Agent 蓝图（仅接受蓝图，不接受 Agent 实例）。
 
         Args:
-            agent: Agent 实例（必填）。
+            blueprint: AgentBlueprint（或任何有 ``materialize()`` + ``identity``
+              的对象）。委派时每次调用 materialize() 产出全新实例（独立
+              Memory / Hooks）→ 多会话并发隔离。
+
+        agent_id 唯一性检查（已存在 → 抛 SubAgentRegistrationError）。
+        元数据从 blueprint.identity 提取。
+
+        Raises:
+            TypeError: 传入对象没有 materialize()（如 Agent 实例）——SDK
+              自 v0.2 起只接受蓝图，实例注册属于旧用法，请改传 build_blueprint()
+              的产物。
         """
-        identity = agent.identity
+        if not hasattr(blueprint, "materialize"):
+            raise TypeError(
+                "SubAgentRegistry.register() 只接受蓝图（有 materialize() 的对象），"
+                f"收到 {type(blueprint).__name__}。请改用 AgentBuilder.build_blueprint()"
+                " 产出蓝图后再注册——SDK 已移除 Agent 实例注册的兼容路径。"
+            )
+        identity = blueprint.identity
+        factory = blueprint.materialize
+
         agent_id = identity.agent_id
 
         # 唯一性检查
-        if agent_id in self._agents:
+        if agent_id in self._factories:
             raise SubAgentRegistrationError(
                 f"Agent '{agent_id}' 已注册。"
                 f"如需替换，请先调用 unregister('{agent_id}') 注销。"
             )
 
         # 存储
-        self._agents[agent_id] = agent
+        self._factories[agent_id] = factory
+        self._identities[agent_id] = identity
         self._status[agent_id] = AgentStatus.HEALTHY
 
         # 审计
@@ -158,10 +183,11 @@ class SubAgentRegistry:
 
     def unregister(self, agent_id: str) -> None:
         """注销 Agent（幂等，不存在时静默返回）。"""
-        if agent_id not in self._agents:
+        if agent_id not in self._factories:
             return
 
-        self._agents.pop(agent_id, None)
+        self._factories.pop(agent_id, None)
+        self._identities.pop(agent_id, None)
         self._status.pop(agent_id, None)
 
         self._write_audit_event(
@@ -179,7 +205,7 @@ class SubAgentRegistry:
 
     def set_status(self, agent_id: str, status: AgentStatus) -> None:
         """设置 Agent 健康状态。"""
-        if agent_id not in self._agents:
+        if agent_id not in self._factories:
             raise SubAgentRegistrationError(
                 f"Agent '{agent_id}' 未注册，无法设置状态"
             )
@@ -208,21 +234,25 @@ class SubAgentRegistry:
     # ════════════════════════════════════════════════
 
     def get_identity(self, agent_id: str) -> Identity | None:
-        """精确查找 Identity。"""
-        agent = self._agents.get(agent_id)
-        return agent.identity if agent else None
+        """精确查找 Identity（从注册元数据缓存读取，只读共享）。"""
+        return self._identities.get(agent_id)
 
-    def get_agent(self, agent_id: str) -> Agent | None:
-        """获取 Agent 实例引用（内部使用，委派时查找）。"""
-        return self._agents.get(agent_id)
+    def get_agent(self, agent_id: str) -> None:
+        """⚠️ deprecated：registry 不再持有常驻 Agent 实例。
+
+        委派时经工厂（materialize）产出全新实例，用后即弃，无法也不应返回
+        "当前实例"。如需调试，请直接调用 factory（`registry._factories[agent_id]()`）。
+        统一返回 None，防止误用共享实例导致上下文串扰。
+        """
+        return None
 
     def list_identities(self) -> tuple[Identity, ...]:
         """枚举所有已注册 Identity。"""
-        return tuple(a.identity for a in self._agents.values())
+        return tuple(self._identities.values())
 
     def agent_count(self) -> int:
         """已注册 Agent 数量。"""
-        return len(self._agents)
+        return len(self._factories)
 
     def get_status(self, agent_id: str) -> AgentStatus | None:
         """获取 Agent 健康状态。"""
@@ -246,15 +276,14 @@ class SubAgentRegistry:
         Returns:
             按 agent_id 排序的摘要列表，超出 1% 预算时裁剪。
         """
-        if not self._agents:
+        if not self._identities:
             return []
 
         budget_tokens = int(context_window * 0.01)
         summaries: list[SubAgentSummary] = []
         used_tokens = 0
 
-        for agent_id, agent in sorted(self._agents.items()):
-            identity = agent.identity
+        for agent_id, identity in sorted(self._identities.items()):
             # 排除调用方自身
             if exclude_agent_id and agent_id == exclude_agent_id:
                 continue
@@ -350,16 +379,17 @@ class SubAgentRegistry:
         caller_agent_id = getattr(context, "agent_id", "")
         caller_trust = getattr(context, "trust_level", TrustLevel.SUB_AGENT)
 
-        # ── Step 1: 查找 Agent ──
-        target_agent = self._agents.get(agent_id)
-        if target_agent is None:
+        # ── Step 1: 查找并产出目标 Agent（工厂 materialize，每次委派全新实例）──
+        factory = self._factories.get(agent_id)
+        if factory is None:
             return ToolResult(
                 success=False,
                 error=f"Agent '{agent_id}' not found",
                 tool_name="call_agent",
             )
 
-        target_identity = target_agent.identity
+        # 从注册元数据缓存取 Identity（委派实例产出前即可完成信任/健康校验）
+        target_identity = self._identities.get(agent_id)
 
         # ── Step 2: 健康检查 ──
         status = self._status.get(agent_id, AgentStatus.UNHEALTHY)
@@ -459,7 +489,10 @@ class SubAgentRegistry:
                 "[cancel] Layer3 · delegating %s → %s WITH parent cancel token (cascade armed)",
                 caller_agent_id, agent_id,
             )
+        # 每次委派 materialize 全新实例（独立 Memory / Hooks）→ 多会话并发隔离。
+        # materialize 放 try 内：失败 → ToolResult(success=False)，不向上抛。
         try:
+            target_agent = factory()
             agent_result = await target_agent.run(
                 task,
                 session_id=getattr(context, "session_id", None) or "delegate",
@@ -515,13 +548,14 @@ class SubAgentRegistry:
         """刷新所有已注册 Agent 的健康状态。
 
         由 AgentLoop 在每轮 Phase 1 Prepare 中调用。
-        当前实现：简单存活检测。
-          - Agent 实例引用还在 _agents 中且 status != DRAINING → HEALTHY
+        当前实现：蓝图存在性检测（蓝图常驻注册表，与运行实例无关）。
+          - agent_id 还在 _identities 中且 status != DRAINING → HEALTHY
+          - 蓝图注销（unregister）→ UNHEALTHY
           - 未来可扩展：心跳 / ping / 状态回调
         """
         for agent_id in list(self._status.keys()):
-            if agent_id not in self._agents:
-                # 实例引用已丢失 → UNHEALTHY
+            if agent_id not in self._identities:
+                # 蓝图已注销 → UNHEALTHY
                 self._status[agent_id] = AgentStatus.UNHEALTHY
                 continue
 
@@ -531,7 +565,7 @@ class SubAgentRegistry:
                 continue
 
             if current == AgentStatus.UNHEALTHY:
-                # 实例引用恢复 → HEALTHY
+                # 蓝图注册仍在 → HEALTHY
                 self._status[agent_id] = AgentStatus.HEALTHY
 
     # ════════════════════════════════════════════════
@@ -551,12 +585,12 @@ class SubAgentRegistry:
             agent_id 或 None（未找到）。
         """
         name_lower = agent_name.lower().strip()
-        for agent_id, agent in self._agents.items():
+        for agent_id, identity in self._identities.items():
             if agent_id == exclude_agent_id:
                 continue
             if self._status.get(agent_id) != AgentStatus.HEALTHY:
                 continue
-            if agent.identity.agent_name.lower() == name_lower:
+            if identity.agent_name.lower() == name_lower:
                 return agent_id
         return None
 
@@ -672,7 +706,7 @@ class SubAgentRegistry:
         stack = self._delegate_stack.get(None)
         depth = len(stack) if stack else 0
         return (
-            f"SubAgentRegistry(agents={len(self._agents)}, "
+            f"SubAgentRegistry(agents={len(self._factories)}, "
             f"healthy={sum(1 for s in self._status.values() if s == AgentStatus.HEALTHY)}, "
             f"delegate_depth={depth})"
         )

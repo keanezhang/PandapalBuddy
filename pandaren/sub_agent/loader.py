@@ -16,11 +16,33 @@ from typing import TYPE_CHECKING, Any
 import yaml
 
 from .models import SubAgentBlueprint, SubAgentSource
+from ..llm.types import ModelSettings
 
 if TYPE_CHECKING:
     from ..identity.models import TrustLevel
 
 logger = logging.getLogger("pandaren.sub_agent.loader")
+
+
+# ModelSettings 全量字段白名单（frontmatter 顶层展开，逐字段收集）
+# 不含 target_model —— 它由顶层 `model` 字段映射，避免双入口。
+_LLM_SETTINGS_FIELDS: frozenset[str] = frozenset({
+    "temperature",
+    "max_tokens",
+    "top_p",
+    "frequency_penalty",
+    "presence_penalty",
+    "stop",
+    "seed",
+    "response_format",
+    "tool_choice",
+    "parallel_tool_calls",
+    "include_usage",
+    "reasoning",
+    "extra_body",
+    "extra_headers",
+    "extra_query",
+})
 
 
 def load_agent_from_file(
@@ -109,6 +131,12 @@ def load_agent_from_file(
     # ── sub_agents（可选，逗号分隔的 agent_id；"*" = 可委派全部；空 = 不委派）──
     sub_agents = _parse_comma_list(frontmatter.get("sub_agents"))
 
+    # ── model（可选，顶层字段 → 构建时映射 ModelSettings.target_model）──
+    model = _as_str(frontmatter.get("model")).strip() or None
+
+    # ── llm_settings（可选，顶层展开的 ModelSettings 白名单字段）──
+    llm_settings = _parse_llm_settings(frontmatter)
+
     return SubAgentBlueprint(
         agent_id=agent_id,
         agent_name=agent_name,
@@ -121,6 +149,8 @@ def load_agent_from_file(
         tools=tools,
         skills=skills,
         sub_agents=sub_agents,
+        model=model,
+        llm_settings=llm_settings,
     )
 
 
@@ -303,3 +333,21 @@ def _parse_sensitive_permissions(raw: Any) -> frozenset:
             )
 
     return frozenset(perms)
+
+
+def _parse_llm_settings(frontmatter: dict[str, Any]) -> "ModelSettings | None":
+    """从 frontmatter 顶层解析 ModelSettings 白名单字段。
+
+    逐字段收集非 None 值构造 ModelSettings 对象；
+    全部字段都未写 → 返回 None（表示未显式配置，由 builder 决定继承父级）。
+
+    target_model 不在此白名单内——它由顶层 ``model`` 字段映射（避免双入口）。
+    """
+    subset: dict[str, Any] = {}
+    for key in _LLM_SETTINGS_FIELDS:
+        value = frontmatter.get(key)
+        if value is not None:
+            subset[key] = value
+    if not subset:
+        return None
+    return ModelSettings(**subset)

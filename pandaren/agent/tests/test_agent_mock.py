@@ -174,6 +174,21 @@ def _make_registry(**kwargs) -> SubAgentRegistry:
     return SubAgentRegistry(**kwargs)
 
 
+class _Blueprint:
+    """测试蓝图：包装 Agent 实例，materialize 返回同一实例（测试无需并发隔离）。
+
+    register() 自 v0.2 起仅接受蓝图（有 materialize()），Agent 实例注册
+    已移除——测试统一经本类包装后再注册。
+    """
+
+    def __init__(self, agent: Agent):
+        self.identity = agent.identity
+        self._agent = agent
+
+    def materialize(self) -> Agent:
+        return self._agent
+
+
 # ════════════════════════════════════════════════════
 #  1. Agent 类测试
 # ════════════════════════════════════════════════════
@@ -342,7 +357,7 @@ def test_registry_register_success():
 
     reg = _make_registry()
     agent = _make_agent("reg.agent.v1")
-    reg.register(agent)
+    reg.register(_Blueprint(agent))
 
     assert_true(reg.agent_count() == 1, "注册后 agent_count() == 1")
     identity = reg.get_identity("reg.agent.v1")
@@ -359,13 +374,13 @@ def test_registry_register_duplicate_raises():
 
     reg = _make_registry()
     agent = _make_agent("dup.agent")
-    reg.register(agent)
+    reg.register(_Blueprint(agent))
 
     agent2 = _make_agent("dup.agent")
 
     @assert_raises(SubAgentRegistrationError, "重复 agent_id 抛 SubAgentRegistrationError")
     def _():
-        reg.register(agent2)
+        reg.register(_Blueprint(agent2))
 
 
 def test_registry_unregister():
@@ -376,7 +391,7 @@ def test_registry_unregister():
 
     reg = _make_registry()
     agent = _make_agent("unreg.agent")
-    reg.register(agent)
+    reg.register(_Blueprint(agent))
     reg.unregister("unreg.agent")
 
     assert_true(reg.agent_count() == 0, "注销后 agent_count() == 0")
@@ -398,7 +413,7 @@ def test_registry_set_status():
 
     reg = _make_registry()
     agent = _make_agent("status.agent")
-    reg.register(agent)
+    reg.register(_Blueprint(agent))
 
     reg.set_status("status.agent", AgentStatus.UNHEALTHY)
     assert_true(reg.get_status("status.agent") == AgentStatus.UNHEALTHY, "UNHEALTHY 状态设置成功")
@@ -428,7 +443,7 @@ def test_registry_list_identities():
 
     reg = _make_registry()
     for i in range(3):
-        reg.register(_make_agent(f"list.agent.{i}"))
+        reg.register(_Blueprint(_make_agent(f"list.agent.{i}")))
 
     identities = reg.list_identities()
     assert_true(len(identities) == 3, "list_identities() 返回 3 条")
@@ -443,8 +458,8 @@ def test_registry_build_agent_summaries_basic():
     print("═" * 60)
 
     reg = _make_registry()
-    reg.register(_make_agent("summary.agent.1"))
-    reg.register(_make_agent("summary.agent.2"))
+    reg.register(_Blueprint(_make_agent("summary.agent.1")))
+    reg.register(_Blueprint(_make_agent("summary.agent.2")))
 
     summaries = reg.build_agent_summaries()
     assert_true(len(summaries) == 2, "摘要列表包含 2 个 Agent")
@@ -460,9 +475,9 @@ def test_registry_build_agent_summaries_excludes_unhealthy():
     print("═" * 60)
 
     reg = _make_registry()
-    reg.register(_make_agent("healthy.agent"))
+    reg.register(_Blueprint(_make_agent("healthy.agent")))
     sick_agent = _make_agent("sick.agent", trust_level=TrustLevel.SUB_AGENT)
-    reg.register(sick_agent)
+    reg.register(_Blueprint(sick_agent))
     reg.set_status("sick.agent", AgentStatus.UNHEALTHY)
 
     summaries = reg.build_agent_summaries()
@@ -478,8 +493,8 @@ def test_registry_build_agent_summaries_excludes_self():
     print("═" * 60)
 
     reg = _make_registry()
-    reg.register(_make_agent("orchestrator.agent"))
-    reg.register(_make_agent("sub.agent"))
+    reg.register(_Blueprint(_make_agent("orchestrator.agent")))
+    reg.register(_Blueprint(_make_agent("sub.agent")))
 
     summaries = reg.build_agent_summaries(exclude_agent_id="orchestrator.agent")
     assert_true(len(summaries) == 1, "自身被排除，只剩 1 个")
@@ -501,7 +516,7 @@ def test_registry_build_agent_summaries_budget():
         )
         mock_loop = MagicMock()
         a = Agent(identity=identity, loop=mock_loop)
-        reg.register(a)
+        reg.register(_Blueprint(a))
 
     # context_window=1000 → 1% = 10 tokens，很容易超
     summaries = reg.build_agent_summaries(context_window=1000)
@@ -528,7 +543,7 @@ def test_registry_search_agents_match():
     reg = _make_registry()
     identity = _make_identity(agent_id="code.writer", agent_name="代码生成器", when_to_use="编写代码")
     mock_loop = MagicMock()
-    reg.register(Agent(identity=identity, loop=mock_loop))
+    reg.register(_Blueprint(Agent(identity=identity, loop=mock_loop)))
 
     found_id = reg._find_agent_id_by_name("代码生成器")
     assert_true(found_id == "code.writer", "按名称精确匹配到目标 agent_id")
@@ -541,7 +556,7 @@ def test_registry_search_agents_no_match():
     print("═" * 60)
 
     reg = _make_registry()
-    reg.register(_make_agent("some.agent"))
+    reg.register(_Blueprint(_make_agent("some.agent")))
     found_id = reg._find_agent_id_by_name("xyznotexist")
     assert_true(found_id is None, "无匹配时返回 None")
 
@@ -563,7 +578,7 @@ def test_registry_delegate_task_success():
     target._loop.run = AsyncMock(
         return_value=AgentResult(success=True, output="任务完成", run_id="r42")
     )
-    reg.register(target)
+    reg.register(_Blueprint(target))
 
     tool_result = async_run(reg._execute_delegate("target.sub", "执行任务", caller_ctx))
     assert_true(tool_result.success is True, "委派成功")
@@ -596,7 +611,7 @@ def test_registry_delegate_task_unhealthy():
 
     reg = _make_registry()
     target = _make_agent("sick.target")
-    reg.register(target)
+    reg.register(_Blueprint(target))
     reg.set_status("sick.target", AgentStatus.UNHEALTHY)
 
     ctx = MagicMock()
@@ -617,7 +632,7 @@ def test_registry_delegate_task_trust_denied_external():
 
     reg = _make_registry()
     target = _make_agent("external.target", trust_level=TrustLevel.SUB_AGENT)
-    reg.register(target)
+    reg.register(_Blueprint(target))
 
     ctx = MagicMock()
     ctx.agent_id = "external.caller"
@@ -637,7 +652,7 @@ def test_registry_delegate_task_trust_upward_denied():
 
     reg = _make_registry()
     target = _make_agent("high.trust.target", trust_level=TrustLevel.ORCHESTRATOR)
-    reg.register(target)
+    reg.register(_Blueprint(target))
 
     ctx = MagicMock()
     ctx.agent_id = "low.trust.caller"
@@ -657,7 +672,7 @@ def test_registry_delegate_task_cycle_detection():
 
     reg = _make_registry()
     target = _make_agent("cycle.target")
-    reg.register(target)
+    reg.register(_Blueprint(target))
 
     # 模拟 target 已在委派栈中（形成循环）
     reg._delegate_stack.append("some.caller")
@@ -684,7 +699,7 @@ def test_registry_delegate_task_depth_exceeded():
 
     reg = SubAgentRegistry(max_delegate_depth=2)
     target = _make_agent("deep.target")
-    reg.register(target)
+    reg.register(_Blueprint(target))
 
     # 推满栈
     reg._delegate_stack.extend(["a1", "a2"])
@@ -710,7 +725,7 @@ def test_registry_delegate_task_stack_cleanup_on_exception():
     reg = _make_registry()
     target = _make_agent("exception.target")
     target._loop.run = AsyncMock(side_effect=RuntimeError("LLM 崩了"))
-    reg.register(target)
+    reg.register(_Blueprint(target))
 
     ctx = MagicMock()
     ctx.agent_id = "stack.caller"
@@ -733,7 +748,7 @@ def test_registry_refresh_health():
 
     reg = _make_registry()
     agent = _make_agent("refresh.agent")
-    reg.register(agent)
+    reg.register(_Blueprint(agent))
     reg.set_status("refresh.agent", AgentStatus.UNHEALTHY)
 
     reg.refresh_health()
@@ -761,7 +776,7 @@ def test_registry_register_builtin_tools_idempotent():
     mock_tool_registry.register_tool = MagicMock()
 
     reg = SubAgentRegistry(tool_registry=mock_tool_registry)
-    reg.register(_make_agent("builtin.agent"))
+    reg.register(_Blueprint(_make_agent("builtin.agent")))
 
     reg.register_builtin_tools()
     reg.register_builtin_tools()  # 第二次
@@ -778,7 +793,7 @@ def test_registry_register_builtin_tools_no_tool_registry():
     print("═" * 60)
 
     reg = SubAgentRegistry(tool_registry=None)
-    reg.register(_make_agent("no.registry.agent"))
+    reg.register(_Blueprint(_make_agent("no.registry.agent")))
 
     try:
         reg.register_builtin_tools()
@@ -797,7 +812,7 @@ def test_registry_audit_log_on_register():
     mock_audit = MagicMock()
     mock_audit.write_sync = MagicMock()
     reg = SubAgentRegistry(audit_log=mock_audit)
-    reg.register(_make_agent("audit.agent"))
+    reg.register(_Blueprint(_make_agent("audit.agent")))
 
     assert_true(mock_audit.write_sync.call_count >= 1, "register() 调用了 audit.write_sync()")
     # write_sync(event_type, agent_id=..., ...) — 检查位置或关键字参数
@@ -854,7 +869,7 @@ def test_registry_find_agent_id_by_name_cases():
     def _reg(agent_id, agent_name, when_to_use):
         identity = _make_identity(agent_id=agent_id, agent_name=agent_name, when_to_use=when_to_use)
         a = Agent(identity=identity, loop=MagicMock())
-        reg.register(a)
+        reg.register(_Blueprint(a))
 
     _reg("code.writer", "代码生成器", "编写和生成代码")
     _reg("web.searcher", "网络搜索器", "搜索互联网信息")
@@ -888,7 +903,7 @@ def test_registry_repr():
     print("═" * 60)
 
     reg = _make_registry()
-    reg.register(_make_agent("repr.agent"))
+    reg.register(_Blueprint(_make_agent("repr.agent")))
     r = repr(reg)
     assert_true("SubAgentRegistry" in r, "__repr__ 包含类名")
     assert_true("agents=1" in r, "__repr__ 包含 agents=1")
@@ -1282,7 +1297,7 @@ def test_mock_registry_logger_on_register():
 
     with patch("pandaren.sub_agent.registry.logger") as mock_logger:
         reg = _make_registry()
-        reg.register(_make_agent("log.register.agent"))
+        reg.register(_Blueprint(_make_agent("log.register.agent")))
         assert_true(mock_logger.info.called, "register() 输出 INFO 日志")
         info_args = str(mock_logger.info.call_args_list)
         assert_true("log.register.agent" in info_args, "INFO 日志包含 agent_id")
@@ -1295,7 +1310,7 @@ def test_mock_registry_logger_on_unregister():
     print("═" * 60)
 
     reg = _make_registry()
-    reg.register(_make_agent("log.unreg.agent"))
+    reg.register(_Blueprint(_make_agent("log.unreg.agent")))
 
     with patch("pandaren.sub_agent.registry.logger") as mock_logger:
         reg.unregister("log.unreg.agent")
@@ -1314,7 +1329,7 @@ def test_mock_delegate_task_audit_chain():
     reg = SubAgentRegistry(audit_log=mock_audit)
     target = _make_agent("audit.target")
     target._loop.run = AsyncMock(return_value=AgentResult(success=True, output="done", run_id="r99"))
-    reg.register(target)
+    reg.register(_Blueprint(target))
 
     ctx = MagicMock()
     ctx.agent_id = "audit.caller"
