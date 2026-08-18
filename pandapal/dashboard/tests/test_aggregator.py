@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from pandapal.config.budget.pricing import cny_to_usd
 from pandapal.dashboard.aggregator import DashboardAggregator
 
 
@@ -267,17 +268,17 @@ def test_net_cost_priced_model(tmp_path: Path):
     公式（用户口径，正向三项相加）：
       net = 命中token×缓存价 + 未命中token×输入全价 + 输出token×输出价
     字段口径（CallCost）：input_cost_usd + output_cost_usd == net；full = net + saved。
-    qwen-plus：input=0.00040, output=0.00120, cache_read=0.00016（USD/1k）。
+    qwen-plus 系统价（CNY/1k）：input=0.0008, output=0.002, cache_read=0.00008。
     in=1000 out=1000 cached=500：
-      input_cost = 500/1k×0.00016 + 500/1k×0.00040 = 0.00008 + 0.00020 = 0.00028（净输入侧）
-      output_cost = 1000/1k×0.00120 = 0.00120
-      net = 0.00028 + 0.00120 = 0.00148
-      saved = full(0.00160) − net(0.00148) = 0.00012
+      input_cost_cny = 500/1k×0.00008 + 500/1k×0.0008 = 0.00004 + 0.0004 = 0.00044（净输入侧）
+      output_cost_cny = 1000/1k×0.002 = 0.002
+      net_cny = 0.00244；full_cny = 0.0028；saved_cny = 0.00036
+    期望 USD = CNY ÷ EXCHANGE_RATE_USD（与 cost_of_call 同一归一口径）。
     """
     root = tmp_path
     (root / "metrics.md").write_text("# Metrics Summary\n\n> Last updated: x\n", encoding="utf-8")
     traces = _TRACES_HDR
-    # cost_usd(0.0016) 是 SDK 全价，看板已不再据此显示；净费用由 APP_PRICE_TABLE 精算
+    # cost_usd(0.0016) 是 SDK 全价，看板已不再据此显示；净费用由 cost_of_call 精算
     traces += _llm_row("00:00:01", 0, "aaaaaaaa", "qwen-plus", 1000, 1000, 0.0016, 500, 50.0, 0, 500)
     traces += _run_row("00:00:02", "aaaaaaaa", 500)
     raw = (_turn(0, "user", "q", run_id="aaaaaaaa", step=None)
@@ -287,15 +288,20 @@ def test_net_cost_priced_model(tmp_path: Path):
     s = DashboardAggregator(root).build().sessions[0]
     llm = {t.turn: t for t in s.turns}[1].llm
     assert llm is not None
-    assert abs(llm.input_cost_usd - 0.00028) < 1e-9   # 净输入侧（命中价+全价两段）
-    assert abs(llm.output_cost_usd - 0.00120) < 1e-9
-    assert abs(llm.cache_saved_usd - 0.00012) < 1e-9
-    assert abs(llm.net_cost_usd - 0.00148) < 1e-9
+    input_usd = round(cny_to_usd(0.00044), 8)   # 净输入侧（命中价+全价两段，CNY→USD）
+    output_usd = round(cny_to_usd(0.002), 8)
+    net_usd = round(cny_to_usd(0.00244), 8)
+    full_usd = round(cny_to_usd(0.0028), 8)
+    saved_usd = round(full_usd - net_usd, 8)
+    assert abs(llm.input_cost_usd - input_usd) < 1e-9
+    assert abs(llm.output_cost_usd - output_usd) < 1e-9
+    assert abs(llm.cache_saved_usd - saved_usd) < 1e-9
+    assert abs(llm.net_cost_usd - net_usd) < 1e-9
     # 输入+输出 = 净费用（正向三项式口径）；全价 = 净 + 节省
-    assert abs((llm.input_cost_usd + llm.output_cost_usd) - 0.00148) < 1e-9
-    assert abs((llm.net_cost_usd + llm.cache_saved_usd) - 0.00160) < 1e-9
+    assert abs((llm.input_cost_usd + llm.output_cost_usd) - net_usd) < 1e-9
+    assert abs((llm.net_cost_usd + llm.cache_saved_usd) - full_usd) < 1e-9
     # 会话净费用 = Σ 轮次 net（单一口径）
-    assert abs(s.cost - 0.00148) < 1e-9
+    assert abs(s.cost - net_usd) < 1e-9
 
 
 def test_empty_dir(tmp_path: Path):

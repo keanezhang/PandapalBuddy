@@ -1075,6 +1075,12 @@ export interface ModelPriceEntry {
   output_price_per_1k: number;
   /** 可选；缺省时取 input_price_per_1k（R6 保守估高） */
   cache_read_price_per_1k?: number;
+  /** 高峰时段输入单价（可选；缺省 = 不分时，高峰取单档价） */
+  peak_input_price_per_1k?: number;
+  /** 高峰时段输出单价（可选） */
+  peak_output_price_per_1k?: number;
+  /** 高峰时段缓存命中单价（可选） */
+  peak_cache_read_price_per_1k?: number;
 }
 
 /** get_model_prices 的返回体 */

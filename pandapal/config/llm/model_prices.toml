@@ -44,6 +44,20 @@
 exchange_rate_usd = 7.0
 
 
+# ── 高峰时段表（分时段双档价的开关）────────────────────────────────────────
+# 高峰时段窗口（本地时间，24h 制，"HH:MM" 格式）。每个窗口为闭开区间
+# [start, end)：09:00 整点进入高峰，12:00 整点离开（午餐空闲），14:00 再入，
+# 18:00 离开。窗口之外的时间一律按空闲价计费。
+# ⚠️ 2026-07 按 DeepSeek 官方定价页核证：高峰时段为北京时间 9:00-12:00、14:00-18:00
+#   （原默认 13:00-18:00 的下午段已修正为 14:00 起）。本窗口为**全局**判定；
+#   无 peak_* 字段的模型不分时，不受窗口影响。
+# 支持跨午夜窗口（如 [["23:00","01:00"]]）；start == end 视为非法被跳过。
+# ⚠️ 缺失本段 → 使用默认窗口 09:00-12:00 / 14:00-18:00 并告警日志
+#   （时段是增强项，缺了只是不分时，不拒绝启动——区别于汇率的硬校验）。
+[tiers]
+peak_windows = [["09:00", "12:00"], ["14:00", "18:00"]]
+
+
 # ── 默认单价表（CNY / 每 1k token）───────────────────────────────────────────
 #
 # 字段说明：
@@ -54,6 +68,13 @@ exchange_rate_usd = 7.0
 # - output_price_per_1k      : 输出单价（CNY/1k token），必填
 # - cache_read_price_per_1k  : 命中 prefix cache 的输入单价，可选；
 #                              缺省时取 input_price_per_1k（保守估高，绝不低估费用）
+# - peak_input_price_per_1k  : 高峰时段输入单价，可选；缺省 = input_price_per_1k
+# - peak_output_price_per_1k : 高峰时段输出单价，可选；缺省 = output_price_per_1k
+# - peak_cache_read_price_per_1k : 高峰时段缓存命中单价，可选；
+#                              缺省 = cache_read_price_per_1k
+#
+# ⚠️ peak_* 三字段全缺省 = 该模型不分时（高峰=空闲=单档价），完全向后兼容。
+#    高峰价数值需按厂商公开价核证后填写，**不得臆造**——暂无核证数据时留空即可。
 #
 # ⚠️ 数值为各厂商官方公开价（CNY/百万 token 折算为 CNY/1k token，÷1000），
 #    核证日期 2026-07，来源见各段注释。厂商调价后需随版本同步更新。
@@ -116,8 +137,11 @@ cache_read_price_per_1k = 0.002
 
 # ── DeepSeek（官方 api-docs pricing，元/百万 token）──────────────────────────
 # 来源：https://api-docs.deepseek.com/zh-cn/quick_start/pricing
-# 官方当前在售 v4 系列；deepseek-chat / deepseek-reasoner 为历史模型
-# （已由 v4 取代，价格按最后官方公告：chat 2/8/0.5、reasoner 4/16/1）。
+# 官方当前在售 v4 系列（2026-07 核证）：分时双档价——空闲时段为高峰的一半；
+#   高峰时段 = 北京时间 9:00-12:00、14:00-18:00（本文件 [tiers].peak_windows）。
+#   模型版本：DeepSeek-V4-Flash-0731 / DeepSeek-V4-Pro-0813。
+# deepseek-chat / deepseek-reasoner 为历史模型（已由 v4 取代，价格按最后官方
+#   公告：chat 2/8/0.5、reasoner 4/16/1，缓存价按公告 10% 规则）。
 [[prices]]
 model_id = "deepseek-chat"
 provider = "deepseek"
@@ -132,20 +156,29 @@ input_price_per_1k = 0.004
 output_price_per_1k = 0.016
 cache_read_price_per_1k = 0.001
 
+# deepseek-v4-pro：空闲 4.5/0.15/13.5、高峰 9.0/0.30/27.0 元/百万
+#   （= 0.0045/0.00015/0.0135、高峰 0.009/0.0003/0.027 元/1k）。
 [[prices]]
 model_id = "deepseek-v4-pro"
 provider = "deepseek"
-input_price_per_1k = 0.003
-output_price_per_1k = 0.006
-cache_read_price_per_1k = 0.000025
+input_price_per_1k = 0.0045
+output_price_per_1k = 0.0135
+cache_read_price_per_1k = 0.00015
+peak_input_price_per_1k = 0.009
+peak_output_price_per_1k = 0.027
+peak_cache_read_price_per_1k = 0.0003
 
-# deepseek-v4-flash：官方 1/2/0.02 元/百万（= 0.001/0.002/0.00002 元/1k）。
+# deepseek-v4-flash：空闲 1.5/0.05/4.5、高峰 3.0/0.10/9.0 元/百万
+#   （= 0.0015/0.00005/0.0045、高峰 0.003/0.0001/0.009 元/1k）。
 [[prices]]
 model_id = "deepseek-v4-flash"
 provider = "deepseek"
-input_price_per_1k = 0.001
-output_price_per_1k = 0.002
-cache_read_price_per_1k = 0.00002
+input_price_per_1k = 0.0015
+output_price_per_1k = 0.0045
+cache_read_price_per_1k = 0.00005
+peak_input_price_per_1k = 0.003
+peak_output_price_per_1k = 0.009
+peak_cache_read_price_per_1k = 0.0001
 
 # ── Volcengine · 豆包 Doubao（火山方舟官方计价页，元/百万 token）─────────────
 # 来源：https://www.volcengine.com/docs/82379/1099320

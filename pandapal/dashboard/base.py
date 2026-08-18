@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any, Protocol, runtime_checkable
 
 from pandapal.config.budget.pricing import cost_of_call
@@ -84,6 +85,22 @@ def _i(v: Any) -> int:
         return int(float(v))
     except (TypeError, ValueError):
         return 0
+
+
+def _parse_call_time(v: Any) -> datetime | None:
+    """把 span 落库的 start_time 解析为 aware datetime（供分时计费判档）。
+
+    - 带 tz → 原样（resolve_tier 会 astimezone() 转本地再判）；
+    - naive → 按 UTC 解释（spans 落库统一 UTC ISO，见 tracer）；
+    - None / 解析失败 → None → cost_of_call 按高峰价（保守，绝不低估费用）。
+    """
+    if not v:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(v))
+    except ValueError:
+        return None
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
 
 
 # terminal_reason（trace 结束原因）→ 人类可读中文标签。暂停类不是失败，措辞中性。
@@ -375,8 +392,11 @@ class BaseDashboardAggregator:
                     c = llm_ordered[assistant_seq]
                 assistant_seq += 1
                 if c is not None:
+                    # 分时计费：按该次调用落库的 start_time 判档（高峰/空闲）。
+                    # start_time 缺失（老数据/解析失败）→ at=None → 高峰价（保守）。
                     cc = cost_of_call(
-                        c["model"], c["input_tokens"], c["output_tokens"], c["cached_tokens"] or 0
+                        c["model"], c["input_tokens"], c["output_tokens"], c["cached_tokens"] or 0,
+                        at=_parse_call_time(c.get("start_time")),
                     )
                     llm = TurnLLM(
                         model=c["model"],

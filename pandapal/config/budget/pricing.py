@@ -44,6 +44,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Mapping, NamedTuple
 
 from pandapal.config.llm.model_prices import (
@@ -52,6 +53,8 @@ from pandapal.config.llm.model_prices import (
     cny_to_usd,
     get_system_price,
     resolve_effective_price,
+    resolve_tier,
+    tier_prices,
 )
 from pandapal.degradation import DegradationEvent, report_degradation
 
@@ -128,11 +131,22 @@ def cost_of_call(
     input_tokens: int,
     output_tokens: int,
     cached_tokens: int = 0,
+    *,
+    at: datetime | None = None,
 ) -> CallCost:
     """把一次调用按 §4 正向三项式算成费用（**返回 USD**）。
 
     唯一计费函数——停机 / 会话末尾 / 看板都调它。
     单价取自装配期安装的价格账本（唯一真相源）。
+
+    分时段双档价（高峰 / 空闲）：
+        - ``at`` 传**该次调用的真实时刻** → 按本地时区判档
+          （:func:`resolve_tier`），高峰时段用 ``peak_*`` 价、其余用单档价。
+        - 实时停机守卫传 ``datetime.now().astimezone()``；看板核算历史传
+          该次调用落库的 ``start_time``（UTC，转本地后判档）。
+        - ``at=None``（时间缺失 / 不可解析）→ 按**高峰价**计——系统既有
+          「绝不低估费用」原则（缓存价缺省取输入价同款思路），保证老数据
+          与无时间来源的路径不会悄悄低估。
 
     负 token 归 0；命中 token 超过输入 token 时按输入 token 封顶（口径自洽）。
 
@@ -140,22 +154,7 @@ def cost_of_call(
        此时按 0 计费并发出降级信号——这不是常规降级路径，而是缺陷探测器，
        正常运行时 `unpriced` 计数应恒为 0（见 PRD 6.3 P0 告警）。
     """
-    price = _price_book.get(model_name)
-    if price is None:
-        # 账本未命中 → 回落系统默认表。
-        #
-        # 为什么运行期也需要这一级：账本只装**当前已配置**的模型，而看板要核算
-        # **历史**消费。用户删掉某个模型后，其历史账单不该因此归零——那是账目失真，
-        # 比未定价更隐蔽。系统默认表覆盖了常见模型，正好补上这个缺口。
-        system = get_system_price(model_name)
-        if system is not None:
-            price = ModelPrice(
-                input_price_per_1k=system.input_price_per_1k,
-                output_price_per_1k=system.output_price_per_1k,
-                cache_read_price_per_1k=system.cache_read_price_per_1k,
-                source="system",
-            )
-
+    price = _resolve_price(model_name)
     if price is None:
         # 三级皆空 ⇒ 不变量违反。可能的成因——
         #   a) 有绕过保存期校验的写入路径（如用户手工编辑 toml）
@@ -176,9 +175,9 @@ def cost_of_call(
     in_tok = max(0, input_tokens)
     out_tok = max(0, output_tokens)
     cached = min(max(0, cached_tokens), in_tok)  # 命中不可能超过输入
-    p_in = price.input_price_per_1k
-    p_cache = price.cache_read_price_per_1k
-    p_out = price.output_price_per_1k
+    # 分时段取价：at 缺失 → 高峰价（保守估高，绝不低估费用）
+    tier = resolve_tier(at) if at is not None else "peak"
+    p_in, p_cache, p_out = tier_prices(price, tier)
 
     # 净费用 = 命中×缓存价 + 未命中×全价 + 输出×输出价（正向三项相加，一眼可读）
     # 全程以 CNY 计算，最后一步统一归一为 USD——避免中途换算引入多次舍入误差。
@@ -195,3 +194,30 @@ def cost_of_call(
     full_usd = round(cny_to_usd(full_cny), _COST_DECIMAL_PLACES)
     saved_usd = round(full_usd - net_usd, _COST_DECIMAL_PLACES)
     return CallCost(net_usd, full_usd, saved_usd, input_usd, output_usd)
+
+
+def _resolve_price(model_name: str) -> ModelPrice | None:
+    """取某模型的生效单价：账本 → 系统默认表回落；未定价返回 None。
+
+    :func:`cost_of_call` 的唯一取价路径。degradation 信号不在此触发：
+    计费场景查不到价属于不变量违反，由 cost_of_call 报。
+    """
+    price = _price_book.get(model_name)
+    if price is None:
+        # 账本未命中 → 回落系统默认表。
+        #
+        # 为什么运行期也需要这一级：账本只装**当前已配置**的模型，而看板要核算
+        # **历史**消费。用户删掉某个模型后，其历史账单不该因此归零——那是账目失真，
+        # 比未定价更隐蔽。系统默认表覆盖了常见模型，正好补上这个缺口。
+        system = get_system_price(model_name)
+        if system is not None:
+            price = ModelPrice(
+                input_price_per_1k=system.input_price_per_1k,
+                output_price_per_1k=system.output_price_per_1k,
+                cache_read_price_per_1k=system.cache_read_price_per_1k,
+                source="system",
+                peak_input_price_per_1k=system.peak_input_price_per_1k,
+                peak_output_price_per_1k=system.peak_output_price_per_1k,
+                peak_cache_read_price_per_1k=system.peak_cache_read_price_per_1k,
+            )
+    return price

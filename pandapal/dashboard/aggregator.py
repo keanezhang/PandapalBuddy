@@ -194,6 +194,8 @@ class DashboardAggregator(BaseDashboardAggregator):
                     "cache_hit_ratio": _f(attrs["cache_hit_ratio"]) if "cache_hit_ratio" in attrs else None,
                     "tool_calls_count": _i(attrs.get("tool_calls_count", "0")),
                     "duration_ms": dur,
+                    # markdown 只写 HH:MM:SS 无日期，无法可靠转本地时区 → None → 保守高峰价
+                    "start_time": None,
                 })
             elif "tool_call" in type_cell:
                 out.append({"kind": "tool", "run": run, "step": step,

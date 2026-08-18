@@ -171,7 +171,7 @@ class SQLiteDashboardAggregator(BaseDashboardAggregator):
         if obs is None or not sid:
             return []
         rows = obs.execute(
-            "SELECT span_type, name, status, run_id, step_n, duration_ms, attributes_json "
+            "SELECT span_type, name, status, run_id, step_n, duration_ms, attributes_json, start_time "
             "FROM spans WHERE session_id = ? ORDER BY start_time ASC, id ASC",
             (sid,),
         ).fetchall()
@@ -196,6 +196,7 @@ class SQLiteDashboardAggregator(BaseDashboardAggregator):
                     "cache_hit_ratio": _f(attrs["cache_hit_ratio"]) if "cache_hit_ratio" in attrs else None,
                     "tool_calls_count": _i(attrs.get("tool_calls_count", 0)),
                     "duration_ms": dur,
+                    "start_time": row["start_time"],  # UTC ISO；老数据可能为 NULL → None
                 })
             elif kind == "tool":
                 tool_name = attrs.get("tool_name") or (row["name"] or "").replace("tool.", "")

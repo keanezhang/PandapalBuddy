@@ -138,6 +138,13 @@ struct CredInput {
     output_price_per_1k: Option<f64>,
     #[serde(default)]
     cache_read_price_per_1k: Option<f64>,
+    // 高峰时段单价（CNY / 1k token，可选）。留空 = 不分时，高峰价取单档价。
+    #[serde(default)]
+    peak_input_price_per_1k: Option<f64>,
+    #[serde(default)]
+    peak_output_price_per_1k: Option<f64>,
+    #[serde(default)]
+    peak_cache_read_price_per_1k: Option<f64>,
 }
 
 /// 脱敏标记：`_mask_key` 产出的中缀。提交体中出现即判定为「脱敏值回写」。
@@ -186,6 +193,13 @@ struct ModelPriceEntry {
     output_price_per_1k: f64,
     #[serde(default)]
     cache_read_price_per_1k: Option<f64>,
+    // 高峰时段单价（可选，缺省 = 单档价 / 不分时）。随 recommendedModels 带出供前端预填。
+    #[serde(default)]
+    peak_input_price_per_1k: Option<f64>,
+    #[serde(default)]
+    peak_output_price_per_1k: Option<f64>,
+    #[serde(default)]
+    peak_cache_read_price_per_1k: Option<f64>,
 }
 
 #[derive(serde::Deserialize)]
@@ -427,7 +441,13 @@ fn save_llm_credentials(
         // ── 单价三级回落：① 用户填 ② 系统默认表 ③ 拒绝保存 ──
         match (c.input_price_per_1k, c.output_price_per_1k) {
             (Some(inp), Some(out)) => {
-                if inp < 0.0 || out < 0.0 || c.cache_read_price_per_1k.unwrap_or(0.0) < 0.0 {
+                if inp < 0.0
+                    || out < 0.0
+                    || c.cache_read_price_per_1k.unwrap_or(0.0) < 0.0
+                    || c.peak_input_price_per_1k.unwrap_or(0.0) < 0.0
+                    || c.peak_output_price_per_1k.unwrap_or(0.0) < 0.0
+                    || c.peak_cache_read_price_per_1k.unwrap_or(0.0) < 0.0
+                {
                     return Err(format!(
                         "credentials[{}]({}/{}): 单价必须 ≥ 0",
                         i, c.provider, model_id
@@ -571,6 +591,9 @@ fn build_toml_content(credentials: &[CredInput], resolved_keys: &[String]) -> St
             ("input_price_per_1k", c.input_price_per_1k),
             ("output_price_per_1k", c.output_price_per_1k),
             ("cache_read_price_per_1k", c.cache_read_price_per_1k),
+            ("peak_input_price_per_1k", c.peak_input_price_per_1k),
+            ("peak_output_price_per_1k", c.peak_output_price_per_1k),
+            ("peak_cache_read_price_per_1k", c.peak_cache_read_price_per_1k),
         ] {
             if let Some(v) = value {
                 lines.push(format!("{} = {}", name, v));

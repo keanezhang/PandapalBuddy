@@ -70,11 +70,14 @@ _MIN_API_KEY_LENGTH = 8
 # 脱敏标记：_mask_key 产出的中缀。提交体中出现该标记即判定为「脱敏值回写」。
 _MASK_MARKER = "***"
 
-# 单价字段（CNY / 每 1k token）
+# 单价字段（CNY / 每 1k token）。后三项为高峰价（可选，缺省回落对应单档价）
 _PRICE_FIELDS = (
     "input_price_per_1k",
     "output_price_per_1k",
     "cache_read_price_per_1k",
+    "peak_input_price_per_1k",
+    "peak_output_price_per_1k",
+    "peak_cache_read_price_per_1k",
 )
 
 # 旧格式标记字段：出现即判定为 v1 格式，不做兼容读取（见模块 docstring）
@@ -455,13 +458,21 @@ class CredentialStore:
     def _validate_price(
         i: int, provider: str, model_id: str, cred: Dict[str, Any]
     ) -> None:
-        """校验单价三级回落有确定结果（第③级 → 拒绝保存）。"""
+        """校验单价三级回落有确定结果（第③级 → 拒绝保存）。
+
+        高峰价（``peak_*``）为可选增强：缺省回落对应单档价，故不参与
+        「有无单价来源」的判定；负值等金额类非法值由 resolve_effective_price
+        抛出 ValueError。
+        """
         try:
             price = resolve_effective_price(
                 model_id,
                 cred.get("input_price_per_1k"),
                 cred.get("output_price_per_1k"),
                 cred.get("cache_read_price_per_1k"),
+                user_peak_input_price=cred.get("peak_input_price_per_1k"),
+                user_peak_output_price=cred.get("peak_output_price_per_1k"),
+                user_peak_cache_price=cred.get("peak_cache_read_price_per_1k"),
             )
         except ValueError as e:
             raise ValueError(f"credentials[{i}]({provider}/{model_id}): {e}") from e

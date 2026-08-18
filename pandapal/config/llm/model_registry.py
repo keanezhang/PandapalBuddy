@@ -85,6 +85,9 @@ def resolve_available_models(
                 cred.get("input_price_per_1k"),
                 cred.get("output_price_per_1k"),
                 cred.get("cache_read_price_per_1k"),
+                user_peak_input_price=cred.get("peak_input_price_per_1k"),
+                user_peak_output_price=cred.get("peak_output_price_per_1k"),
+                user_peak_cache_price=cred.get("peak_cache_read_price_per_1k"),
             )
         except ValueError as e:
             # 半套价等非法组合：不阻断装配（用户已能用这个模型了），

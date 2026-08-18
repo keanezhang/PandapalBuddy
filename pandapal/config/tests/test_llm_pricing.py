@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from unittest.mock import patch
 
 import pytest
@@ -23,6 +24,7 @@ from pandapal.config.budget.pricing import (
     install_price_book,
     resolve_effective_price,
 )
+from pandapal.config.llm.model_prices import resolve_tier, tier_prices
 from pandaren.behavior.step_guard import StepUsage
 
 
@@ -237,3 +239,103 @@ def test_summary_mixed_model_per_step_accurate():
         + cost_of_call("gpt-4o", 1000, 100, 0).net_usd
     )
     assert abs(g.summary("M").net_cost_usd - round(expect, 8)) < 1e-9
+
+
+# ── 分时段档位判定 ────────────────────────────────────────────────────────────
+
+
+def test_resolve_tier_peak_windows():
+    """高峰窗口边界（本地时间，闭开区间）：09:00 进、12:00 出、14:00 再入、18:00 出。"""
+    cases = [
+        (9, 0, "peak"), (11, 59, "peak"),
+        (12, 0, "off_peak"), (12, 59, "off_peak"),
+        (13, 0, "off_peak"), (13, 59, "off_peak"),
+        (14, 0, "peak"), (17, 59, "peak"),
+        (18, 0, "off_peak"), (20, 0, "off_peak"), (2, 0, "off_peak"),
+    ]
+    local_tz = datetime.now().astimezone().tzinfo
+    for h, m, want in cases:
+        naive = datetime(2026, 1, 1, h, m)                  # naive 按本地解释
+        aware = datetime(2026, 1, 1, h, m, tzinfo=local_tz)  # aware 本地时区
+        assert resolve_tier(naive) == want, f"naive {h}:{m} → {resolve_tier(naive)}"
+        assert resolve_tier(aware) == want, f"aware {h}:{m} → {resolve_tier(aware)}"
+
+
+def test_tiered_pricing_peak_vs_offpeak():
+    """同一用量：高峰时刻费用 > 空闲时刻（peak 价已配置）。"""
+    install_price_book({
+        "qwen-max": resolve_effective_price(
+            "qwen-max", 0.007, 0.028, None,
+            user_peak_input_price=0.014, user_peak_output_price=0.056,
+        )
+    })
+    c_peak = cost_of_call("qwen-max", 1000, 1000, 0, at=datetime(2026, 1, 1, 9, 30))
+    c_off = cost_of_call("qwen-max", 1000, 1000, 0, at=datetime(2026, 1, 1, 20, 0))
+    assert c_peak.net_usd > c_off.net_usd
+
+
+def test_tiered_pricing_without_peak_same():
+    """peak 未配置 → 高峰/空闲同价（向后兼容，不分时）。"""
+    install_price_book({"qwen-max": _price("qwen-max")})
+    c_peak = cost_of_call("qwen-max", 1000, 1000, 0, at=datetime(2026, 1, 1, 9, 30))
+    c_off = cost_of_call("qwen-max", 1000, 1000, 0, at=datetime(2026, 1, 1, 20, 0))
+    assert c_peak.net_usd == c_off.net_usd
+
+
+def test_cost_at_none_uses_peak_price():
+    """at=None（时间缺失）→ 保守按高峰价，绝不低估费用。"""
+    install_price_book({
+        "qwen-max": resolve_effective_price(
+            "qwen-max", 0.007, 0.028, None,
+            user_peak_input_price=0.014, user_peak_output_price=0.056,
+        )
+    })
+    c_none = cost_of_call("qwen-max", 1000, 1000, 0)
+    c_peak = cost_of_call("qwen-max", 1000, 1000, 0, at=datetime(2026, 1, 1, 9, 30))
+    assert c_none.net_usd == c_peak.net_usd
+
+
+def test_tier_prices_peak_fallback_to_flat():
+    """tier_prices：peak 未配置 → 回落单档三价；peak 已配置 → 用 peak 三价。"""
+    flat = _price("qwen-max")  # 无 peak
+    assert tier_prices(flat, "peak") == tier_prices(flat, "off_peak")
+    peak = resolve_effective_price(
+        "qwen-max", 0.007, 0.028, None,
+        user_peak_input_price=0.014, user_peak_output_price=0.056,
+    )
+    assert peak is not None
+    pi, pc, po = tier_prices(peak, "peak")
+    assert pi == 0.014 and pc == 0.007 and po == 0.056  # cache 未配 → 回落单档输入价
+
+
+def test_peak_price_fallback_system_peak(monkeypatch):
+    """peak 回落链 ②：用户未填 peak、系统表带 peak → 回落系统 peak 价。"""
+    from pandapal.config.llm import model_prices as mp
+    fake = mp.SystemModelPrice(
+        model_id="fake-peak-model", provider="dashscope",
+        input_price_per_1k=0.01, output_price_per_1k=0.02, cache_read_price_per_1k=0.01,
+        peak_input_price_per_1k=0.03, peak_output_price_per_1k=0.06,
+        peak_cache_read_price_per_1k=0.03,
+    )
+    monkeypatch.setitem(mp.SYSTEM_PRICES, "fake-peak-model", fake)
+    p = resolve_effective_price("fake-peak-model")
+    assert p is not None and p.source == "system"
+    assert p.peak_input_price_per_1k == 0.03
+    assert p.peak_output_price_per_1k == 0.06
+
+
+def test_peak_price_fallback_user_then_none():
+    """peak 回落链 ①③：用户填 peak → 用户价；皆无 → peak 字段 None（= 不分时）。"""
+    p = resolve_effective_price(
+        "qwen-max", 0.007, 0.028, None,
+        user_peak_input_price=0.014, user_peak_output_price=0.056,
+    )
+    assert p is not None and p.source == "user"
+    assert p.peak_input_price_per_1k == 0.014
+    assert p.peak_output_price_per_1k == 0.056
+    # 系统表当前未配 peak（toml 全缺省）→ 回落 None = 单档价，不分时
+    p2 = resolve_effective_price("qwen-max")
+    assert p2 is not None and p2.source == "system"
+    assert p2.peak_input_price_per_1k is None
+    assert p2.peak_output_price_per_1k is None
+

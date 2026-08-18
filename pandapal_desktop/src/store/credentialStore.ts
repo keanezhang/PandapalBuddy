@@ -75,6 +75,12 @@ export interface ProviderCredential {
   output_price_per_1k?: number;
   /** 缓存命中单价（CNY / 1k token）；可选，留空取生效输入价（R6） */
   cache_read_price_per_1k?: number;
+  /** 高峰时段输入单价（CNY / 1k token）；可选，留空 = 不分时 */
+  peak_input_price_per_1k?: number;
+  /** 高峰时段输出单价（CNY / 1k token）；可选，留空 = 不分时 */
+  peak_output_price_per_1k?: number;
+  /** 高峰时段缓存命中单价（CNY / 1k token）；可选，留空 = 不分时 */
+  peak_cache_read_price_per_1k?: number;
 }
 
 /** 凭据校验状态 */
@@ -221,35 +227,10 @@ export function isMaskedKey(key: string | undefined | null): boolean {
   return typeof key === "string" && key.includes("***");
 }
 
-/**
- * 构造可安全打日志的 IPC 摘要。
- *
- * ⚠️ 绝不能直接打 extra——里面的 `credentials[].api_key` 是**明文** key。
- *    PRD §4.4 技术约束：明文 API Key 禁止出现在任何日志、console、错误消息中。
- *    这里只输出结构信息（条数、provider/model_id、key 是否已填），不输出任何 key 内容。
- */
-function _safeLogSummary(extra: Record<string, unknown>): Record<string, unknown> {
-  const creds = extra.credentials;
-  if (!Array.isArray(creds)) return { keys: Object.keys(extra) };
-  return {
-    credential_count: creds.length,
-    items: creds.map((c: Partial<ProviderCredential>) => ({
-      provider: c?.provider,
-      model_id: c?.model_id,
-      // 只报「有没有」，不报值本身；omitted 表示走 R3「未改不提交」路径
-      api_key: c?.api_key === undefined ? "<omitted>" : "<redacted>",
-      has_user_price: c?.input_price_per_1k != null,
-    })),
-  };
-}
-
 function _invokeIpc(type: string, extra: Record<string, unknown> = {}) {
-  console.log("[credentials-ipc] >>>", type, _safeLogSummary(extra));
   invoke("send_session_ipc", {
     payload: { type, msg_id: crypto.randomUUID(), ...extra },
-  })
-    .then(() => console.log("[credentials-ipc] >>>", type, "sent OK"))
-    .catch((e) => console.error(`[credentials-ipc] >>> ${type} failed:`, e));
+  }).catch((e) => console.error(`[credentials-ipc] >>> ${type} failed:`, e));
 }
 
 // ── Store 实现 ───────────────────────────────────────────────────────────

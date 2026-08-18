@@ -31,6 +31,7 @@ from pandaren.observability.types import (
 )
 
 from pandapal.dashboard.sqlite_aggregator import SQLiteDashboardAggregator
+from pandapal.config.budget.pricing import install_price_book, resolve_effective_price
 
 _RUN = "0ab7ca19aaaa4b0c8d1e2f3a4b5c6d7e"  # 完整 run_id（聚合内部按 [:8] 归一）
 _RID = _RUN[:8]
@@ -42,7 +43,8 @@ def _ts(sec: int) -> datetime:
     return _T0 + timedelta(seconds=sec)
 
 
-def _span(span_type, name, step, status=SpanStatus.OK, dur=100.0, attrs=None):
+def _span(span_type, name, step, status=SpanStatus.OK, dur=100.0, attrs=None, at=None):
+    start = at if at is not None else _ts(step or 0)
     return Span(
         span_id=f"{span_type.value}-{step}-{name}",
         trace_id="trace-1",
@@ -53,8 +55,8 @@ def _span(span_type, name, step, status=SpanStatus.OK, dur=100.0, attrs=None):
         run_id=_RUN,
         session_id=_SID,
         step_n=step,
-        start_time=_ts(step or 0),
-        end_time=_ts((step or 0) + 1),
+        start_time=start,
+        end_time=start + timedelta(seconds=1),
         duration_ms=dur,
         status=status,
         attributes=attrs or {},
@@ -256,3 +258,55 @@ def test_deleted_session_excluded(tmp_path: Path):
     conn.close()
     snap = SQLiteDashboardAggregator(tmp_path / "pandapal.db").build()
     assert snap.sessions == []
+
+
+def test_load_spans_includes_start_time(tmp_path: Path):
+    """_load_spans 返回的 llm dict 必须含 start_time 键（看板分时计费的输入）。"""
+    _build_observability_db(tmp_path / "observability.db")
+    conn = sqlite3.connect(str(tmp_path / "observability.db"))
+    conn.row_factory = sqlite3.Row
+    agg = SQLiteDashboardAggregator(tmp_path / "pandapal.db")
+    spans = agg._load_spans(conn, _SID)
+    conn.close()
+    llm = [s for s in spans if s["kind"] == "llm"]
+    assert llm
+    assert all("start_time" in s for s in llm)
+
+
+def test_tiered_cost_by_call_time(tmp_path: Path):
+    """看板装配：同一用量两条 span，start_time 分落高峰/空闲 → 高峰费用更大。"""
+    install_price_book({
+        "qwen3.7-max": resolve_effective_price(
+            "qwen3.7-max", 0.012, 0.036, 0.0012,
+            user_peak_input_price=0.024, user_peak_output_price=0.072,
+        )
+    })
+    try:
+        local_tz = datetime.now().astimezone().tzinfo
+        peak_at = datetime(2026, 7, 16, 9, 30, tzinfo=local_tz)  # 本地高峰
+        off_at = datetime(2026, 7, 16, 20, 0, tzinfo=local_tz)   # 本地空闲
+        conn = sqlite3.connect(str(tmp_path / "observability.db"))
+        conn.execute("PRAGMA journal_mode=WAL")
+        # 4 个观测后端全部实例化 = 建齐 spans/metrics_points/audit_records/logs 表
+        tracer = SQLiteTracerBackend(connection=conn)
+        SQLiteMetricsBackend(connection=conn)
+        SQLiteAuditBackend(connection=conn)
+        SQLiteLoggerBackend(connection=conn)
+        tracer.export_span(_span(SpanType.RUN, "agent.run", None, dur=100.0,
+                                 attrs={"terminal_reason": "completed"}))
+        same_attrs = {"model": "qwen3.7-max", "provider": "dashscope",
+                      "input_tokens": 1000, "output_tokens": 100,
+                      "cached_tokens": 0, "cache_hit_ratio": 0.0, "tool_calls_count": 0}
+        for step, at in ((1, peak_at), (2, off_at)):
+            tracer.export_span(_span(SpanType.STEP, "agent.step", step, at=at))
+            tracer.export_span(_span(SpanType.LLM_CALL, "llm.call", step, at=at, dur=100.0,
+                                     attrs=same_attrs))
+        conn.commit()
+        conn.close()
+        _build_pandapal_db(tmp_path / "pandapal.db")
+        snap = SQLiteDashboardAggregator(tmp_path / "pandapal.db").build()
+        by_turn = {t.turn: t for t in snap.sessions[0].turns}
+        assert by_turn[1].llm is not None and by_turn[3].llm is not None
+        assert by_turn[1].llm.net_cost_usd > by_turn[3].llm.net_cost_usd
+    finally:
+        install_price_book({})

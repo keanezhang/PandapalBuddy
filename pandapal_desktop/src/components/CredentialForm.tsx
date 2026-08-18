@@ -188,6 +188,9 @@ export function CredentialForm({
         input_price_per_1k: undefined,
         output_price_per_1k: undefined,
         cache_read_price_per_1k: undefined,
+        peak_input_price_per_1k: undefined,
+        peak_output_price_per_1k: undefined,
+        peak_cache_read_price_per_1k: undefined,
       });
       setComboOpen(false);
     },
@@ -199,7 +202,13 @@ export function CredentialForm({
    * §九：金额类字段缺失绝不默认 0——0 会被当成「这个模型免费」，静默吃掉全部费用。
    */
   const handlePriceInput = useCallback(
-    (field: "input_price_per_1k" | "output_price_per_1k" | "cache_read_price_per_1k",
+    (field:
+       | "input_price_per_1k"
+       | "output_price_per_1k"
+       | "cache_read_price_per_1k"
+       | "peak_input_price_per_1k"
+       | "peak_output_price_per_1k"
+       | "peak_cache_read_price_per_1k",
      raw: string) => {
       const t = raw.trim();
       if (t === "") {
@@ -219,6 +228,9 @@ export function CredentialForm({
       input_price_per_1k: systemPrice?.input_price_per_1k,
       output_price_per_1k: systemPrice?.output_price_per_1k,
       cache_read_price_per_1k: systemPrice?.cache_read_price_per_1k,
+      peak_input_price_per_1k: systemPrice?.peak_input_price_per_1k,
+      peak_output_price_per_1k: systemPrice?.peak_output_price_per_1k,
+      peak_cache_read_price_per_1k: systemPrice?.peak_cache_read_price_per_1k,
     });
   }, [credential, onChange, systemPrice]);
 
@@ -229,6 +241,9 @@ export function CredentialForm({
       input_price_per_1k: undefined,
       output_price_per_1k: undefined,
       cache_read_price_per_1k: undefined,
+      peak_input_price_per_1k: undefined,
+      peak_output_price_per_1k: undefined,
+      peak_cache_read_price_per_1k: undefined,
     });
   }, [credential, onChange]);
 
@@ -240,6 +255,9 @@ export function CredentialForm({
     credential.input_price_per_1k,
     credential.output_price_per_1k,
     credential.cache_read_price_per_1k,
+    credential.peak_input_price_per_1k,
+    credential.peak_output_price_per_1k,
+    credential.peak_cache_read_price_per_1k,
   ].some((v) => v != null && v < 0);
 
   // 确定卡片的视觉状态
@@ -565,6 +583,66 @@ export function CredentialForm({
                   className={CX("cred-input", priceNegative && "cred-input--error")}
                 />
               </div>
+            </div>
+            {/* 高峰时段价（可选）：留空 = 与空闲价相同（不分时计费） */}
+            <div className="cred-price-row">
+              <div className="cred-price-cell">
+                <label className="cred-label">
+                  {t("cred.peakInputPrice")}{" "}
+                  <span style={{ fontWeight: 400, color: "var(--text-muted)" }}>
+                    {t("cred.optional")}
+                  </span>
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.00001"
+                  value={credential.peak_input_price_per_1k ?? ""}
+                  onChange={(e) => handlePriceInput("peak_input_price_per_1k", e.target.value)}
+                  placeholder={t("cred.cachePricePlaceholder")}
+                  disabled={disabled}
+                  className={CX("cred-input", priceNegative && "cred-input--error")}
+                />
+              </div>
+              <div className="cred-price-cell">
+                <label className="cred-label">
+                  {t("cred.peakOutputPrice")}{" "}
+                  <span style={{ fontWeight: 400, color: "var(--text-muted)" }}>
+                    {t("cred.optional")}
+                  </span>
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.00001"
+                  value={credential.peak_output_price_per_1k ?? ""}
+                  onChange={(e) => handlePriceInput("peak_output_price_per_1k", e.target.value)}
+                  placeholder="0.0448"
+                  disabled={disabled}
+                  className={CX("cred-input", priceNegative && "cred-input--error")}
+                />
+              </div>
+              <div className="cred-price-cell">
+                <label className="cred-label">
+                  {t("cred.peakCachePrice")}{" "}
+                  <span style={{ fontWeight: 400, color: "var(--text-muted)" }}>
+                    {t("cred.optional")}
+                  </span>
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.00001"
+                  value={credential.peak_cache_read_price_per_1k ?? ""}
+                  onChange={(e) => handlePriceInput("peak_cache_read_price_per_1k", e.target.value)}
+                  placeholder={t("cred.cachePricePlaceholder")}
+                  disabled={disabled}
+                  className={CX("cred-input", priceNegative && "cred-input--error")}
+                />
+              </div>
+            </div>
+            <div className="cred-placeholder">
+              {t("cred.peakPriceHint")}
             </div>
             {priceSource === "missing" && (
               <div className="cred-placeholder">

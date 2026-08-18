@@ -19,11 +19,15 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import datetime
 from typing import TYPE_CHECKING, NamedTuple
 
 from pandaren.behavior.step_guard import GuardDecision, StepUsage
 
-from pandapal.config.budget.pricing import _COST_DECIMAL_PLACES, cost_of_call
+from pandapal.config.budget.pricing import (
+    _COST_DECIMAL_PLACES,
+    cost_of_call,
+)
 
 if TYPE_CHECKING:
     # 仅类型注解用：CostBudgetGuard.__init__ 的 ledger 参数 / ledger property 返回类型。
@@ -108,6 +112,8 @@ class CostBudgetGuard:
 
     - 费用 per-step 累加（而非按 run 总量一次算），因此**混合模型**的 run 也精确。
     - `max_usd=None` → 永不停机（只累加，供展示；仅作机制占位）。
+    - 分时计费：高峰/空闲按本机当前本地时刻判定（`at=datetime.now().astimezone()`），
+      与历史看板按调用落库时刻判档口径一致。
     - Fail-Safe（O3）：内部任何异常吞掉并返回 `GuardDecision(False)`，绝不因计价问题炸断 run。
     - 累加器按 run_id 分桶，pause/resume 续用同桶。
     - `spent(run_id)` → 本 run 累计净费用；`summary(run_id)` → 完整用量+费用汇总（会话末尾展示）。
@@ -132,8 +138,13 @@ class CostBudgetGuard:
 
     def should_halt(self, *, run_id: str, usage: StepUsage) -> GuardDecision:
         try:
+            # 分时计费：按调用发生的本机当前时刻判档（高峰/空闲），与历史看板口径一致
             cc = cost_of_call(
-                usage.model, usage.input_tokens, usage.output_tokens, usage.cached_tokens
+                usage.model,
+                usage.input_tokens,
+                usage.output_tokens,
+                usage.cached_tokens,
+                at=datetime.now().astimezone(),
             )
             # per-run 汇总（供 footer summary，口径不变）
             acc = self._accounts.setdefault(run_id, _RunAccount())
@@ -172,7 +183,7 @@ class CostBudgetGuard:
         acc = self._accounts.get(run_id)
         if acc is None:
             return None
-        return RunUsageSummary(
+        s = RunUsageSummary(
             model=acc.model,
             input_tokens=acc.input_tokens,
             cached_tokens=acc.cached_tokens,
@@ -183,3 +194,5 @@ class CostBudgetGuard:
             full_cost_usd=acc.full_usd,
             saved_usd=acc.saved_usd,
         )
+        return s
+
