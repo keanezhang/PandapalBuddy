@@ -4,7 +4,6 @@ Skill:        知识包定义（frozen dataclass，SK1 不可变）
 SkillResult:  调用结果（frozen dataclass，allowed_tools 有安全意义）
 SkillSummary: 摘要（frozen dataclass，注入 system prompt）
 SkillSource:  来源枚举（IntEnum，优先级排序）
-SkillType:    类型枚举（KNOWLEDGE / ACTION）
 """
 
 from __future__ import annotations
@@ -33,16 +32,6 @@ class SkillSource(IntEnum):
     # 于是把错误传播到了 skill 生成流程里。
 
 
-class SkillType(IntEnum):
-    """Skill 类型。
-
-    KNOWLEDGE: 纯知识注入（content → system prompt），LLM 按文本指引行事。
-    ACTION:    可执行动作（script → 自动生成 Tool），LLM 直接调用带参数的工具。
-    """
-    KNOWLEDGE = 1
-    ACTION = 2
-
-
 @dataclass(frozen=True)
 class Skill:
     """Skill 知识包定义（frozen，SK1 不可变）。
@@ -50,8 +39,9 @@ class Skill:
     注册后所有字段不可修改。修改 Skill 需要重新注册（替换）。
     容器类型使用 tuple 保证深度不可变。
 
-    Action Skill 标识：script 字段非 None 时自动识别为 ACTION 类型，
-    SDK 将基于 script 指定的 Python 函数自动生成带完整参数 schema 的 Tool。
+    技能脚本作为普通文件留在技能目录，由 SKILL.md content 指引 LLM 使用
+    bash/read_file 等已有工具自主读取执行——SDK 不解析、不加载、不执行脚本，
+    Skill 定义中不再保留 script 等附件引用字段。
     """
     # ── 必填字段 ──
     name: str                                      # 唯一标识，同时作为调用命令
@@ -63,23 +53,7 @@ class Skill:
     source: SkillSource = SkillSource.BUILTIN      # 安全默认：最低优先级，外部传入需显式覆盖
     allowed_tools: tuple[str, ...] | None = None   # None=继承 Agent 默认工具集（SK2），指定工具名列表，则Skill 激活期间的工具白名单，同一 Turn 内激活了多个skills去工具的并集
     allow_auto_trigger: bool = True                # False=必须手动触发（SK3），控制 LLM 是否可以在对话中自行判断、自动触发该 Skill
-    argument_hint: str | None = None               # 参数提示（UX 优化），纯 UX（用户体验）优化——给用户提示这个 Skill 需要什么参数。
     tags: tuple[str, ...] = ()                     # 搜索辅助标签
-    base_path: str | None = None                   # 辅助资源基础路径
-
-    # ── Action Skill 字段（全部可选，向后兼容）──
-    script: str | None = None                      # 脚本文件相对路径（相对 base_path）
-    entry_function: str | None = None              # 入口函数名（None=自动检测模块中唯一 public function）
-
-    @property
-    def is_action(self) -> bool:
-        """是否为 Action Skill（有可执行脚本）。"""
-        return self.script is not None
-
-    @property
-    def skill_type(self) -> SkillType:
-        """Skill 类型（根据 script 字段自动推断）。"""
-        return SkillType.ACTION if self.is_action else SkillType.KNOWLEDGE
 
 
 @dataclass(frozen=True)

@@ -49,8 +49,7 @@ class SkillAwareHooks(DefaultAgentHooks):
     # ═══ H. Skill 生命周期 ═══
 
     def on_skill_activated(
-        self, skill_name: str, skill_type: str,
-        tools: list[str], run_id: str, step_n: int, *, session_id: str = "",
+        self, skill_name: str, run_id: str, step_n: int, *, session_id: str = "",
     ) -> None:
         """search_skills 成功后推送 SKILL_ACTIVATED 到前端。
 
@@ -65,8 +64,6 @@ class SkillAwareHooks(DefaultAgentHooks):
 
         event = NormalizedEvent.skill_activated(
             skill_name=skill_name,
-            skill_type=skill_type,
-            tools=tools,
             run_id=run_id,
         )
         try:

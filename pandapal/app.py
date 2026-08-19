@@ -539,6 +539,7 @@ class PandaPalApp:
                 "when_to_use": str(d.get("when_to_use", "")),
                 "content": str(d.get("content", "")),
                 "tags": d.get("tags"),
+                "allow_auto_trigger": d.get("allow_auto_trigger"),
             }
             return await skill_manager.save_and_build_event(
                 str(d.get("skill_name", "")), payload)
@@ -553,8 +554,7 @@ class PandaPalApp:
         async def _on_skill_import(_t: str, d: dict, _c) -> NormalizedEvent:
             sp = d.get("source_path")
             return await skill_manager.import_and_build_event(
-                content=str(d.get("content", "")),
-                fmt=str(d.get("format", "md")),
+                fmt=str(d.get("format", "folder")),
                 overwrite=bool(d.get("overwrite", False)),
                 source_path=str(sp) if sp is not None else None,
             )
@@ -562,7 +562,7 @@ class PandaPalApp:
         async def _on_skill_export(_t: str, d: dict, _c) -> NormalizedEvent:
             tp = d.get("target_path")
             return await skill_manager.export_and_build_event(
-                str(d.get("skill_name", "")), str(d.get("format", "md")),
+                str(d.get("skill_name", "")), str(d.get("format", "folder")),
                 str(tp) if tp is not None else None,
             )
 

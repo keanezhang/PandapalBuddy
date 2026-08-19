@@ -1105,7 +1105,6 @@ class AgentBuilder:
         from .skill.registry import SkillRegistry
 
         registry = SkillRegistry(
-            tool_registry=tool_registry,
             audit_log=audit_log,
         )
 

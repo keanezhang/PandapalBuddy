@@ -233,7 +233,11 @@ class DashboardAggregator(BaseDashboardAggregator):
             return "", []
         try:
             for line in path.read_text(encoding="utf-8").splitlines():
-                idx = line.find('{"messages"')
+                # extra JSON 开头可能是 {"messages":（旧格式，log_id 不在 extra）
+                # 或 {"log_id":（新格式，log_id 是 record 首键）；两者都兼容。
+                idx = line.find('{"log_id"')
+                if idx < 0:
+                    idx = line.find('{"messages"')
                 if idx < 0:
                     continue
                 frag = line[idx:].rstrip().rstrip("|").rstrip()

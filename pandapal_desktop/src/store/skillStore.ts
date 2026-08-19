@@ -31,8 +31,6 @@ export interface SkillDraft {
 // ── 激活状态类型（来自 SKILL_ACTIVATED）
 export interface ActivatedSkill {
   skill_name: string;
-  skill_type: "KNOWLEDGE" | "ACTION";
-  tools: string[];
 }
 
 // ── 草稿 localStorage key

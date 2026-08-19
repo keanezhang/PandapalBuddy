@@ -270,11 +270,9 @@ HIDDEN_IMPORTS = [
     "pandaren.tool.registry.validator",
     # pandaren.skill
     "pandaren.skill",
-    "pandaren.skill.bridge",
     "pandaren.skill.exceptions",
     "pandaren.skill.loader",
     "pandaren.skill.models",
-    "pandaren.skill.script_loader",
     "pandaren.skill.registry",
     # pandaren.memory — 含 backends/compaction/reinject 子包
     "pandaren.memory",

@@ -75,8 +75,8 @@ export function SkillsPage() {
   const handleDrop = useCallback((paths: string[]) => {
     for (const p of paths) {
       const lower = p.toLowerCase();
-      if (lower.endsWith(".zip")) importSkillRef.current("", "zip", false, p);
-      else importSkillRef.current("", "folder", false, p);
+      if (lower.endsWith(".zip")) importSkillRef.current("zip", false, p);
+      else importSkillRef.current("folder", false, p);
     }
   }, []);
 
@@ -87,14 +87,14 @@ export function SkillsPage() {
 
   const handleImportFolder = async () => {
     const folderPath = await open({ directory: true, title: t("skills.selectFolder") });
-    if (folderPath) importSkill("", "folder", false, folderPath as string);
+    if (folderPath) importSkill("folder", false, folderPath as string);
   };
   const handleImportZip = async () => {
     const filePath = await open({
       title: t("skills.selectZipTitle"),
       filters: [{ name: t("skills.zipFile"), extensions: ["zip"] }],
     });
-    if (filePath) importSkill("", "zip", false, filePath as string);
+    if (filePath) importSkill("zip", false, filePath as string);
   };
 
   /* ── 辅助组件 ────────────────────────────────────────────── */
@@ -113,7 +113,7 @@ export function SkillsPage() {
     return (
       <div key={skill.name} className="skill-card" onClick={() => navigate(`/skills/${encodeURIComponent(skill.name)}`)}>
         <span className={`skill-card-icon ${iconClassFor(skill.name)}`}>
-          {skill.type === "ACTION" ? "⚡" : "📋"}
+          📋
         </span>
         <div className="skill-card-body">
           <div className="skill-card-name" style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -198,7 +198,7 @@ export function SkillsPage() {
             <p style={{ fontSize: "var(--text-md)", color: "var(--text-secondary)", lineHeight: 1.7, margin: "0 0 16px" }}>{detail.description || t("skills.noDesc")}</p>
             {detail.tags && detail.tags.length > 0 && <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>{detail.tags.map((tag) => <span key={tag} className="skill-card-tag">{tag}</span>)}</div>}
             <div style={{ display: "flex", gap: 20, fontSize: "var(--text-sm)", color: "var(--text-tertiary)" }}>
-              <span>📄 {t("skills.kb", { size: (detail.size / 1024).toFixed(1) })}</span><span>🕐 {detail.modified_at || t("skills.unknown")}</span><span>🔖 {t("skills.typeSuffix", { type: detail.type === "ACTION" ? t("skills.action") : t("skills.knowledge") })}</span>
+              <span>📄 {t("skills.kb", { size: (detail.size / 1024).toFixed(1) })}</span><span>🕐 {detail.modified_at || t("skills.unknown")}</span>
             </div>
           </div>
           {detail.when_to_use && (

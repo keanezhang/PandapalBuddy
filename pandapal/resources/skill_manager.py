@@ -34,7 +34,6 @@ class SkillSummaryDTO:
     description: str
     when_to_use: str
     source: str          # "system" | "user"
-    type: str            # "knowledge" | "action"
     tags: list[str] = field(default_factory=list)
 
 
@@ -43,9 +42,7 @@ class SkillDetailDTO(SkillSummaryDTO):
     """Skill 详情（含正文）。"""
     content: str = ""
     allowed_tools: list[str] | None = None
-    argument_hint: str | None = None
-    script: str | None = None
-    entry_function: str | None = None
+    allow_auto_trigger: bool = True
 
 
 # ── 辅助 ─────────────────────────────────────────────────────────────────────
@@ -56,7 +53,6 @@ def _skill_to_summary(skill, source_label: str) -> SkillSummaryDTO:
         description=skill.description,
         when_to_use=skill.when_to_use,
         source=source_label,
-        type=skill.skill_type.name.lower(),
         tags=list(skill.tags) if skill.tags else [],
     )
 
@@ -67,13 +63,10 @@ def _skill_to_detail(skill, source_label: str) -> SkillDetailDTO:
         description=skill.description,
         when_to_use=skill.when_to_use,
         source=source_label,
-        type=skill.skill_type.name.lower(),
         tags=list(skill.tags) if skill.tags else [],
         content=skill.content,
         allowed_tools=list(skill.allowed_tools) if skill.allowed_tools else None,
-        argument_hint=skill.argument_hint,
-        script=skill.script,
-        entry_function=skill.entry_function,
+        allow_auto_trigger=skill.allow_auto_trigger,
     )
 
 
@@ -165,6 +158,7 @@ class SkillManager:
         when_to_use: str,
         content: str,
         tags: list[str] | None = None,
+        allow_auto_trigger: bool = True,
     ) -> SkillDetailDTO:
         """在 user/ 下创建新 Skill。
 
@@ -191,7 +185,10 @@ class SkillManager:
         if user_skill_dir.exists():
             raise FileExistsError(f"用户 Skill 已存在: {name!r}")
 
-        return self._write_skill_file(name, description, when_to_use, content, tags)
+        return self._write_skill_file(
+            name, description, when_to_use, content, tags,
+            allow_auto_trigger=allow_auto_trigger,
+        )
 
     def update_skill(
         self,
@@ -200,6 +197,7 @@ class SkillManager:
         when_to_use: str,
         content: str,
         tags: list[str] | None = None,
+        allow_auto_trigger: bool = True,
     ) -> SkillDetailDTO:
         """更新 user/ 下的 Skill。
 
@@ -212,7 +210,10 @@ class SkillManager:
         if not user_skill_dir.is_dir():
             raise ValueError(f"用户 Skill 不存在，只能编辑用户 Skill: {name!r}")
 
-        return self._write_skill_file(name, description, when_to_use, content, tags)
+        return self._write_skill_file(
+            name, description, when_to_use, content, tags,
+            allow_auto_trigger=allow_auto_trigger,
+        )
 
     def delete_skill(self, name: str) -> bool:
         """删除 user/ 下的 Skill。
@@ -243,6 +244,7 @@ class SkillManager:
         when_to_use: str,
         content: str,
         tags: list[str] | None = None,
+        allow_auto_trigger: bool = True,
     ) -> SkillDetailDTO:
         """写入 SKILL.md 文件。"""
         user_skill_dir = self._user_dir / name
@@ -255,6 +257,9 @@ class SkillManager:
         }
         if tags:
             frontmatter["tags"] = ", ".join(tags)
+        # allow_auto_trigger 默认 True；显式 False 才写（防止缺失时被 loader 解析为 True 的语义反转）
+        if not allow_auto_trigger:
+            frontmatter["allow_auto_trigger"] = False
 
         fm_yaml = yaml.dump(frontmatter, allow_unicode=True, default_flow_style=False).strip()
         md_content = f"---\n{fm_yaml}\n---\n\n{content.strip()}\n"
@@ -288,7 +293,6 @@ class SkillManager:
                 "description": s.description,
                 "when_to_use": s.when_to_use,
                 "source": s.source,
-                "type": s.type,
                 "tags": s.tags,
                 "size": size,
                 "modified_at": modified_at,
@@ -326,9 +330,9 @@ class SkillManager:
                 "description": skill.description,
                 "when_to_use": skill.when_to_use,
                 "source": skill.source,
-                "type": skill.type,
                 "tags": skill.tags,
                 "content": skill.content,
+                "allow_auto_trigger": skill.allow_auto_trigger,
                 "size": size,
                 "modified_at": modified_at,
             },
@@ -341,6 +345,18 @@ class SkillManager:
         """保存 Skill（创建或更新）并构建结果事件。"""
         try:
             is_new = not (self._user_dir / name).is_dir()
+
+            # allow_auto_trigger：payload 未提供时继承现有定义，
+            # 防止编辑器只改正文时把自动触发开关清掉（保存即丢）。
+            allow_auto = payload.get("allow_auto_trigger")
+            if not is_new:
+                existing = self.get_skill(name)
+                if existing is not None:
+                    if allow_auto is None:
+                        allow_auto = existing.allow_auto_trigger
+            if allow_auto is None:
+                allow_auto = True
+
             if is_new:
                 skill = self.create_skill(
                     name=name,
@@ -348,6 +364,7 @@ class SkillManager:
                     when_to_use=payload.get("when_to_use", ""),
                     content=payload.get("content", ""),
                     tags=payload.get("tags"),
+                    allow_auto_trigger=allow_auto,
                 )
             else:
                 skill = self.update_skill(
@@ -356,6 +373,7 @@ class SkillManager:
                     when_to_use=payload.get("when_to_use", ""),
                     content=payload.get("content", ""),
                     tags=payload.get("tags"),
+                    allow_auto_trigger=allow_auto,
                 )
             event = NormalizedEvent(
                 event_type=EventType.SKILL_SAVED,
@@ -365,7 +383,6 @@ class SkillManager:
                         "description": skill.description,
                         "when_to_use": skill.when_to_use,
                         "source": skill.source,
-                        "type": skill.type,
                         "tags": skill.tags,
                     },
                 },
@@ -424,7 +441,7 @@ class SkillManager:
         return False
 
     async def import_and_build_event(
-        self, content: str = "", fmt: str = "folder", overwrite: bool = False,
+        self, fmt: str = "folder", overwrite: bool = False,
         source_path: str | None = None,
     ) -> NormalizedEvent:
         """导入 Skill 并构建结果事件。
@@ -479,34 +496,6 @@ class SkillManager:
                     "error": str(e),
                 },
             )
-
-    def _import_from_md(self, content: str, overwrite: bool = False, source_path: str | None = None) -> None:
-        """从 MD 文本内容导入（解析 YAML Frontmatter）。source_path 非空时从文件读取。"""
-        if source_path:
-            md_path = Path(source_path)
-            if not md_path.is_file():
-                raise ValueError(f"MD 文件不存在: {source_path}")
-            content = md_path.read_text(encoding="utf-8")
-
-        fm_match = re.match(r"^---\s*\n(.*?)\n---\s*\n", content, re.DOTALL)
-        if not fm_match:
-            raise ValueError("文件格式无效：缺少 YAML Frontmatter")
-
-        frontmatter = yaml.safe_load(fm_match.group(1))
-        if not isinstance(frontmatter, dict):
-            raise ValueError("文件格式无效：Frontmatter 不是有效的 YAML")
-
-        name = frontmatter.get("name", "")
-        if not name:
-            raise ValueError("文件格式无效：Frontmatter 中缺少 name 字段")
-
-        _validate_skill_name(name)
-        self._check_system_skill_conflict(name)
-
-        body = content[fm_match.end():].strip()
-        self._install_skill(name, frontmatter, body, overwrite)
-        self._last_imported_name = name
-        logger.info("导入 Skill 成功 (md): %s", name)
 
     def _import_from_zip(self, zip_path: str, overwrite: bool = False) -> None:
         """从 ZIP 文件导入（解压后解析 SKILL.md + 关联文件）。"""
@@ -657,19 +646,6 @@ class SkillManager:
         sys_path = self._system_dir / name
         if sys_path.is_dir():
             raise ValueError(f"无法覆盖系统技能 \"{name}\"")
-
-    def _install_skill(
-        self, name: str, frontmatter: dict, body: str, overwrite: bool = False
-    ) -> None:
-        """安装 Skill（仅 MD 文本，写 SKILL.md 文件）。"""
-        user_skill_dir = self._user_dir / name
-        if user_skill_dir.exists():
-            if not overwrite:
-                raise FileExistsError(f"用户技能 \"{name}\" 已存在")
-
-        description = str(frontmatter.get("description", ""))
-        when_to_use = str(frontmatter.get("when_to_use", ""))
-        self._write_skill_file(name, description, when_to_use, body, self._parse_tags(frontmatter))
 
     @staticmethod
     def _parse_tags(frontmatter: dict) -> list[str]:

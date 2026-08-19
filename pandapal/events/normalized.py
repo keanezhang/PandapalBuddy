@@ -547,17 +547,15 @@ class NormalizedEvent:
     @staticmethod
     def skill_activated(
         skill_name: str,
-        skill_type: str,
-        tools: list[str] | None = None,
         run_id: str | None = None,
         msg_id: str | None = None,
     ) -> "NormalizedEvent":
         """Skill 已激活事件（search_skills 成功后触发）。
 
+        Skill 不分类型（KNOWLEDGE/ACTION 已合并），payload 仅含技能名。
+
         Args:
             skill_name: Skill 名称
-            skill_type: "KNOWLEDGE" 或 "ACTION"
-            tools: ACTION Skill 暴露的工具名列表，KNOWLEDGE Skill 为空
             run_id: 关联的运行 ID
             msg_id: 事件唯一 ID
         """
@@ -567,8 +565,6 @@ class NormalizedEvent:
             msg_id=msg_id or uuid.uuid4().hex,
             payload={
                 "skill_name": skill_name,
-                "skill_type": skill_type,
-                "tools": tools or [],
             },
         )
 

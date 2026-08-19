@@ -134,9 +134,9 @@ interface BackendContextValue {
   searchRequest: (query: string) => void;
   requestSkillList: () => void;
   requestSkillDetail: (skillName: string) => void;
-  saveSkill: (skillName: string, description: string, whenToUse: string, content: string, tags?: string[]) => void;
+  saveSkill: (skillName: string, description: string, whenToUse: string, content: string, tags?: string[], allowAutoTrigger?: boolean) => void;
   deleteSkill: (skillName: string) => void;
-  importSkill: (content: string, format: "zip" | "folder", overwrite?: boolean, sourcePath?: string) => void;
+  importSkill: (format: "zip" | "folder", overwrite?: boolean, sourcePath?: string) => void;
   exportSkill: (skillName: string, format: "zip" | "folder", targetPath?: string) => void;
   pendingTaskNotification: TaskNotificationMsg | null;
   clearTaskNotification: () => void;
@@ -707,7 +707,6 @@ export function BackendProvider({ children }: { children: React.ReactNode }) {
         // 补全可能缺失的新字段默认值
         const skills = (skillListMsg.skills ?? []).map((s) => ({
           ...s,
-          type: s.type ?? "KNOWLEDGE",
           allow_auto_trigger: s.allow_auto_trigger ?? true,
         }));
         useSkillStore.getState().replaceAll(skills);
@@ -726,7 +725,6 @@ export function BackendProvider({ children }: { children: React.ReactNode }) {
           size: detailMsg.size,
           modified_at: detailMsg.modified_at,
           from_cache: detailMsg.from_cache,
-          type: detailMsg.skill_type ?? "KNOWLEDGE",
           allow_auto_trigger: detailMsg.allow_auto_trigger ?? true,
         };
         useSkillStore.getState().upsertSkill(skillItem);
@@ -760,8 +758,6 @@ export function BackendProvider({ children }: { children: React.ReactNode }) {
         const activatedMsg = msg as SkillActivatedMsg;
         useSkillStore.getState().setActivatedSkill({
           skill_name: activatedMsg.skill_name,
-          skill_type: activatedMsg.skill_type,
-          tools: activatedMsg.tools,
         });
         break;
       }
@@ -1311,7 +1307,7 @@ export function BackendProvider({ children }: { children: React.ReactNode }) {
     fire();
   }, []);
 
-  const saveSkill = useCallback((skillName: string, description: string, whenToUse: string, content: string, tags?: string[]) => {
+  const saveSkill = useCallback((skillName: string, description: string, whenToUse: string, content: string, tags?: string[], allowAutoTrigger?: boolean) => {
     if (!readyRef.current) {
       console.warn("[ipc] not ready, cannot save skill");
       return;
@@ -1323,6 +1319,7 @@ export function BackendProvider({ children }: { children: React.ReactNode }) {
       whenToUse,
       content,
       tags,
+      allowAutoTrigger,
     }).catch((e) => console.error("[ipc] skill_save failed:", e));
   }, []);
 
@@ -1337,14 +1334,13 @@ export function BackendProvider({ children }: { children: React.ReactNode }) {
     }).catch((e) => console.error("[ipc] skill_delete failed:", e));
   }, []);
 
-  const importSkill = useCallback((content: string, format: "zip" | "folder", overwrite?: boolean, sourcePath?: string) => {
+  const importSkill = useCallback((format: "zip" | "folder", overwrite?: boolean, sourcePath?: string) => {
     if (!readyRef.current) {
       console.warn("[ipc] not ready, cannot import skill");
       return;
     }
     invoke("import_skill", {
       msgId: crypto.randomUUID(),
-      content,
       format,
       overwrite,
       sourcePath,

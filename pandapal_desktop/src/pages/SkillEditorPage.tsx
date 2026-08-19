@@ -74,7 +74,6 @@ export function SkillEditorPage() {
   const [whenToUse, setWhenToUse] = useState("");
   const [content, setContent] = useState("");
   const [tagsText, setTagsText] = useState(""); // 逗号分隔
-  const [skillType, setSkillType] = useState<"KNOWLEDGE" | "ACTION">("KNOWLEDGE");
   const [allowAutoTrigger, setAllowAutoTrigger] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
@@ -150,7 +149,6 @@ export function SkillEditorPage() {
     setWhenToUse(d.when_to_use || "");
     setContent(d.content || "");
     setTagsText(d.tags?.join(", ") || "");
-    setSkillType(d.type || "KNOWLEDGE");
     setAllowAutoTrigger(d.allow_auto_trigger ?? true);
   }
 
@@ -201,7 +199,7 @@ export function SkillEditorPage() {
     setFieldErrors({});
     try {
       const tags = tagsText.split(",").map((tag) => tag.trim()).filter(Boolean);
-      saveSkill(name.trim(), description.trim(), whenToUse.trim(), content, tags);
+      saveSkill(name.trim(), description.trim(), whenToUse.trim(), content, tags, allowAutoTrigger);
       // 清除草稿（新建 key + 编辑 key 都要清）
       localStorage.removeItem("skill_draft__new");
       if (detailSkill?.name) {
@@ -369,18 +367,6 @@ export function SkillEditorPage() {
               disabled={!isNew}
               style={inputStyle(!isNew, !!fieldErrors.name)}
             />
-          </Field>
-
-          {/* 类型 */}
-          <Field label={t("skills.fieldType")}>
-            <select
-              value={skillType}
-              onChange={(e) => setSkillType(e.target.value as "KNOWLEDGE" | "ACTION")}
-              style={inputStyle(false)}
-            >
-              <option value="KNOWLEDGE">{t("skills.typeKnowledge")}</option>
-              <option value="ACTION">{t("skills.typeAction")}</option>
-            </select>
           </Field>
 
           {/* 自动触发 */}

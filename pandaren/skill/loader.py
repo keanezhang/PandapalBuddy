@@ -31,7 +31,6 @@ def load_skill_from_file(
         when_to_use: 当需要设计模块架构或组件分层时使用
         allowed_tools: read_file, grep_search, write_file
         allow_auto_trigger: true
-        argument_hint: 要设计的模块名称
         tags: design, architecture
         ---
 
@@ -104,19 +103,6 @@ def load_skill_from_file(
         else:
             allow_auto = bool(val)
 
-    # ── Action Skill 字段解析 ──
-    script: str | None = None
-    if "script" in frontmatter:
-        raw_script = _as_str(frontmatter["script"]).strip()
-        if raw_script:
-            script = raw_script
-
-    entry_function: str | None = None
-    if "entry_function" in frontmatter:
-        raw_entry = _as_str(frontmatter["entry_function"]).strip()
-        if raw_entry:
-            entry_function = raw_entry
-
     return Skill(
         name=_as_str(frontmatter["name"]),
         description=_as_str(frontmatter.get("description")),
@@ -125,11 +111,7 @@ def load_skill_from_file(
         source=source,
         allowed_tools=allowed_tools,
         allow_auto_trigger=allow_auto,
-        argument_hint=_as_str(frontmatter.get("argument_hint")) or None,
         tags=tags,
-        base_path=str(file_path.parent),
-        script=script,
-        entry_function=entry_function,
     )
 
 

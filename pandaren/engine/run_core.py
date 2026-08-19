@@ -2569,18 +2569,9 @@ class RunCoreMixin:
                                     and self._skill_registry is not None):
                                 skill_name = self._skill_registry.get_active_skill_name()
                                 if skill_name:
-                                    skill = self._skill_registry.get_skill(skill_name)
-                                    skill_type = "ACTION" if (skill and skill.is_action) else "KNOWLEDGE"
-                                    tools: list[str] = []
-                                    if skill and skill.is_action:
-                                        action_name = self._skill_registry.get_action_tool_name(skill_name)
-                                        if action_name:
-                                            tools = [action_name]
                                     self._safe_hook(
                                         "on_skill_activated",
                                         skill_name=skill_name,
-                                        skill_type=skill_type,
-                                        tools=tools,
                                         run_id=run_id,
                                         step_n=step_n,
                                     )

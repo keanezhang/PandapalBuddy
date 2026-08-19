@@ -162,13 +162,8 @@ function ActivatedSkillBadge({ skill, onClear }: { skill: ActivatedSkill; onClea
       color: "var(--success)",
     }}>
       <span style={{ fontWeight: 600 }}>
-        {skill.skill_type === "ACTION" ? "⚡" : "📚"} {skill.skill_name}
+        📚 {skill.skill_name}
       </span>
-      {skill.tools.length > 0 && (
-        <span style={{ fontSize: "var(--text-2xs)", opacity: 0.7 }}>
-          ({skill.tools.join(", ")})
-        </span>
-      )}
       <button
         onClick={onClear}
         title={t("chat.disableSkill")}

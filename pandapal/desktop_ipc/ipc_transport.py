@@ -346,8 +346,6 @@ class IpcStdoutTransport(Transport):
             return {
                 "type": IpcMessageType.SKILL_ACTIVATED, **base,
                 "skill_name": p.get("skill_name", ""),
-                "skill_type": p.get("skill_type", ""),
-                "tools": p.get("tools", []),
             }
         if t == EventType.SKILL_CLEARED:
             return {

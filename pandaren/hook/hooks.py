@@ -139,14 +139,10 @@ class AgentHooks(Protocol):
     # ═══ H. Skill 生命周期（2）═══
 
     def on_skill_activated(
-        self, skill_name: str, skill_type: str,
-        tools: list[str], run_id: str, step_n: int, *, session_id: str = "",
+        self, skill_name: str,
+        run_id: str, step_n: int, *, session_id: str = "",
     ) -> None: ...
-    """Skill 在 search_skills 中成功激活后触发。
-
-    skill_type: "KNOWLEDGE" | "ACTION"
-    tools: Action Skill 注册的 Tool 名列表（Knowledge Skill 为空列表）。
-    """
+    """Skill 在 search_skills 中成功激活后触发。"""
 
     def on_skill_cleared(
         self, skill_name: str, run_id: str, *, session_id: str = "",
@@ -263,8 +259,8 @@ class DefaultAgentHooks:
     # ═══ H. Skill 生命周期（2）═══
 
     def on_skill_activated(
-        self, skill_name: str, skill_type: str,
-        tools: list[str], run_id: str, step_n: int, *, session_id: str = "",
+        self, skill_name: str,
+        run_id: str, step_n: int, *, session_id: str = "",
     ) -> None:
         pass
 
@@ -524,12 +520,12 @@ class CompositeAgentHooks:
     # ═══ H. Skill 生命周期 ═══
 
     def on_skill_activated(
-        self, skill_name: str, skill_type: str,
-        tools: list[str], run_id: str, step_n: int, *, session_id: str = "",
+        self, skill_name: str,
+        run_id: str, step_n: int, *, session_id: str = "",
     ) -> None:
         for h in self._hooks:
             try:
-                h.on_skill_activated(skill_name, skill_type, tools, run_id, step_n, session_id=session_id)
+                h.on_skill_activated(skill_name, run_id, step_n, session_id=session_id)
             except Exception:
                 _logger.debug("CompositeAgentHooks: on_skill_activated failed", exc_info=True)
 

@@ -893,6 +893,7 @@ fn save_skill(
     when_to_use: String,
     content: String,
     tags: Option<Vec<String>>,
+    allow_auto_trigger: Option<bool>,
 ) -> Result<(), String> {
     let uid = require_user_id(&app)?;
     let sid = sidecar::current_session_id(&app)?;
@@ -906,6 +907,7 @@ fn save_skill(
         "when_to_use": when_to_use,
         "content": content,
         "tags": tags.unwrap_or_default(),
+        "allow_auto_trigger": allow_auto_trigger,
     });
     sidecar::write_to_sidecar(&app, &payload.to_string())
 }
@@ -930,7 +932,6 @@ fn delete_skill(app: AppHandle, msg_id: String, skill_name: String) -> Result<()
 fn import_skill(
     app: AppHandle,
     msg_id: String,
-    content: String,
     format: String,
     overwrite: Option<bool>,
     source_path: Option<String>,
@@ -942,7 +943,6 @@ fn import_skill(
         "msg_id": msg_id,
         "user_id": uid,
         "session_id": sid,
-        "content": content,
         "format": format,
     });
     if let Some(ow) = overwrite {

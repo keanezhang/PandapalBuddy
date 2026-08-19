@@ -64,6 +64,17 @@ def _logs_with_system(run, step, system_content):
     return hdr + (f"| 00:00:01 | ℹ️ INFO | `llm` | LLM 调用中... | pandapal | `s` | `{run}` | {step} | {msgs} |\n")
 
 
+def _logs_with_system_newfmt(run, step, system_content):
+    """新格式（87aea2c 后）：log_id 是 record 首键，extra JSON 以 {\"log_id\": 开头。"""
+    hdr = ("# Logs\n\n> Auto-generated.\n\n| 时间 | 级别 | 事件 | 详情 | Agent | Session | Run | Step |\n"
+           "|---|---|---|---|---|---|---|---|\n")
+    sys_escaped = system_content.replace("|", "\\|")
+    msgs = ('{"log_id": "8f040f6a4076455c9be1ab6bc6e7fe5a", '
+            '"messages": [{"role": "system", "content": "%s"}, '
+            '{"role": "user", "content": "q"}], "tools": []}' % sys_escaped)
+    return hdr + (f"| 00:00:01 | ℹ️ INFO | `llm` | LLM 调用中... | pandapal | `s` | `{run}` | {step} | {msgs} |\n")
+
+
 def _audit_reason(run, detail):
     hdr = "# Audit Log\n\n| 时间 | 级别 | 事件 | Agent | Session | Run | Step | 详情 |\n|---|---|---|---|---|---|---|---|\n"
     return hdr + f"| 00:00:00 | ℹ️ INFO | `run_finished` | pandapal | `s` | `{run}` | 1 | {detail} |\n"
@@ -245,6 +256,22 @@ def test_system_prompt_from_logs(tmp_path: Path):
     # system 内容故意含 | ，logs 里会被转义成 \| ，聚合器需还原后才能解析
     logs = _logs_with_system("aaaaaaaa", 0, "你是助手 | 遵守规则")
     _write_session(root, "sess-sp", title="sp", created="2026-07-13 00:00:00",
+                   traces=traces, raw_log=raw, audit=_audit("aaaaaaaa"), logs=logs)
+    s = DashboardAggregator(root).build().sessions[0]
+    assert s.system_prompt == "你是助手 | 遵守规则"
+
+
+def test_system_prompt_from_logs_newfmt(tmp_path: Path):
+    """回归（87aea2c 后）：extra JSON 以 {"log_id": 开头时仍能提取 system_prompt。"""
+    root = tmp_path
+    (root / "metrics.md").write_text("# Metrics Summary\n\n> Last updated: x\n", encoding="utf-8")
+    traces = _TRACES_HDR
+    traces += _llm_row("00:00:01", 0, "aaaaaaaa", "m", 100, 10, 0.001, 90, 90.0, 0, 500)
+    traces += _run_row("00:00:02", "aaaaaaaa", 500)
+    raw = (_turn(0, "user", "q", run_id="aaaaaaaa", step=None)
+           + _turn(1, "assistant", "ans", run_id="aaaaaaaa", step=0))
+    logs = _logs_with_system_newfmt("aaaaaaaa", 0, "你是助手 | 遵守规则")
+    _write_session(root, "sess-sp2", title="sp2", created="2026-07-13 00:00:00",
                    traces=traces, raw_log=raw, audit=_audit("aaaaaaaa"), logs=logs)
     s = DashboardAggregator(root).build().sessions[0]
     assert s.system_prompt == "你是助手 | 遵守规则"

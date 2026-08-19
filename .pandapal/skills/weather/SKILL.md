@@ -5,8 +5,7 @@ when_to_use: >
   Use when the user asks about weather, temperature, forecast, or climate conditions.
   Examples: '北京今天天气', '上海明天会下雨吗', '今天冷不冷',
   '需要带伞吗', '天气怎么样', '查天气', '这周天气如何'
-script: skill_script.py
-entry_function: get_weather
+allowed-tools: Bash
 ---
 
 # 天气预报技能
@@ -18,9 +17,32 @@ entry_function: get_weather
 ## 处理规则
 
 1. 从用户消息中提取**城市名称**和**日期**
-2. 调用工具获取天气信息
+2. 用 bash 调用 `scripts/weather.py` 获取天气（见「实现脚本」）
 3. 如果返回以"无法获取天气："开头的提示：**原样回复该提示**，不要调用其它联网工具
 4. 否则用自然语言回复天气情况，可适当加入穿衣、出行建议
+
+## 实现脚本（必须使用，勿删）
+
+天气查询的唯一实现是 `scripts/weather.py`（中央气象台免费 API，无需 Key），**必须通过它查询，不要用网络搜索替代**。
+
+**推荐：命令行入口**（输出纯文本，兼容 Windows GBK / UTF-8 终端）：
+
+```bash
+cd <skill_dir>/scripts && python weather.py 深圳 today
+```
+
+- 参数 1 = 城市名（直接传中文，如 `北京`、`深圳`，不带"市"后缀）
+- 参数 2 = 日期，可选（默认 `today`）：`today`/`今天`、`tomorrow`/`明天`、`后天`、`week`/`一周`/`7天`、`YYYY-MM-DD`
+- 失败时返回以 `无法获取天气：` 开头的提示 → 原样回复，不换其它工具
+
+**备选：库式调用**（需要对结果二次加工时）：
+
+```bash
+cd <skill_dir>/scripts && python -c "import asyncio; import weather as w; print(asyncio.run(w.get_weather('北京', 'today')))"
+```
+
+- `<skill_dir>`：本技能目录。通常为 `.pandapal/skills/weather`（相对工作区根目录）；定位不到时用 `dir /s /b weather.py` 搜索
+- 脚本内部已处理城市不存在 / 网络失败 / 日期格式错误等异常，返回以 `无法获取天气：` 开头 → 原样回复，不换其它工具
 
 ## 参数说明
 

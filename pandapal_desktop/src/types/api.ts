@@ -307,8 +307,7 @@ export interface SkillDeletePayload {
 export interface SkillImportPayload {
   type: "SKILL_IMPORT";
   msg_id: string;
-  content: string;
-  format: "md" | "zip";
+  format: "zip" | "folder";
   overwrite?: boolean;
 }
 
@@ -317,7 +316,7 @@ export interface SkillExportPayload {
   type: "SKILL_EXPORT";
   msg_id: string;
   skill_name: string;
-  format: "md" | "zip";
+  format: "zip" | "folder";
 }
 
 // ── LLM 凭据管理 入站 payload ──────────────────────────────────
@@ -724,8 +723,6 @@ export interface SkillItem {
   modified_at: string;
   /** true 表示从 cache 读取，非实时 */
   from_cache?: boolean;
-  /** "KNOWLEDGE" 或 "ACTION" */
-  type: "KNOWLEDGE" | "ACTION";
   /** 是否允许自动触发 */
   allow_auto_trigger: boolean;
 }
@@ -748,8 +745,6 @@ export interface SkillGetResultMsg extends IpcMessageBase {
   size: number;
   modified_at: string;
   from_cache?: boolean;
-  /** "KNOWLEDGE" 或 "ACTION" */
-  skill_type: "KNOWLEDGE" | "ACTION";
   allow_auto_trigger: boolean;
 }
 
@@ -761,7 +756,6 @@ export interface SkillSavedMsg extends IpcMessageBase {
     description: string;
     when_to_use: string;
     source: "system" | "user";
-    type: string;
     tags: string[];
   };
 }
@@ -776,8 +770,6 @@ export interface SkillDeletedMsg extends IpcMessageBase {
 export interface SkillActivatedMsg extends IpcMessageBase {
   type: "SKILL_ACTIVATED";
   skill_name: string;
-  skill_type: "KNOWLEDGE" | "ACTION";
-  tools: string[];
 }
 
 /** Skill 清除通知（Turn 结束时） */
@@ -798,7 +790,7 @@ export interface SkillImportedMsg extends IpcMessageBase {
 export interface SkillExportedMsg extends IpcMessageBase {
   type: "SKILL_EXPORTED";
   file_path: string;
-  format: "md" | "zip";
+  format: "zip" | "folder";
 }
 
 // ── 全局搜索（命令面板 ⌘K）── 与后端 NormalizedEvent.search_result 一致

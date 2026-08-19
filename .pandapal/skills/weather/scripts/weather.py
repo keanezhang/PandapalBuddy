@@ -17,9 +17,13 @@
 迁移自: capabilities/skills_group/weather/scripts/weather_tools.py
 """
 
+import argparse
+import asyncio
 import json
 import logging
 import ssl
+import sys
+import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timedelta
@@ -37,6 +41,14 @@ _NMC_WEATHER_URL = f"{_NMC_BASE}/rest/weather"        # 综合天气（实况+�
 _NMC_REAL_URL = f"{_NMC_BASE}/f/rest/real"             # 实况天气
 _NMC_PROVINCE_URL = f"{_NMC_BASE}/f/rest/province"     # 省份列表
 _REQUEST_TIMEOUT = 15
+_HTTP_RETRIES = 2                 # 网络请求总尝试次数（1 次重试）
+_HTTP_RETRY_DELAY = 1.0           # 重试前等待秒数
+
+# 中央气象台 API 的"无数据"哨兵值：数值/文本字段缺失或无效时返回 9999
+_NMC_NO_DATA = "9999"
+_NMC_NO_DATA_INT = int(_NMC_NO_DATA)
+# 气压有效值上限：低于此值才展示，用于忽略哨兵/异常值
+_PRESSURE_VALID_MAX = 9000
 
 _HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -171,15 +183,30 @@ def _get_china_now() -> datetime:
         return datetime.utcnow() + timedelta(hours=8)
 
 
-def _http_get_json(url: str, timeout: int = _REQUEST_TIMEOUT) -> dict:
-    """发送 GET 请求并解析 JSON 响应"""
+def _http_get_json(
+    url: str,
+    timeout: int = _REQUEST_TIMEOUT,
+    retries: int = _HTTP_RETRIES,
+) -> dict:
+    """发送 GET 请求并解析 JSON 响应（网络失败自动重试，最多 retries 次）"""
     ctx = ssl.create_default_context()
-    req = urllib.request.Request(url)
-    for k, v in _HEADERS.items():
-        req.add_header(k, v)
-    with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
-        raw = resp.read()
-        return json.loads(raw.decode("utf-8"))
+    last_error: Optional[Exception] = None
+    for attempt in range(retries):
+        try:
+            req = urllib.request.Request(url)
+            for k, v in _HEADERS.items():
+                req.add_header(k, v)
+            with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
+                raw = resp.read()
+                return json.loads(raw.decode("utf-8"))
+        except (urllib.error.URLError, TimeoutError, OSError) as e:
+            last_error = e
+            if attempt < retries - 1:
+                logger.info(
+                    "[weather] 请求失败（%s），%.1fs 后重试: %s", e, _HTTP_RETRY_DELAY, url
+                )
+                time.sleep(_HTTP_RETRY_DELAY)
+    raise last_error  # retries ≥ 1 且循环内未成功返回，此处必然非 None
 
 
 def _resolve_city_code(city: str) -> Optional[str]:
@@ -254,22 +281,27 @@ def _format_realtime(real_data: dict) -> str:
     province = station.get("province", "")
 
     lines = [
-        f"📍 {province} {city} — 实况天气",
-        f"🕐 发布时间: {real_data.get('publish_time', '未知')}",
+        f"{province} {city} — 实况天气",
+        f"发布时间: {real_data.get('publish_time', '未知')}",
         "",
-        f"🌡️ 温度: {weather.get('temperature', '--')}°C"
+        f"温度: {weather.get('temperature', '--')}°C"
         f" (体感: {weather.get('feelst', '--')}°C)",
-        f"☁️ 天气: {weather.get('info', '--')}",
-        f"💧 湿度: {weather.get('humidity', '--')}%",
-        f"🌬️ 风况: {wind.get('direct', '--')} {wind.get('power', '')} "
+        f"天气: {weather.get('info', '--')}",
+        f"湿度: {weather.get('humidity', '--')}%",
+        f"风况: {wind.get('direct', '--')} {wind.get('power', '')} "
         f"({wind.get('speed', '--')} m/s)",
-        f"🌧️ 降水: {weather.get('rain', 0)} mm",
+        f"降水: {weather.get('rain', 0)} mm",
     ]
 
-    # 气压（忽略 9999 异常值）
-    pressure = weather.get("airpressure", 9999)
-    if pressure and pressure < 9000:
-        lines.append(f"🔵 气压: {pressure} hPa")
+    # 气压（API 无数据时返回哨兵 9999，缺失/非数值/超阈值一律不展示）
+    pressure_raw = weather.get("airpressure")
+    if pressure_raw not in (None, ""):
+        try:
+            pressure = int(pressure_raw)
+        except (TypeError, ValueError):
+            pressure = _NMC_NO_DATA_INT
+        if 0 < pressure < _PRESSURE_VALID_MAX:
+            lines.append(f"气压: {pressure} hPa")
 
     # 日出日落
     sunrise = sunrise_sunset.get("sunrise", "")
@@ -278,7 +310,7 @@ def _format_realtime(real_data: dict) -> str:
         # 只取时间部分
         sr_time = sunrise.split(" ")[-1] if " " in sunrise else sunrise
         ss_time = sunset.split(" ")[-1] if " " in sunset else sunset
-        lines.append(f"🌅 日出/日落: {sr_time} / {ss_time}")
+        lines.append(f"日出/日落: {sr_time} / {ss_time}")
 
     return "\n".join(lines)
 
@@ -293,8 +325,8 @@ def _format_forecast(predict_data: dict, target_date: Optional[str] = None) -> s
     province = station.get("province", "")
 
     lines = [
-        f"📍 {province} {city} — 天气预报",
-        f"🕐 发布时间: {publish_time}",
+        f"{province} {city} — 天气预报",
+        f"发布时间: {publish_time}",
         "",
     ]
 
@@ -303,6 +335,7 @@ def _format_forecast(predict_data: dict, target_date: Optional[str] = None) -> s
 
     _WEEKDAY_CN = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
 
+    found_forecast = False
     for item in details:
         date_str = item.get("date", "")
         if not date_str:
@@ -345,13 +378,13 @@ def _format_forecast(predict_data: dict, target_date: Optional[str] = None) -> s
         night_temp = night_w.get("temperature", "")
 
         # 跳过无效数据（9999 表示无数据）
-        if day_info == "9999":
+        if day_info == _NMC_NO_DATA:
             day_info = ""
-        if night_info == "9999":
+        if night_info == _NMC_NO_DATA:
             night_info = ""
-        if day_temp == "9999":
+        if day_temp == _NMC_NO_DATA:
             day_temp = ""
-        if night_temp == "9999":
+        if night_temp == _NMC_NO_DATA:
             night_temp = ""
 
         # 格式化天气描述
@@ -378,9 +411,9 @@ def _format_forecast(predict_data: dict, target_date: Optional[str] = None) -> s
         day_wind_str = day_wind.get("direct", "")
         night_wind_str = night_wind.get("direct", "")
         day_power = day_wind.get("power", "")
-        if day_wind_str == "9999":
+        if day_wind_str == _NMC_NO_DATA:
             day_wind_str = ""
-        if night_wind_str == "9999":
+        if night_wind_str == _NMC_NO_DATA:
             night_wind_str = ""
 
         wind_desc = ""
@@ -390,14 +423,15 @@ def _format_forecast(predict_data: dict, target_date: Optional[str] = None) -> s
             night_power = night_wind.get("power", "")
             wind_desc = f"{night_wind_str} {night_power}"
 
-        line = f"📅 {date_str} {weekday}{rel}  |  {weather_desc}  |  {temp_desc}"
+        line = f"{date_str} {weekday}{rel}  |  {weather_desc}  |  {temp_desc}"
         if wind_desc:
             line += f"  |  {wind_desc}"
         if precipitation and precipitation > 0:
             line += f"  |  降水: {precipitation}mm"
         lines.append(line)
+        found_forecast = True
 
-    if not any(line.startswith("📅") for line in lines):
+    if not found_forecast:
         lines.append("暂无该日期的预报数据")
 
     return "\n".join(lines)
@@ -502,7 +536,7 @@ async def get_weather(city: str, date: str = "today") -> str:
     parts = []
 
     # 当前时间标注
-    parts.append(f"⏰ 查询时间: {now.strftime('%Y-%m-%d %H:%M')} (北京时间)\n")
+    parts.append(f"查询时间: {now.strftime('%Y-%m-%d %H:%M')} (北京时间)\n")
 
     # 实况天气
     if show_realtime and weather_data.get("real"):
@@ -519,7 +553,29 @@ async def get_weather(city: str, date: str = "today") -> str:
 
     result = "\n".join(parts).strip()
 
-    if not result or result == f"⏰ 查询时间: {now.strftime('%Y-%m-%d %H:%M')} (北京时间)":
+    if not result or result == f"查询时间: {now.strftime('%Y-%m-%d %H:%M')} (北京时间)":
         return f"无法获取天气：暂无「{city}」的天气数据"
 
     return result
+
+
+def main() -> int:
+    """命令行入口：python weather.py <城市> [日期]"""
+    parser = argparse.ArgumentParser(
+        description="查询中国城市天气（数据来源：中央气象台 www.nmc.cn）"
+    )
+    parser.add_argument("city", help="城市名，如：北京、深圳（不带「市」后缀）")
+    parser.add_argument(
+        "date",
+        nargs="?",
+        default="today",
+        help="日期：today/今天、tomorrow/明天、后天、week/一周/7天、YYYY-MM-DD（默认 today）",
+    )
+    args = parser.parse_args()
+
+    print(asyncio.run(get_weather(args.city, args.date)))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

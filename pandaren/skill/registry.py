@@ -6,8 +6,7 @@
   - Skill 搜索与一步加载（search_skills）
   - 门禁检查（SK3 allow_auto_trigger）
   - 多来源合并与优先级覆盖
-  - DEFERRED Tool 主动提升（KD3）
-  - Turn 级 allowed_tools 激活管理（SK2）
+  - Turn 级 allowed_tools 白名单限定（SK2）
 """
 
 from __future__ import annotations
@@ -22,8 +21,6 @@ from .exceptions import SkillRegistrationError
 from ..constants import CHARS_PER_TOKEN as _CHARS_PER_TOKEN
 
 if TYPE_CHECKING:
-    from ..tool.registry import ToolRegistry
-    from ..tool.definition.tool import Tool
     from ..tool.definition.context import ToolContext
     from ..tool.definition.tool_result import ToolResult
     from ..observability.audit import AuditLog
@@ -45,23 +42,21 @@ class SkillRegistry:
     生命周期：
       - Agent 构建时创建，注册 Skill
       - 每轮 Phase 1 调用 build_skill_summaries() 注入 system prompt
-      - search_skills 作为 ALWAYS 级 Tool 注册到 ToolRegistry
       - 每轮结束时 clear_active_skill() 清除激活状态
     """
 
     def __init__(
         self,
         *,
-        tool_registry: ToolRegistry | None = None,
         audit_log: AuditLog | None = None,
         max_description_chars: int = _DEFAULT_MAX_DESCRIPTION_CHARS,
     ) -> None:
         # ── A 类：Skill 定义存储 ──
         self._skills: dict[str, Skill] = {}
+        self._version: int = 0  # register/unregister 时递增，供脏检查
 
         # ── 配置（构造后只读）──
         self._max_description_chars = max_description_chars
-        self._tool_registry = tool_registry
         self._audit_log = audit_log
 
         # ── B 类：运行时状态 ──
@@ -77,14 +72,6 @@ class SkillRegistry:
         # clear_active_skill() 时一并清空
         self._manually_requested: set[str] = set()
 
-        # ── C 类：Action Skill 桥接 ──
-        from .bridge import SkillToolBridge
-        self._bridge = SkillToolBridge()
-        # 预构建的 Tool 缓存（未注册到 ToolRegistry，search_skills 时才注册）
-        self._action_tools_cache: dict[str, "Tool"] = {}  # skill_name → Tool object
-        self._action_skill_tools: dict[str, str] = {}  # skill_name → tool.full_name
-        self._version: int = 0  # register/unregister 时递增，供脏检查
-
     # ════════════════════════════════════════════════
     #  配置只读属性
     # ════════════════════════════════════════════════
@@ -92,10 +79,6 @@ class SkillRegistry:
     @property
     def max_description_chars(self) -> int:
         return self._max_description_chars
-
-    @property
-    def tool_registry(self) -> ToolRegistry | None:
-        return self._tool_registry
 
     @property
     def version(self) -> int:
@@ -158,8 +141,7 @@ class SkillRegistry:
                 skill.name, self._max_description_chars,
             )
             # frozen dataclass 不可修改，创建新实例替换（SK1：注册后不可变，此处是注册前修正）
-            # 注意：重建时必须透传全部字段（含 Action Skill 的 script/entry_function），
-            # 否则 Action Skill 会静默退化为 Knowledge（is_action 变 False）。
+            # 注意：重建时必须透传全部字段，否则会丢失 tags 等元数据。
             skill = Skill(
                 name=skill.name,
                 description=truncated_desc,
@@ -168,11 +150,7 @@ class SkillRegistry:
                 source=skill.source,
                 allowed_tools=skill.allowed_tools,
                 allow_auto_trigger=skill.allow_auto_trigger,
-                argument_hint=skill.argument_hint,
                 tags=skill.tags,
-                base_path=skill.base_path,
-                script=skill.script,
-                entry_function=skill.entry_function,
             )
 
         # ── 同名覆盖检查 ──
@@ -185,11 +163,6 @@ class SkillRegistry:
                     existing.source.name, existing.source.value,
                 )
                 return
-            # 覆盖：先清理旧 Action Tool（缓存 + 已注册到 ToolRegistry 的定义），
-            # 防止 ToolRegistry 残留旧 Tool，导致 _lazy_register_action_tool
-            # 的幂等检查永远跳过新 Tool 的注册。
-            if existing.is_action:
-                self._cleanup_action_tool(skill.name)
             # 覆盖：写审计事件
             self._write_audit_skill_overridden(skill, existing)
             logger.info(
@@ -199,14 +172,10 @@ class SkillRegistry:
 
         self._skills[skill.name] = skill
         logger.debug(
-            "Skill 已注册: %s [source=%s, auto_trigger=%s, tools=%s, action=%s]",
+            "Skill 已注册: %s [source=%s, auto_trigger=%s, tools=%s]",
             skill.name, skill.source.name, skill.allow_auto_trigger,
-            skill.allowed_tools, skill.is_action,
+            skill.allowed_tools,
         )
-
-        # ★ Action Skill 自动桥接：生成 Tool 并注册到 ToolRegistry
-        if skill.is_action:
-            self._register_action_tool(skill)
 
         self._version += 1
 
@@ -220,9 +189,6 @@ class SkillRegistry:
 
         清理：
           - _skills 注册
-          - _action_tools_cache 缓存
-          - _action_skill_tools 映射
-          - 已延迟注册到 ToolRegistry 的 Action Tool（如有）
           - 当前激活状态（如该 Skill 正激活则清除）
 
         Args:
@@ -236,47 +202,20 @@ class SkillRegistry:
 
         skill = self._skills[name]
 
-        # 1. 清理 Action Tool（注销已注册到 ToolRegistry 的 + 清缓存）
-        self._cleanup_action_tool(name)
-
-        # 2. 清理激活状态（如当前正是该 Skill）
+        # 1. 清理激活状态（如当前正是该 Skill）
         if self._active_skill_name == name:
             self._active_skill_name = None
             self._active_skill_tools = None
 
-        # 3. 从注册表中移除
+        # 2. 从注册表中移除
         del self._skills[name]
 
         logger.info(
-            "Skill 已注销: %s [source=%s, action=%s]",
-            name, skill.source.name, skill.is_action,
+            "Skill 已注销: %s [source=%s]",
+            name, skill.source.name,
         )
         self._version += 1
         return True
-
-    def _register_action_tool(self, skill: Skill) -> None:
-        """预构建 Action Skill 的 Tool 对象并缓存（不注册到 ToolRegistry）。
-
-        Tool 在 search_skills 被调用时才真正注册，确保 LLM 必须先加载指令。
-        SK7 Fail-Safe：构建失败时仅记录 WARNING，Skill 退化为 Knowledge 类型使用。
-        """
-        try:
-            tool = self._bridge.create_tool(skill)
-            self._action_tools_cache[skill.name] = tool
-            self._action_skill_tools[skill.name] = tool.full_name
-            logger.debug(
-                "Action Skill '%s' → Tool '%s' 已缓存（等待 search_skills 触发注册）",
-                skill.name, tool.full_name,
-            )
-        except Exception as e:
-            logger.warning(
-                "Action Skill '%s' Tool 构建失败（退化为 Knowledge Skill）: %s",
-                skill.name, e,
-            )
-
-    def get_action_tool_name(self, skill_name: str) -> str | None:
-        """查询 Action Skill 对应的 Tool full_name。"""
-        return self._action_skill_tools.get(skill_name)
 
     # ════════════════════════════════════════════════
     #  查询
@@ -418,10 +357,9 @@ class SkillRegistry:
           1. 按 skill_name 精准匹配 → 找到对应 Skill
           2. 门禁检查（allow_auto_trigger）
           3. 渲染 content（替换 $ARGUMENTS）
-          4. 主动提升 DEFERRED Tool（KD3）
-          5. 设置 _active_skill_tools（SK2）
-          6. 写审计事件 SKILL_INVOKED
-          7. 返回 ToolResult
+          4. 设置 _active_skill_tools（SK2）
+          5. 写审计事件 SKILL_INVOKED
+          6. 返回 ToolResult
 
         Args:
             skill_name: LLM 传入的技能名称（必须与 Skill.name 精准匹配）。
@@ -472,42 +410,18 @@ class SkillRegistry:
         # 3. 渲染 content
         content = self._render_content(skill, skill_name)
 
-        # 4. 主动提升 DEFERRED Tool（KD3）
-        #    对 Action Skill：延迟注册 Tool 到 ToolRegistry + promote
-        tools_to_promote: list[str] = list(skill.allowed_tools or [])
-        action_tool_name = self._action_skill_tools.get(skill.name)
-        if action_tool_name:
-            # 延迟注册：此时才把缓存的 Tool 注册到 ToolRegistry
-            self._lazy_register_action_tool(skill.name)
-            tools_to_promote.append(action_tool_name)
-
-        if tools_to_promote and self._tool_registry:
-            self._promote_deferred_tools(tuple(tools_to_promote), context)
-
-        # 5. 设置 _active_skill_tools（SK2 Turn 级激活）
-        #    对 Action Skill：将生成的工具也加入激活白名单
-        active_tools = list(skill.allowed_tools or [])
-        if action_tool_name:
-            active_tools.append(action_tool_name)
-        self._activate_skill_tools(tuple(active_tools) if active_tools else skill.allowed_tools)
+        # 4. 设置 _active_skill_tools（SK2 Turn 级激活）
+        self._activate_skill_tools(skill.allowed_tools)
 
         # 记录当前激活的 Skill 名称（供 AgentHooks 触发 on_skill_activated）
         self._active_skill_name = skill.name
 
-        # 6. 写审计事件
+        # 5. 写审计事件
         content_tokens = len(content) // _CHARS_PER_TOKEN
         self._write_audit_skill_invoked(skill, content_tokens, context)
 
-        # 7. 构建返回内容
-        action_tool = self._action_skill_tools.get(skill.name)
-        if action_tool:
-            result_text = (
-                f"🔧 已加载技能 [{skill.name}]\n\n{content}\n\n"
-                f"---\n⚡ 执行方式：请直接调用工具 `{action_tool}` "
-                f"（参数 schema 已就绪），按上述指令处理返回结果。"
-            )
-        else:
-            result_text = f"🔧 已加载技能 [{skill.name}]\n\n{content}"
+        # 6. 构建返回内容
+        result_text = f"🔧 已加载技能 [{skill.name}]\n\n{content}"
 
         return ToolResult(
             success=True,
@@ -544,48 +458,6 @@ class SkillRegistry:
         self._active_skill_tools = None
         self._manually_requested.clear()
         self._active_skill_name = None
-
-    def _lazy_register_action_tool(self, skill_name: str) -> None:
-        """延迟注册：将缓存的 Action Skill Tool 注册到 ToolRegistry。
-
-        幂等：已注册则跳过。仅在 search_skills 被调用时触发。
-        """
-        if self._tool_registry is None:
-            return
-        cached_tool = self._action_tools_cache.get(skill_name)
-        if cached_tool is None:
-            return
-        # 幂等：检查是否已注册
-        if self._tool_registry.get_tool(cached_tool.full_name) is not None:
-            return
-        self._tool_registry.register_tool(cached_tool)
-        # logger.info(
-        #     "Action Skill Tool 延迟注册: '%s' → ToolRegistry",
-        #     cached_tool.full_name,
-        # )
-
-    def _cleanup_action_tool(self, skill_name: str) -> None:
-        """清理指定 Skill 的 Action Tool（缓存 + 已注册到 ToolRegistry 的定义）。
-
-        覆盖 / 注销场景复用：
-        - 同名 Skill 被更高优先级覆盖时，必须先注销旧 Tool，否则 ToolRegistry
-          残留旧定义，_lazy_register_action_tool 的幂等检查会跳过新 Tool 的注册；
-        - unregister_skill 注销 Skill 时同步清理。
-        """
-        # 1. 注销已注册到 ToolRegistry 的旧 Tool（如有）
-        action_tool_name = self._action_skill_tools.get(skill_name)
-        if action_tool_name and self._tool_registry is not None:
-            try:
-                self._tool_registry.unregister_tool(action_tool_name)
-            except Exception as e:
-                # E4 Fail-Safe：注销失败不阻断 Skill 覆盖/注销主流程
-                logger.debug(
-                    "注销 Action Tool '%s' 失败: %s", action_tool_name, e,
-                )
-
-        # 2. 清理缓存
-        self._action_tools_cache.pop(skill_name, None)
-        self._action_skill_tools.pop(skill_name, None)
 
     def _activate_skill_tools(self, allowed_tools: tuple[str, ...] | None) -> None:
         """设置或合并 Skill 激活期间的工具白名单。
@@ -674,29 +546,6 @@ class SkillRegistry:
         if len(text) <= max_chars:
             return text
         return text[:max_chars - 3] + "..."
-
-    def _promote_deferred_tools(
-        self,
-        tool_names: tuple[str, ...],
-        context: ToolContext,
-    ) -> None:
-        """将 allowed_tools 中的 DEFERRED Tool 提升到 discovered_set（KD3）。
-
-        通过 ToolRegistry 的公开接口操作，不直接访问内部状态。
-        ALWAYS Tool 或不存在的 Tool 名静默跳过（E4 Fail-Safe）。
-        """
-        if self._tool_registry is None:
-            return
-
-        step_n = getattr(context, "step_n", 0)
-        for name in tool_names:
-            try:
-                self._tool_registry.promote_to_discovered(name, step_n)
-            except Exception as e:
-                logger.debug(
-                    "promote_to_discovered('%s') 失败: %s（静默跳过）",
-                    name, e,
-                )
 
     # ════════════════════════════════════════════════
     #  审计事件写入
