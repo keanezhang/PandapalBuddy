@@ -77,9 +77,6 @@ class SkillRegistry:
         # clear_active_skill() 时一并清空
         self._manually_requested: set[str] = set()
 
-        # 已注册内置 Tool 标记
-        self._builtin_tools_registered: bool = False
-
         # ── C 类：Action Skill 桥接 ──
         from .bridge import SkillToolBridge
         self._bridge = SkillToolBridge()
@@ -161,6 +158,8 @@ class SkillRegistry:
                 skill.name, self._max_description_chars,
             )
             # frozen dataclass 不可修改，创建新实例替换（SK1：注册后不可变，此处是注册前修正）
+            # 注意：重建时必须透传全部字段（含 Action Skill 的 script/entry_function），
+            # 否则 Action Skill 会静默退化为 Knowledge（is_action 变 False）。
             skill = Skill(
                 name=skill.name,
                 description=truncated_desc,
@@ -172,6 +171,8 @@ class SkillRegistry:
                 argument_hint=skill.argument_hint,
                 tags=skill.tags,
                 base_path=skill.base_path,
+                script=skill.script,
+                entry_function=skill.entry_function,
             )
 
         # ── 同名覆盖检查 ──
@@ -184,6 +185,11 @@ class SkillRegistry:
                     existing.source.name, existing.source.value,
                 )
                 return
+            # 覆盖：先清理旧 Action Tool（缓存 + 已注册到 ToolRegistry 的定义），
+            # 防止 ToolRegistry 残留旧 Tool，导致 _lazy_register_action_tool
+            # 的幂等检查永远跳过新 Tool 的注册。
+            if existing.is_action:
+                self._cleanup_action_tool(skill.name)
             # 覆盖：写审计事件
             self._write_audit_skill_overridden(skill, existing)
             logger.info(
@@ -230,21 +236,15 @@ class SkillRegistry:
 
         skill = self._skills[name]
 
-        # 1. 注销对应的 Action Tool（如有且已延迟注册）
-        action_tool_name = self._action_skill_tools.get(name)
-        if action_tool_name and self._tool_registry is not None:
-            self._tool_registry.unregister_tool(action_tool_name)
+        # 1. 清理 Action Tool（注销已注册到 ToolRegistry 的 + 清缓存）
+        self._cleanup_action_tool(name)
 
-        # 2. 清理缓存
-        self._action_tools_cache.pop(name, None)
-        self._action_skill_tools.pop(name, None)
-
-        # 3. 清理激活状态（如当前正是该 Skill）
+        # 2. 清理激活状态（如当前正是该 Skill）
         if self._active_skill_name == name:
             self._active_skill_name = None
             self._active_skill_tools = None
 
-        # 4. 从注册表中移除
+        # 3. 从注册表中移除
         del self._skills[name]
 
         logger.info(
@@ -564,6 +564,29 @@ class SkillRegistry:
         #     cached_tool.full_name,
         # )
 
+    def _cleanup_action_tool(self, skill_name: str) -> None:
+        """清理指定 Skill 的 Action Tool（缓存 + 已注册到 ToolRegistry 的定义）。
+
+        覆盖 / 注销场景复用：
+        - 同名 Skill 被更高优先级覆盖时，必须先注销旧 Tool，否则 ToolRegistry
+          残留旧定义，_lazy_register_action_tool 的幂等检查会跳过新 Tool 的注册；
+        - unregister_skill 注销 Skill 时同步清理。
+        """
+        # 1. 注销已注册到 ToolRegistry 的旧 Tool（如有）
+        action_tool_name = self._action_skill_tools.get(skill_name)
+        if action_tool_name and self._tool_registry is not None:
+            try:
+                self._tool_registry.unregister_tool(action_tool_name)
+            except Exception as e:
+                # E4 Fail-Safe：注销失败不阻断 Skill 覆盖/注销主流程
+                logger.debug(
+                    "注销 Action Tool '%s' 失败: %s", action_tool_name, e,
+                )
+
+        # 2. 清理缓存
+        self._action_tools_cache.pop(skill_name, None)
+        self._action_skill_tools.pop(skill_name, None)
+
     def _activate_skill_tools(self, allowed_tools: tuple[str, ...] | None) -> None:
         """设置或合并 Skill 激活期间的工具白名单。
 
@@ -583,87 +606,6 @@ class SkillRegistry:
         # 已有激活的白名单，取并集
         merged = set(self._active_skill_tools) | set(allowed_tools)
         self._active_skill_tools = tuple(sorted(merged))
-
-    # ════════════════════════════════════════════════
-    #  内置 Tool 注册
-    # ════════════════════════════════════════════════
-
-    def register_builtin_tools(self) -> None:
-        """注册 search_skills 为 ALWAYS 级内置 Tool。
-
-        仅在有 Skill 注册且 ToolRegistry 可用时注册。
-        幂等：多次调用不会重复注册。
-
-        转换成tool_schema，传给LLM作为工具注册：
-        {
-            "type": "function",
-            "function": {
-                "name": "search_skills",
-                "description": "按名称精准加载技能（知识包），加载后技能内容将注入上下文指导后续行为。从 system prompt 的 <available_skills> 中选择合适的技能，将其 <name> 精准传入即可加载。",
-                "parameters": {
-                "type": "object",
-                "properties": {
-                    "skill_name": {
-                    "type": "string",
-                    "description": "要加载的技能名称（取 <available_skills> 中技能的 <name> 值填入此参数）"
-                    }
-                },
-                "required": ["skill_name"]
-                }
-            }
-        }
-
-        """
-        if self._builtin_tools_registered:
-            return
-        if not self._skills:
-            return
-        if self._tool_registry is None:
-            return
-
-        from ..tool.definition.tool import Tool as ToolDef
-        from ..tool.definition.context import ToolContext as _ToolContext
-        from ..tool.definition.tool_result import ToolResult as _ToolResult
-        from ..tool.definition.tool_policy import ToolPolicy
-        from ..tool.types import ToolTier, SensitivityLevel
-
-        registry = self
-
-        def _search_skills_executor(ctx: _ToolContext, skill_name: str = "") -> _ToolResult:
-            """search_skills 内置工具的 executor。"""
-            return registry.search_skills(skill_name, ctx)
-
-        search_skills = ToolDef(
-            name="search_skills",
-            description=(
-                "按名称精准加载技能（知识包），加载后技能内容将注入上下文指导后续行为。"
-                "从 system prompt 的 <available_skills> 中选择合适的技能，"
-                "将其 <name> 精准传入即可加载。"
-            ),
-            executor=_search_skills_executor,
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "skill_name": {
-                        "type": "string",
-                        "description": "要加载的技能名称（取 <available_skills> 中技能的 <name> 值填入此参数）",
-                    },
-                },
-                "required": ["skill_name"],
-            },
-            tier=ToolTier.ALWAYS,
-            when_to_use="当你需要加载特定领域的专项知识、操作流程或方法论时使用，从 <available_skills> 中选择技能名称传入。",
-            policy=ToolPolicy(
-                sensitivity=SensitivityLevel.LOW,
-                is_reversible=True,
-                audit_required=False,
-                is_idempotent=True,
-            ),
-        )
-
-        self._tool_registry.register_tool(search_skills)
-        self._builtin_tools_registered = True
-        logger.info("search_skills 内置 Tool 已注册（ALWAYS 级）")
 
     # ════════════════════════════════════════════════
     #  内部方法

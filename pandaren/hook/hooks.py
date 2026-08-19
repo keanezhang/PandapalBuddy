@@ -322,11 +322,12 @@ class CompositeAgentHooks:
         """浅拷贝：产出一份新的 CompositeAgentHooks，内部 _hooks 列表复制引用。
 
         用于 AgentBlueprint.materialize()：每个 session 拿到独立的 CompositeAgentHooks
-        实例，避免共享 buffer 状态；但内部各 hook 元素仍是共享的
-        （ObservabilityHooksAdapter 是无内部 buffer 的单例）。
+        实例，独立的是 CompositeAgentHooks 自身的可变状态——_hooks 列表（后续增删
+        hook 互不影响）与 _sig_cache（签名检查缓存）。
 
-        如果未来某个 hook 元素本身有内部 buffer 需要独立化，需在该元素上
-        单独实现 clone()，并在此处递归调用。本期不做（YAGNI）。
+        浅拷贝边界：列表内各 hook 元素仍是共享引用。若某元素自身有内部 buffer
+        （如带跨会话累加状态的 hook），浅拷贝不会独立化它——需在该元素上单独实现
+        clone() 并在此处递归调用。本期默认 hook 元素均无跨会话 buffer（YAGNI）。
         """
         new_composite = CompositeAgentHooks()
         new_composite._hooks = list(self._hooks)
@@ -540,9 +541,3 @@ class CompositeAgentHooks:
                 h.on_skill_cleared(skill_name, run_id, session_id=session_id)
             except Exception:
                 _logger.debug("CompositeAgentHooks: on_skill_cleared failed", exc_info=True)
-
-
-# ── 向后兼容别名（过渡期，后续可删除）──
-LoopHooks = AgentHooks
-DefaultLoopHooks = DefaultAgentHooks
-ToolHooks = AgentHooks

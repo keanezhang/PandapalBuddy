@@ -137,7 +137,7 @@ def assert_no_raises(fn, name: str, detail: str = ""):
 
 def async_run(coro):
     """同步运行协程。"""
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.new_event_loop().run_until_complete(coro)
 
 
 # ════════════════════════════════════════════════════

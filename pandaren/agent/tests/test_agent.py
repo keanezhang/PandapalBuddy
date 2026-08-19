@@ -8,7 +8,6 @@ Pandaren Agent SDK · Agent 模块真实测试
   - AR3: call_agent 精确查找（agent_name）
   - AR4: call_agent 信任验证 + 循环检测 + 深度检测
   - AR5: refresh_health 存活检测
-  - AR6: register_builtin_tools 幂等性
   - AR7: unregister 幂等性
   - AR8: set_status / drain 状态管理
   - AG-S1: EXTERNAL 不可委派；SUB_AGENT 不可向上委派
@@ -42,6 +41,19 @@ from pathlib import Path
 if sys.platform == "win32" and "pytest" not in sys.modules:  # pytest 下交给 capture，避免拆台
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+
+# pytest 场景：无 LLM API key 时跳过整个文件（真实测试需外部凭据，无 key 无法运行）
+try:
+    import pytest as _pytest_mod
+
+    _HAS_LLM_KEY = bool(os.getenv("DASHSCOPE_API_KEY") or os.getenv("OPENAI_API_KEY"))
+    if not _HAS_LLM_KEY:
+        pytestmark = _pytest_mod.mark.skipif(
+            True,
+            reason="缺少 DASHSCOPE_API_KEY/OPENAI_API_KEY，跳过真实 LLM 测试（脚本模式需显式设置后运行）",
+        )
+except ImportError:
+    pass
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
@@ -144,7 +156,11 @@ def assert_no_raises(name: str, detail: str = ""):
 # ════════════════════════════════════════════════════
 
 def _make_llm_client():
-    api_key = os.getenv("DASHSCOPE_API_KEY") or os.getenv("OPENAI_API_KEY", "")
+    api_key = os.getenv("DASHSCOPE_API_KEY") or os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError(
+            "缺少 LLM API key：请设置环境变量 DASHSCOPE_API_KEY 或 OPENAI_API_KEY 后再运行真实测试"
+        )
     base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     model_name = "qwen-plus"
     if os.getenv("OPENAI_API_KEY") and not os.getenv("DASHSCOPE_API_KEY"):
@@ -402,33 +418,6 @@ def test_registry():
         assert_true("未找到" in str(res.error), "AR3: 错误信息包含'未找到'")
     asyncio.run(_test_not_found())
 
-    # ── AR6: register_builtin_tools 幂等 ──
-    print("\n  · AR6: register_builtin_tools 幂等")
-    from pandaren.tool.registry import create_tool_registry
-
-    tool_reg = create_tool_registry()
-    reg7 = SubAgentRegistry(tool_registry=tool_reg)
-    ag7 = _make_agent("builtin.agent", "内置工具测试", "测试内置工具注册")
-    reg7.register(_Blueprint(ag7))
-
-    @assert_no_raises("AR6: 首次 register_builtin_tools 不抛异常")
-    def _():
-        reg7.register_builtin_tools()
-
-    @assert_no_raises("AR6: 第二次 register_builtin_tools 幂等，不抛异常")
-    def _():
-        reg7.register_builtin_tools()
-
-    # 确认 call_agent 已注册
-    tool_names = [t.name for t in tool_reg.list_tools()]
-    assert_true("call_agent" in tool_names, "AR6: call_agent 工具已注册")
-
-    # 无 agent 时不注册
-    empty_tool_reg = create_tool_registry()
-    reg_empty = SubAgentRegistry(tool_registry=empty_tool_reg)
-    reg_empty.register_builtin_tools()
-    assert_true(len(empty_tool_reg.list_tools()) <= 1, "AR6: 无 agent 时不注册内置工具")
-
     # ── AG-S1: 信任验证 ──
     print("\n  · AG-S1: 信任验证（委派权限检查）")
 
@@ -487,7 +476,7 @@ def test_registry():
         reg9.register(_Blueprint(b))
 
         # 人工注入循环状态（模拟 A→B 正在执行中）
-        reg9._delegate_stack.append("cycle.a")
+        reg9._delegate_stack.set(["cycle.a"])
 
         ctx = ToolContext(
             run_id="r1", step_n=1, agent_id="cycle.b",
@@ -499,7 +488,7 @@ def test_registry():
         assert_true("循环" in str(res.error), "AG-S3: 错误信息包含'循环'")
 
         # 清理
-        reg9._delegate_stack.clear()
+        reg9._delegate_stack.set(None)
 
     asyncio.run(_test_cycle())
 
@@ -514,7 +503,7 @@ def test_registry():
         reg10.register(_Blueprint(target))
 
         # 人工注入超深度调用栈
-        reg10._delegate_stack.extend(["agent.0", "agent.1"])
+        reg10._delegate_stack.set(["agent.0", "agent.1"])
 
         ctx = ToolContext(
             run_id="r1", step_n=1, agent_id="agent.2",
@@ -523,7 +512,7 @@ def test_registry():
         res = await reg10.call_agent("目标代理", "任务", ctx)
         assert_true(res.success is False, "深度超限 → success=False")
         assert_true("深度" in str(res.error) or "超限" in str(res.error), "深度超限错误信息包含'深度'")
-        reg10._delegate_stack.clear()
+        reg10._delegate_stack.set(None)
 
     asyncio.run(_test_depth())
 

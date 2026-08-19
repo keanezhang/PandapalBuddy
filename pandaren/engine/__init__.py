@@ -1,6 +1,6 @@
 """Engine 层：Agent 的心脏——Loop + 消息构建 + 输出解析。
 
-注意：AgentHooks / LoopHooks 已提升至 pandaren/hooks.py 顶层模块，
+注意：AgentHooks 已提升至 pandaren.hook 包（hook/hooks.py），
       请直接 from pandaren.hook import AgentHooks。
 """
 

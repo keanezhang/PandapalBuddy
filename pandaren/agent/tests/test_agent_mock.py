@@ -14,12 +14,10 @@ Pandaren Agent SDK · agent 模块 Mock 测试
     - unregister() 成功 & 幂等
     - set_status() / drain()
     - get_identity() / get_agent() / list_identities() / agent_count() / get_status()
-    - build_agent_summaries() — 预算约束 / exclude_agent_id / 跳过 UNHEALTHY
-    - search_agents() — 匹配 / 无 Agent / 排除自身
-    - delegate_task() — 成功 / 未找到 / 不健康 / 信任拒绝 / 循环检测 / 深度超限
+    - build_agent_summaries() — 预算约束 / exclude_agent_id / 跳过 UNHEALTHY / 无 Agent
+    - _find_agent_id_by_name() — 精确匹配 / 无匹配
+    - call_agent()/_execute_delegate() — 成功 / 未找到 / 不健康 / 信任拒绝 / 循环检测 / 深度超限 / 异常栈清理
     - refresh_health()
-    - register_builtin_tools() 幂等 & 无 ToolRegistry 时跳过
-    - _match_agents() 多种评分场景
     - _check_trust() EXTERNAL/ORCHESTRATOR/SUB_AGENT
     - 审计日志调用链路
 
@@ -218,7 +216,8 @@ def test_agent_run_delegates_to_loop():
 
     result_got = async_run(agent.run("测试任务", session_id="sess1"))
     agent._loop.run.assert_called_once_with(
-        "测试任务", session_id="sess1", resume_state=None, hitl_decision=None
+        "测试任务", session_id="sess1", resume_state=None, hitl_decision=None,
+        interaction_response=None, metadata=None, skill_name=None,
     )
     assert_true(result_got.output == "委托结果", "run() 返回 loop.run() 的结果")
     assert_true(result_got.success is True, "run() 成功标志透传")
@@ -523,7 +522,7 @@ def test_registry_build_agent_summaries_budget():
     assert_true(len(summaries) < 200, "预算截断后摘要数量少于全部注册数")
 
 
-def test_registry_search_agents_no_agents():
+def test_registry_build_agent_summaries_empty():
     """2.11 build_agent_summaries() — 无注册 Agent"""
     print("\n" + "═" * 60)
     print("2.11  build_agent_summaries() 无 Agent")
@@ -534,7 +533,7 @@ def test_registry_search_agents_no_agents():
     assert_true(len(summaries) == 0, "无 Agent 时返回空列表")
 
 
-def test_registry_search_agents_match():
+def test_registry_find_agent_id_by_name_match():
     """2.12 _find_agent_id_by_name() — 精确名称匹配"""
     print("\n" + "═" * 60)
     print("2.12  _find_agent_id_by_name() 匹配")
@@ -549,7 +548,7 @@ def test_registry_search_agents_match():
     assert_true(found_id == "code.writer", "按名称精确匹配到目标 agent_id")
 
 
-def test_registry_search_agents_no_match():
+def test_registry_find_agent_id_by_name_no_match():
     """2.13 _find_agent_id_by_name() — 无匹配"""
     print("\n" + "═" * 60)
     print("2.13  _find_agent_id_by_name() 无匹配")
@@ -674,9 +673,8 @@ def test_registry_delegate_task_cycle_detection():
     target = _make_agent("cycle.target")
     reg.register(_Blueprint(target))
 
-    # 模拟 target 已在委派栈中（形成循环）
-    reg._delegate_stack.append("some.caller")
-    reg._delegate_stack.append("cycle.target")
+    # 模拟 target 已在委派栈中（形成循环）— ContextVar 用 set() 注入
+    reg._delegate_stack.set(["some.caller", "cycle.target"])
 
     ctx = MagicMock()
     ctx.agent_id = "cycle.caller"
@@ -687,8 +685,8 @@ def test_registry_delegate_task_cycle_detection():
     assert_true(tool_result.success is False, "循环委派 success=False")
     assert_true("循环" in (tool_result.error or ""), "error 包含'循环'")
 
-    # 清理
-    reg._delegate_stack.clear()
+    # 清理（ContextVar 复位为 None）
+    reg._delegate_stack.set(None)
 
 
 def test_registry_delegate_task_depth_exceeded():
@@ -701,8 +699,8 @@ def test_registry_delegate_task_depth_exceeded():
     target = _make_agent("deep.target")
     reg.register(_Blueprint(target))
 
-    # 推满栈
-    reg._delegate_stack.extend(["a1", "a2"])
+    # 推满栈（ContextVar 用 set() 注入）
+    reg._delegate_stack.set(["a1", "a2"])
 
     ctx = MagicMock()
     ctx.agent_id = "deep.caller"
@@ -713,7 +711,7 @@ def test_registry_delegate_task_depth_exceeded():
     assert_true(tool_result.success is False, "深度超限 success=False")
     assert_true("超限" in (tool_result.error or ""), "error 包含'超限'")
 
-    reg._delegate_stack.clear()
+    reg._delegate_stack.set(None)
 
 
 def test_registry_delegate_task_stack_cleanup_on_exception():
@@ -732,9 +730,9 @@ def test_registry_delegate_task_stack_cleanup_on_exception():
     ctx.trust_level = TrustLevel.ORCHESTRATOR
     ctx.namespace = None
 
-    stack_before = len(reg._delegate_stack)
+    stack_before = len(reg._delegate_stack.get(None) or [])
     tool_result = async_run(reg._execute_delegate("exception.target", "task", ctx))
-    stack_after = len(reg._delegate_stack)
+    stack_after = len(reg._delegate_stack.get(None) or [])
 
     assert_true(tool_result.success is False, "执行异常时 success=False")
     assert_true(stack_after == stack_before, "委派栈在异常后恢复到原始长度（AG-S7）")
@@ -764,43 +762,6 @@ def test_registry_refresh_health():
         reg.get_status("refresh.agent") == AgentStatus.DRAINING,
         "DRAINING 不被 refresh_health 恢复为 HEALTHY",
     )
-
-
-def test_registry_register_builtin_tools_idempotent():
-    """2.23 register_builtin_tools() 幂等"""
-    print("\n" + "═" * 60)
-    print("2.23  register_builtin_tools() 幂等")
-    print("═" * 60)
-
-    mock_tool_registry = MagicMock()
-    mock_tool_registry.register_tool = MagicMock()
-
-    reg = SubAgentRegistry(tool_registry=mock_tool_registry)
-    reg.register(_Blueprint(_make_agent("builtin.agent")))
-
-    reg.register_builtin_tools()
-    reg.register_builtin_tools()  # 第二次
-    reg.register_builtin_tools()  # 第三次
-
-    # register_tool 只被调用 1 次（call_agent）
-    assert_true(mock_tool_registry.register_tool.call_count == 1, "register_tool 只调用 1 次（幂等）")
-
-
-def test_registry_register_builtin_tools_no_tool_registry():
-    """2.24 register_builtin_tools() — 无 ToolRegistry 时跳过"""
-    print("\n" + "═" * 60)
-    print("2.24  register_builtin_tools() 无 ToolRegistry")
-    print("═" * 60)
-
-    reg = SubAgentRegistry(tool_registry=None)
-    reg.register(_Blueprint(_make_agent("no.registry.agent")))
-
-    try:
-        reg.register_builtin_tools()
-        assert_true(True, "无 ToolRegistry 时不抛异常")
-        assert_true(not reg._builtin_tools_registered, "未注册标志仍为 False")
-    except Exception as e:
-        result.fail("无 ToolRegistry 时不抛异常", str(e))
 
 
 def test_registry_audit_log_on_register():
@@ -1390,9 +1351,9 @@ SECTIONS: dict[str, list] = {
         test_registry_build_agent_summaries_excludes_unhealthy,
         test_registry_build_agent_summaries_excludes_self,
         test_registry_build_agent_summaries_budget,
-        test_registry_search_agents_no_agents,
-        test_registry_search_agents_match,
-        test_registry_search_agents_no_match,
+        test_registry_build_agent_summaries_empty,
+        test_registry_find_agent_id_by_name_match,
+        test_registry_find_agent_id_by_name_no_match,
         test_registry_delegate_task_success,
         test_registry_delegate_task_not_found,
         test_registry_delegate_task_unhealthy,
@@ -1402,8 +1363,6 @@ SECTIONS: dict[str, list] = {
         test_registry_delegate_task_depth_exceeded,
         test_registry_delegate_task_stack_cleanup_on_exception,
         test_registry_refresh_health,
-        test_registry_register_builtin_tools_idempotent,
-        test_registry_register_builtin_tools_no_tool_registry,
         test_registry_audit_log_on_register,
         test_registry_check_trust,
         test_registry_find_agent_id_by_name_cases,
