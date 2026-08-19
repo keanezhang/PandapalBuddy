@@ -42,6 +42,7 @@ import logging
 import sqlite3
 import threading
 from datetime import datetime, timezone
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -104,6 +105,7 @@ CREATE INDEX IF NOT EXISTS idx_spans_run           ON spans(run_id);
 CREATE INDEX IF NOT EXISTS idx_spans_session_start ON spans(session_id, start_time);
 CREATE INDEX IF NOT EXISTS idx_spans_trace         ON spans(trace_id);
 CREATE INDEX IF NOT EXISTS idx_spans_run_step      ON spans(run_id, step_n);
+CREATE INDEX IF NOT EXISTS idx_spans_type_start    ON spans(span_type, start_time);
 """
 
 _SCHEMA_METRICS = """
@@ -132,6 +134,7 @@ CREATE TABLE IF NOT EXISTS logs (
     run_id      TEXT,
     session_id  TEXT,
     step_n      INTEGER,
+    log_id      TEXT,
     extra_json  TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_logs_session_ts ON logs(session_id, ts);
@@ -146,6 +149,25 @@ CREATE INDEX IF NOT EXISTS idx_logs_level       ON logs(level);
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _safe_enum(enum_cls: type[Enum], value: Any, fallback: Any = None, *, label: str = "") -> Any:
+    """枚举转换防御：未知值（版本演进/坏数据）记 warning 并回落，不让整个查询崩溃。
+
+    - ``fallback=None``：该字段无合理回落（如 span_type/event_type 无法归类）→
+      返回 None，由调用方**跳过该行**（数据仍在库中，仅读侧不返回）。
+    - 有回落值：降级使用（severity→MEDIUM、status→OK），warning 留痕不丢行。
+    """
+    if not value:
+        return fallback
+    try:
+        return enum_cls(value)
+    except ValueError:
+        logger.warning(
+            "SQLite read: unknown %s value %r — 该行按坏数据处理（label=%s）",
+            enum_cls.__name__, value, label or enum_cls.__name__,
+        )
+        return fallback
 
 
 def _dt_to_iso(dt: datetime | None) -> str | None:
@@ -341,15 +363,21 @@ class SQLiteAuditBackend(_SQLiteBackendBase):
 
         with self._lock:
             rows = self._conn.execute(sql, params).fetchall()
-        return [self._row_to_record(r) for r in rows]
+        return [rec for r in rows if (rec := self._row_to_record(r)) is not None]
 
     @staticmethod
-    def _row_to_record(row: sqlite3.Row) -> AuditRecord:
+    def _row_to_record(row: sqlite3.Row) -> AuditRecord | None:
+        event_type = _safe_enum(AuditEventType, row["event_type"], fallback=None, label="AuditEventType")
+        # severity 无 UNKNOWN 值：审计行是 HC4 强制保留的，未知 severity 降级 WARN
+        # （warning 留痕，WARN 为"需关注"中性档），不丢行——比跳过更符合审计不可绕过。
+        severity = _safe_enum(AuditSeverity, row["severity"], fallback=AuditSeverity.WARN, label="AuditSeverity")
+        if event_type is None:
+            return None  # 未知事件类型无法语义化，跳过该行（数据仍在库中）
         return AuditRecord(
             timestamp=_iso_to_dt(row["ts"]) or datetime.now(timezone.utc),
             record_id=row["record_id"],
-            event_type=AuditEventType(row["event_type"]),
-            severity=AuditSeverity(row["severity"]),
+            event_type=event_type,
+            severity=severity,
             agent_id=row["agent_id"] or "",
             run_id=row["run_id"] or "",
             detail=row["detail"] or "",
@@ -428,25 +456,29 @@ class SQLiteTracerBackend(_SQLiteBackendBase):
                 rows = self._conn.execute(
                     "SELECT * FROM spans ORDER BY start_time ASC, id ASC"
                 ).fetchall()
-        return [self._row_to_span(r) for r in rows]
+        return [s for r in rows if (s := self._row_to_span(r)) is not None]
 
     def query_spans(self, run_id: str) -> list[Span]:
         """TracerBackend Protocol 要求的查询接口。"""
         return self.get_spans(run_id)
 
     @staticmethod
-    def _row_to_span(row: sqlite3.Row) -> Span:
+    def _row_to_span(row: sqlite3.Row) -> Span | None:
+        span_type = _safe_enum(SpanType, row["span_type"], fallback=None, label="SpanType")
+        if span_type is None:
+            return None  # 未知 span 类型无法归类，跳过该行（数据仍在库中）
         attrs: dict[str, Any] = {}
         if row["attributes_json"]:
             try:
                 attrs = json.loads(row["attributes_json"])
             except (TypeError, ValueError):
                 attrs = {}
+        status = _safe_enum(SpanStatus, row["status"], fallback=SpanStatus.OK, label="SpanStatus") or SpanStatus.OK
         return Span(
             span_id=row["span_id"],
             trace_id=row["trace_id"] or "",
             parent_span_id=row["parent_span_id"],
-            span_type=SpanType(row["span_type"]),
+            span_type=span_type,
             name=row["name"] or "",
             agent_id=row["agent_id"] or "",
             run_id=row["run_id"] or "",
@@ -455,7 +487,7 @@ class SQLiteTracerBackend(_SQLiteBackendBase):
             start_time=_iso_to_dt(row["start_time"]) or datetime.now(timezone.utc),
             end_time=_iso_to_dt(row["end_time"]),
             duration_ms=row["duration_ms"],
-            status=SpanStatus(row["status"]) if row["status"] else SpanStatus.OK,
+            status=status,
             attributes=attrs,
         )
 
@@ -640,6 +672,18 @@ class SQLiteLoggerBackend(_SQLiteBackendBase):
     ) -> None:
         super().__init__(db_path, connection=connection, wal_mode=wal_mode)
         self._init_schema()
+        self._migrate_logs_table()
+
+    def _migrate_logs_table(self) -> None:
+        """轻量 schema 迁移：老库补 log_id 列（幂等，ALTER TABLE ADD COLUMN）。
+
+        log_id 由 Logger 生成（日志唯一标识），此前被静默丢弃——排除列表把它滤进
+        extra_json，读侧 _row_to_record 也从 extra 里取回，但 write 从未落列。
+        """
+        with self._lock, self._conn:
+            cols = {r[1] for r in self._conn.execute("PRAGMA table_info(logs)")}
+            if "log_id" not in cols:
+                self._conn.execute("ALTER TABLE logs ADD COLUMN log_id TEXT")
 
     def write_log(self, record: dict) -> None:
         ts = record.get("timestamp", "")
@@ -658,8 +702,8 @@ class SQLiteLoggerBackend(_SQLiteBackendBase):
         with self._lock, self._conn:
             self._conn.execute(
                 "INSERT INTO logs "
-                "(ts, level, module, message, agent_id, run_id, session_id, step_n, extra_json) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "(ts, level, module, message, agent_id, run_id, session_id, step_n, log_id, extra_json) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     ts,
                     record.get("level", "INFO"),
@@ -669,6 +713,7 @@ class SQLiteLoggerBackend(_SQLiteBackendBase):
                     record.get("run_id") or None,
                     record.get("session_id") or "",
                     int(step_n) if step_n is not None else None,
+                    record.get("log_id") or None,
                     extra_json,
                 ),
             )
@@ -699,6 +744,7 @@ class SQLiteLoggerBackend(_SQLiteBackendBase):
             "run_id": row["run_id"],
             "session_id": row["session_id"],
             "step_n": row["step_n"],
+            "log_id": row["log_id"],
         }
         if row["extra_json"]:
             try:

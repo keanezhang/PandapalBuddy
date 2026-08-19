@@ -478,9 +478,11 @@ class MarkdownLoggerBackend:
             run_short = f"`{run_id[:8]}`" if run_id else ""
             step_n = record.get("step_n")
             step = str(step_n) if step_n is not None else ""
+            # 注：log_id 不进排除列表——markdown 表无专属列，放 extra_str 以 JSON 形式
+            # 保留（不丢关联键）；sqlite 后端则落 log_id 专属列（结构化查询场景）。
             extra = {k: v for k, v in record.items()
                      if k not in ("level", "timestamp", "module", "message",
-                                  "run_id", "step_n", "agent_id", "log_id",
+                                  "run_id", "step_n", "agent_id",
                                   "session_id")}
             import json
             extra_str = json.dumps(extra, ensure_ascii=False, default=str) if extra else ""

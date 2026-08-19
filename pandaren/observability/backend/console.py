@@ -81,7 +81,7 @@ class ConsoleTracerBackend:
             if span.attributes:
                 attrs_str = " | " + ", ".join(f"{k}={v}" for k, v in span.attributes.items())
             line = (
-                f"  {_YELLOW}[TRACE]{_RESET}  {indent}[{span.span_type.value}] {span.name} "
+                f"  {_YELLOW}[TRACE]{_RESET}  {indent}[{span.span_type.name.lower()}] {span.name} "
                 f"{status_str} {duration}{step_str}{attrs_str}"
             )
             print(line, file=sys.stderr, flush=True)

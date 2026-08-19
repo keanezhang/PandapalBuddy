@@ -1,19 +1,21 @@
 """pandaren/observability/hooks_adapter.py — AgentHooks → Observability 桥接适配器
 
-将 AgentHooks 统一协议的 18 个生命周期事件桥接到 Observability 四子系统：
+将 AgentHooks 统一协议的 19 个生命周期事件桥接到 Observability 四子系统
+（hooks.py 共 21 个 hook，on_skill_activated/cleared 由 SkillManager 直接处理，不桥接）：
   - Logger：结构化日志
   - Tracer：创建/关闭 trace span
   - Metrics：记录指标
   - AuditLog：审计日志（已由 Loop 硬编码调用，此处不重复）
 
-分区：
-  A. Run 生命周期（2）   — Hook 1-2
-  B. Step 生命周期（2）  — Hook 3-4
-  C. LLM 调用（2）       — Hook 5-6
-  D. Tool 执行（2）      — Hook 7-8 （合并了原 ToolHooks.execute_start/end）
-  E. Tool 管理（3）      — Hook 12-14
-  F. Harness 事件（4）   — Hook 15-18
-  G. 控制流事件（3）     — Hook 9-11 （on_halt 合并了原 on_run_halt）
+分区（编号对应 hooks.py AgentHooks 协议顺序）：
+  A. Run 生命周期（2）      — Hook 1-2
+  B. Step 生命周期（2）     — Hook 3-4
+  C. LLM 调用（2）          — Hook 5-6
+  D. Tool 执行（2）         — Hook 7-8 （合并了原 ToolHooks.execute_start/end）
+  E. Tool 管理（6）         — Hook 9-14 （register/discover/disabled/circuit_open/circuit_close/output_truncated）
+  F. 并发失败（1）          — Hook 15 （concurrent_execution_failure）
+  G. HITL 审批（2）         — Hook 16-17 （requested/resolved）
+  H. 控制流（2）            — Hook 18-19 （error/halt；on_halt 合并了原 on_run_halt）
 """
 
 from __future__ import annotations
@@ -94,27 +96,35 @@ class ObservabilityHooksAdapter:
         self._metrics = metrics
         # SDK 不计价：llm_call span 只记 token/命中等事实，不再挂金额 cost_usd
         # （价格/预算全归应用层，见 pandapal.config.llm_pricing）。
-        # 运行时状态：持有 Span 对象
-        self._run_span: Span | None = None
-        self._step_span: Span | None = None
-        self._step_start_mono: float = 0.0
-        self._llm_span: Span | None = None
-        self._llm_call_start: float = 0.0
-        self._llm_call_model: str = ""  # 暂存 on_before_llm_call 的 model，供 on_after 使用
-        self._llm_call_provider: str = ""  # 暂存 on_before_llm_call 的 provider（平台名），供 on_after 使用
-        # Bug 1 Fix: 同名工具并发调用时用列表队列（FIFO），避免 key 碰撞覆盖
-        self._tool_spans: dict[str, list[Span]] = {}
-        self._tool_call_starts: dict[str, list[float]] = {}
+        # 运行时状态：持有 Span 对象。
+        # ★ 并发隔离：所有 per-run 缓冲字段按 run_id 隔离（dict keyed by run_id）——
+        # 本 adapter 在 AgentBlueprint.materialize() 后由多个 session 的 Agent **共享同一实例**
+        # （SessionAgentPool 多会话并发，默认 max_concurrent=5）。单槽字段在并发 run 交错
+        # （LLM/tool 的 await 点）时互相覆盖：run A 的 span 被 run B 覆盖 → A 的 on_run_end
+        # 关闭的是 B 的 span，造成跨会话 span 串扰 + 泄漏 + duration 失真。
+        # run_id 隔离后各 run 互不干扰；on_run_end 统一清理本 run 的 key（防 dict 泄漏）。
+        self._run_spans: dict[str, Span] = {}                       # run_id → run span
+        self._step_spans: dict[str, Span] = {}                      # run_id → step span
+        self._step_start_mono_by_run: dict[str, float] = {}         # run_id → step start（perf_counter）
+        self._llm_spans: dict[str, Span] = {}                       # run_id → llm span（run 内串行）
+        self._llm_call_start_by_run: dict[str, float] = {}          # run_id → llm call start
+        self._llm_call_model_by_run: dict[str, str] = {}            # run_id → model（on_after 使用）
+        self._llm_call_provider_by_run: dict[str, str] = {}         # run_id → provider（平台名）
+        # Bug 1 Fix: 同名工具并发调用时用列表队列（FIFO），避免 key 碰撞覆盖；
+        # 并发多 run 下按 run_id 再分桶。
+        self._tool_spans_by_run: dict[str, dict[str, list[Span]]] = {}       # run_id → tool_name → FIFO
+        self._tool_call_starts_by_run: dict[str, dict[str, list[float]]] = {}  # run_id → tool_name → FIFO
         # Bug 2 Fix: HITL span 独立存放，不覆盖 _step_span
-        self._hitl_span: Span | None = None
+        self._hitl_spans: dict[str, Span] = {}                      # run_id → hitl span
+        self._run_start_mono_by_run: dict[str, float] = {}          # run_id → run start（perf_counter）
+        # 以下字段跨 run 共享（run_id 本身就是 key，或语义为全局）：
         self._step_n_by_run: dict[str, int] = {}   # run_id → current step_n（并发安全）
-        self._run_start_mono: float = 0.0
         self._active_run_count: int = 0  # 当前活跃 run 数（用于 Gauge 精确更新）
         self._active_run_ids: set[str] = set()  # 已计入 active 的 run_id（防止 resume 重复 +1）
 
     # ═══ Hook 1: on_run_start ═══
     def on_run_start(self, task: str, run_id: str, *, session_id: str = "") -> None:
-        self._run_start_mono = time.perf_counter()
+        self._run_start_mono_by_run[run_id] = time.perf_counter()
         task_preview = task[:80] if isinstance(task, str) else "(resume)"
         self._logger.info(f"Run 开始: {task_preview}", module="loop", run_id=run_id, session_id=session_id)
         # 仅首次启动时计数 run_total{started}，HITL resume 同一 run_id 不重复计数
@@ -124,7 +134,7 @@ class ObservabilityHooksAdapter:
             self._active_run_ids.add(run_id)
             self._active_run_count += 1
             self._metrics.set_active_runs(self._active_run_count)
-        self._run_span = self._tracer.start_span(
+        self._run_spans[run_id] = self._tracer.start_span(
             "agent.run", SpanType.RUN,
             run_id=run_id, session_id=session_id,
             attributes={"task": task[:200] if isinstance(task, str) else "(resume)"},
@@ -132,7 +142,8 @@ class ObservabilityHooksAdapter:
 
     # ═══ Hook 2: on_run_end ═══
     def on_run_end(self, run_id: str, success: bool, *, terminal_reason: str = "", session_id: str = "") -> None:
-        duration_ms = (time.perf_counter() - self._run_start_mono) * 1000 if self._run_start_mono else 0
+        duration_ms = (time.perf_counter() - self._run_start_mono_by_run.get(run_id, 0.0)) * 1000 \
+            if run_id in self._run_start_mono_by_run else 0
         # 暂停（等待人工/用户/审批）不是失败：HITL / 交互 / Plan 审批统一按「暂停」处理，
         # 否则正常暂停会被误记为 error（结束原因列为空的历史事故根因）。
         paused = terminal_reason in _PAUSE_REASONS
@@ -168,24 +179,28 @@ class ObservabilityHooksAdapter:
         # 暂停时这些子 span 是「被挂起」而非「出错」，故记 CANCELLED；异常终止才记 ERROR。
         _sub_status = SpanStatus.CANCELLED if paused else SpanStatus.ERROR
         _closed = {"paused": True} if paused else {"aborted": True}
-        if self._llm_span and self._llm_span.span_id:
-            self._tracer.end_span(self._llm_span, status=_sub_status, attributes=_closed)
-            self._llm_span = None
-            self._llm_call_start = 0.0
-        for spans in self._tool_spans.values():
+        _llm_span = self._llm_spans.get(run_id)
+        if _llm_span and _llm_span.span_id:
+            self._tracer.end_span(_llm_span, status=_sub_status, attributes=_closed)
+            self._llm_spans.pop(run_id, None)
+            self._llm_call_start_by_run.pop(run_id, None)
+        for spans in self._tool_spans_by_run.get(run_id, {}).values():
             for span in spans:
                 if span and span.span_id:
                     self._tracer.end_span(span, status=_sub_status, attributes=_closed)
-        self._tool_spans.clear()
-        self._tool_call_starts.clear()
-        if self._hitl_span and self._hitl_span.span_id:
-            self._tracer.end_span(self._hitl_span, status=_sub_status, attributes=_closed)
-            self._hitl_span = None
-        if self._step_span and self._step_span.span_id:
-            self._tracer.end_span(self._step_span, status=_sub_status, attributes=_closed)
-            self._step_span = None
+        self._tool_spans_by_run.pop(run_id, None)
+        self._tool_call_starts_by_run.pop(run_id, None)
+        _hitl_span = self._hitl_spans.get(run_id)
+        if _hitl_span and _hitl_span.span_id:
+            self._tracer.end_span(_hitl_span, status=_sub_status, attributes=_closed)
+            self._hitl_spans.pop(run_id, None)
+        _step_span = self._step_spans.get(run_id)
+        if _step_span and _step_span.span_id:
+            self._tracer.end_span(_step_span, status=_sub_status, attributes=_closed)
+            self._step_spans.pop(run_id, None)
 
-        if self._run_span and self._run_span.span_id:
+        _run_span = self._run_spans.get(run_id)
+        if _run_span and _run_span.span_id:
             # 暂停（HITL/交互/Plan 审批）= 主动挂起等待，用 CANCELLED（success 时用 OK，如 plan_complete）
             # hitl_rejected / cancelled = 人工拒绝或强杀终止，用 ERROR
             if paused:
@@ -197,9 +212,14 @@ class ObservabilityHooksAdapter:
             attrs: dict = {"success": success, "duration_ms": round(duration_ms, 1)}
             if terminal_reason:
                 attrs["terminal_reason"] = terminal_reason
-            self._tracer.end_span(self._run_span, status=span_status, attributes=attrs)
-            self._run_span = None
+            self._tracer.end_span(_run_span, status=span_status, attributes=attrs)
+            self._run_spans.pop(run_id, None)
         self._step_n_by_run.pop(run_id, None)
+        # ★ 清理本 run 的全部 per-run 缓冲（防 dict 泄漏；暂停 resume 时由下一次 on_run_start 重建）
+        self._run_start_mono_by_run.pop(run_id, None)
+        self._step_start_mono_by_run.pop(run_id, None)
+        self._llm_call_model_by_run.pop(run_id, None)
+        self._llm_call_provider_by_run.pop(run_id, None)
         # run 边界强制刷盘：把本 run 段落（含 run_total / active_runs / run_duration）
         # 落地，避免 metrics 后端的按批刷盘让裸文件停在旧快照。暂停段落（hitl/交互/plan
         # resume）同样经此收口，故每个 run/暂停/恢复边界都会刷新一次。
@@ -208,29 +228,32 @@ class ObservabilityHooksAdapter:
     # ═══ Hook 3: on_step_start ═══
     def on_step_start(self, step_n: int, run_id: str, *, session_id: str = "") -> None:
         self._step_n_by_run[run_id] = step_n
-        self._step_start_mono = time.perf_counter()
+        self._step_start_mono_by_run[run_id] = time.perf_counter()
         self._logger.info(f"Step {step_n} 开始", module="loop", run_id=run_id, step_n=step_n, session_id=session_id)
         self._metrics.inc_step_total()
-        self._step_span = self._tracer.start_span(
+        _run_span = self._run_spans.get(run_id)
+        self._step_spans[run_id] = self._tracer.start_span(
             f"step.{step_n}", SpanType.STEP,
             run_id=run_id, step_n=step_n, session_id=session_id,
-            parent_span_id=self._run_span.span_id if self._run_span else None,
+            parent_span_id=_run_span.span_id if _run_span else None,
         )
 
     # ═══ Hook 4: on_step_end ═══
     def on_step_end(self, step_n: int, run_id: str, *, session_id: str = "") -> None:
-        duration_ms = (time.perf_counter() - self._step_start_mono) * 1000 if self._step_start_mono else 0
+        duration_ms = (time.perf_counter() - self._step_start_mono_by_run.get(run_id, 0.0)) * 1000 \
+            if run_id in self._step_start_mono_by_run else 0
         self._logger.info(
             f"Step {step_n} 结束 ({duration_ms:.0f}ms)",
             module="loop", run_id=run_id, step_n=step_n, session_id=session_id,
         )
         self._metrics.observe_step_duration_ms(duration_ms)
-        if self._step_span and self._step_span.span_id:
+        _step_span = self._step_spans.get(run_id)
+        if _step_span and _step_span.span_id:
             self._tracer.end_span(
-                self._step_span,
+                _step_span,
                 attributes={"duration_ms": round(duration_ms, 1)},
             )
-            self._step_span = None
+            self._step_spans.pop(run_id, None)
         # Bug 6 Fix: 不在 on_step_end 弹出 step_n；保留到 on_run_end 或下一个 on_step_start 覆盖。
         # 这样 on_error / on_halt 在步骤间窗口期触发时仍能拿到正确的 step_n，而不是 0。
 
@@ -246,7 +269,7 @@ class ObservabilityHooksAdapter:
         session_id: str = "",
         provider: str = "",
     ) -> None:
-        self._llm_call_start = time.perf_counter()
+        self._llm_call_start_by_run[run_id] = time.perf_counter()
         messages_preview: list[dict[str, Any]] = []
         for m in messages:
             role = m.get("role", "")
@@ -356,12 +379,13 @@ class ObservabilityHooksAdapter:
         )
         # NOTE: inc_llm_call_total 已移至 on_after_llm_call，确保与 duration 计数对称
         # （HITL pause/resume 边界可能导致 on_before 被触发但 on_after 被跳过）
-        self._llm_call_model = model  # 暂存 model，供 on_after 使用
-        self._llm_call_provider = provider  # 暂存 provider（平台名），供 on_after 写 trace/metrics
-        self._llm_span = self._tracer.start_span(
+        self._llm_call_model_by_run[run_id] = model  # 暂存 model，供 on_after 使用
+        self._llm_call_provider_by_run[run_id] = provider  # 暂存 provider（平台名），供 on_after 写 trace/metrics
+        _step_span = self._step_spans.get(run_id)
+        self._llm_spans[run_id] = self._tracer.start_span(
             "llm.call", SpanType.LLM_CALL,
             run_id=run_id, step_n=self._step_n_by_run.get(run_id, 0), session_id=session_id,
-            parent_span_id=self._step_span.span_id if self._step_span else None,
+            parent_span_id=_step_span.span_id if _step_span else None,
             attributes={"message_count": len(messages), "model": model},
         )
 
@@ -371,11 +395,11 @@ class ObservabilityHooksAdapter:
         *, duration_ms: float | None = None, call_type: str | None = None,
         session_id: str = "", provider: str = "",
     ) -> None:
-        # 幂等保护：如果 _llm_call_start 已被消费（为 0），说明 on_after 已被调用过，跳过
-        if not self._llm_call_start:
+        # 幂等保护：如果 _llm_call_start_by_run 已被消费（不存在），说明 on_after 已被调用过，跳过
+        if run_id not in self._llm_call_start_by_run:
             return
-        duration_ms = (time.perf_counter() - self._llm_call_start) * 1000
-        self._llm_call_start = 0.0  # 消费后清零，防止重复记录
+        duration_ms = (time.perf_counter() - self._llm_call_start_by_run[run_id]) * 1000
+        self._llm_call_start_by_run.pop(run_id, None)  # 消费后移除，防止重复记录
         usage, tool_calls_count = {}, 0
         if isinstance(response, dict):
             usage = response.get("usage", {})
@@ -403,13 +427,17 @@ class ObservabilityHooksAdapter:
         )
         # total 和 duration 绑定在同一位置记录，确保 HITL pause/resume 不破坏对称性
         # Bug 8 Fix: _llm_call_model 在 __init__ 中已初始化，直接访问无需 getattr
-        _model = model or self._llm_call_model
-        _provider = provider or self._llm_call_provider  # 平台名，供按 provider 分账/统计
+        _model = model or self._llm_call_model_by_run.get(run_id, "")
+        _provider = provider or self._llm_call_provider_by_run.get(run_id, "")  # 平台名，供按 provider 分账/统计
+        # on_after 消费完暂存值即清理（防止 HITL pause 边界后重复读取旧值）
+        self._llm_call_model_by_run.pop(run_id, None)
+        self._llm_call_provider_by_run.pop(run_id, None)
         self._metrics.inc_llm_call_total(model=_model, provider=_provider)
         self._metrics.observe_llm_call_duration_ms(duration_ms, model=_model, provider=_provider)
         if input_tokens or output_tokens:
             self._metrics.record_tokens(input_tokens, output_tokens, model_name=_model, provider=_provider)
-        if self._llm_span and self._llm_span.span_id:
+        _llm_span = self._llm_spans.get(run_id)
+        if _llm_span and _llm_span.span_id:
             # SDK 不计价：只记 token/命中等**事实**，不挂金额 cost_usd。
             # 费用由应用层从这些事实 + 价格表自算（看板 cost_of_call / 运行时 StepGuard）。
             _attrs: dict[str, Any] = {
@@ -423,40 +451,45 @@ class ObservabilityHooksAdapter:
                 "cache_hit_ratio": round(hit_ratio, 2),
                 "tool_calls_count": tool_calls_count, "duration_ms": round(duration_ms, 1),
             }
-            self._tracer.end_span(self._llm_span, attributes=_attrs)
-            self._llm_span = None
+            self._tracer.end_span(_llm_span, attributes=_attrs)
+            self._llm_spans.pop(run_id, None)
 
     # ═══ Hook 7: on_before_tool_call（合并了原 ToolHooks.on_tool_execute_start）═══
     def on_before_tool_call(
         self, tool_name: str, args: dict[str, Any], run_id: str,
         *, step_n: int = 0, session_id: str = "",
     ) -> None:
-        # Bug 1 Fix: 用列表队列支持同名工具并发调用，FIFO 顺序对应 on_after 的完成顺序
-        self._tool_call_starts.setdefault(tool_name, []).append(time.perf_counter())
+        # Bug 1 Fix: 用列表队列支持同名工具并发调用，FIFO 顺序对应 on_after 的完成顺序；
+        # 按 run_id 分桶，隔离多 session 并发。
+        self._tool_call_starts_by_run.setdefault(run_id, {}).setdefault(tool_name, []).append(time.perf_counter())
         args_preview = str(args)[:80]
         self._logger.info(
             f"Tool 调用: {tool_name}({args_preview})",
             module="tool", run_id=run_id, step_n=self._step_n_by_run.get(run_id, 0),
             session_id=session_id,
         )
+        _step_span = self._step_spans.get(run_id)
         span = self._tracer.start_span(
             f"tool.{tool_name}", SpanType.TOOL_CALL,
             run_id=run_id, step_n=self._step_n_by_run.get(run_id, 0), session_id=session_id,
-            parent_span_id=self._step_span.span_id if self._step_span else None,
+            parent_span_id=_step_span.span_id if _step_span else None,
             attributes={"tool_name": tool_name},
         )
-        self._tool_spans.setdefault(tool_name, []).append(span)
+        self._tool_spans_by_run.setdefault(run_id, {}).setdefault(tool_name, []).append(span)
 
     # ═══ Hook 8: on_after_tool_call（合并了原 ToolHooks.on_tool_execute_end）═══
     def on_after_tool_call(
         self, tool_name: str, result: Any, run_id: str,
         *, step_n: int = 0, duration_ms: float = 0.0, session_id: str = "",
     ) -> None:
-        # Bug 1 Fix: FIFO pop(0) 从队头取出最早的 start time 和 span
-        starts = self._tool_call_starts.get(tool_name)
+        # Bug 1 Fix: FIFO pop(0) 从队头取出最早的 start time 和 span（按 run_id 分桶）
+        starts_bucket = self._tool_call_starts_by_run.get(run_id, {})
+        starts = starts_bucket.get(tool_name)
         start = starts.pop(0) if starts else 0
         if starts is not None and not starts:
-            self._tool_call_starts.pop(tool_name, None)
+            starts_bucket.pop(tool_name, None)
+        if not starts_bucket:
+            self._tool_call_starts_by_run.pop(run_id, None)
 
         duration_ms = (time.perf_counter() - start) * 1000 if start else 0
         success, result_preview = True, ""
@@ -474,10 +507,13 @@ class ObservabilityHooksAdapter:
         self._metrics.inc_tool_execute_total(tool_name, "success" if success else "error")
         self._metrics.observe_tool_execute_duration_ms(duration_ms, tool_name)
 
-        spans = self._tool_spans.get(tool_name)
+        spans_bucket = self._tool_spans_by_run.get(run_id, {})
+        spans = spans_bucket.get(tool_name)
         span = spans.pop(0) if spans else None
         if spans is not None and not spans:
-            self._tool_spans.pop(tool_name, None)
+            spans_bucket.pop(tool_name, None)
+        if not spans_bucket:
+            self._tool_spans_by_run.pop(run_id, None)
         if span and span.span_id:
             self._tracer.end_span(
                 span,
@@ -496,17 +532,19 @@ class ObservabilityHooksAdapter:
         self._metrics.inc_hitl_approval_total("need_approval")
         # Bug 2 Fix: step span 正常关闭（步骤被暂停），HITL span 存入独立字段
         # 不再把 HITL span 赋值给 _step_span，避免 on_step_end 错误地将其关闭
-        if self._step_span and self._step_span.span_id:
+        _step_span = self._step_spans.get(run_id)
+        if _step_span and _step_span.span_id:
             self._tracer.end_span(
-                self._step_span,
+                _step_span,
                 status=SpanStatus.CANCELLED,
                 attributes={"hitl_requested": True, "hitl_tool": tool_name},
             )
-            self._step_span = None
-        self._hitl_span = self._tracer.start_span(
+            self._step_spans.pop(run_id, None)
+        _run_span = self._run_spans.get(run_id)
+        self._hitl_spans[run_id] = self._tracer.start_span(
             f"hitl.{tool_name}", SpanType.HITL_CHECK,
             run_id=run_id, step_n=self._step_n_by_run.get(run_id, 0), session_id=session_id,
-            parent_span_id=self._run_span.span_id if self._run_span else None,
+            parent_span_id=_run_span.span_id if _run_span else None,
             attributes={"tool_name": tool_name},
         )
 
@@ -536,8 +574,9 @@ class ObservabilityHooksAdapter:
             session_id=session_id,
         )
         self._metrics.inc_error_total(type(error).__name__)
-        if self._step_span:
-            self._tracer.mark_span_error(self._step_span)
+        _step_span = self._step_spans.get(run_id)
+        if _step_span:
+            self._tracer.mark_span_error(_step_span)
 
     # ═══ Hook 11: on_halt ═══
     def on_halt(self, reason: str, run_id: str, *, session_id: str = "") -> None:
