@@ -19,7 +19,7 @@ Pandaren Agent SDK · Tool 模块真实测试
   - ToolRegistry.register_tool: 注册成功 / 重名 → ToolRegistrationError
   - ToolRegistry.set_hooks: HC4 第二次 → RuntimeError
   - ToolRegistry.execute_tool: O3（永不抛异常）; DEFERRED 门控（未发现 → 失败）
-  - ToolRegistry.search_tools: DEFERRED-only / 关键词模糊 / 写入 DiscoveryManager
+  - ToolRegistry.get_deferred_tool_catalog: DEFERRED-only / promote_to_discovered 写入 DiscoveryManager
   - 集成: 真实 LLM + AgentBuilder + 工具注册 + 工具调用
 
 运行方式
@@ -69,6 +69,7 @@ from pandaren.tool.types import (
 )
 from pandaren.tool import (
     Tool, ToolContext, ToolResult, DiscoveredToolEntry, ToolSchema, ToolSearchResult,
+    ToolPolicy,
 )
 from pandaren.tool.decorator import tool as tool_ns
 from pandaren.tool.exceptions import ToolRegistrationError, ToolValidationWarning
@@ -154,6 +155,10 @@ def assert_no_raises(name: str, detail: str = ""):
 
 def _make_llm_client():
     api_key = os.getenv("DASHSCOPE_API_KEY") or os.getenv("OPENAI_API_KEY", "")
+    if not api_key:
+        raise RuntimeError(
+            "集成测试需要真实 LLM：请设置 DASHSCOPE_API_KEY 或 OPENAI_API_KEY 环境变量后再运行"
+        )
     base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     model_name = "qwen-plus"
     if os.getenv("OPENAI_API_KEY") and not os.getenv("DASHSCOPE_API_KEY"):
@@ -195,12 +200,14 @@ def _make_minimal_tool(
         },
         executor=_executor,
         tier=tier,
-        sensitivity=sensitivity,
-        is_reversible=is_reversible,
-        audit_required=audit_required,
-        is_idempotent=is_idempotent,
+        policy=ToolPolicy(
+            sensitivity=sensitivity,
+            is_reversible=is_reversible,
+            audit_required=audit_required,
+            is_idempotent=is_idempotent,
+            circuit_breaker=circuit_breaker,
+        ),
         namespace=namespace,
-        circuit_breaker=circuit_breaker,
         when_to_use=when_to_use,
     )
 
@@ -335,10 +342,12 @@ def test_tool_model():
         input_schema=original_schema,
         executor=lambda ctx=None, **kw: "ok",
         tier=ToolTier.ALWAYS,
-        sensitivity=SensitivityLevel.LOW,
-        is_reversible=True,
-        audit_required=False,
-        is_idempotent=True,
+        policy=ToolPolicy(
+            sensitivity=SensitivityLevel.LOW,
+            is_reversible=True,
+            audit_required=False,
+            is_idempotent=True,
+        ),
         when_to_use="schema 保护测试场景",
     )
     # 修改原始 dict
@@ -375,10 +384,12 @@ def test_tool_model():
         output_schema=original_out_schema,
         executor=lambda ctx=None, **kw: "ok",
         tier=ToolTier.ALWAYS,
-        sensitivity=SensitivityLevel.LOW,
-        is_reversible=True,
-        audit_required=False,
-        is_idempotent=True,
+        policy=ToolPolicy(
+            sensitivity=SensitivityLevel.LOW,
+            is_reversible=True,
+            audit_required=False,
+            is_idempotent=True,
+        ),
         when_to_use="output_schema 保护测试场景",
     )
     # 修改原始 output_schema dict
@@ -406,7 +417,7 @@ def test_tool_context():
 
     # ── 默认值 ──
     print("\n  · 默认值")
-    ctx = ToolContext(run_id="r1", step_n=1, agent_id="agent.test")
+    ctx = ToolContext(run_id="r1", step_n=1, agent_id="agent.test", session_id="session-test")
     assert_true(ctx.run_id == "r1", "run_id 正确")
     assert_true(ctx.step_n == 1, "step_n 正确")
     assert_true(ctx.agent_id == "agent.test", "agent_id 正确")
@@ -418,6 +429,7 @@ def test_tool_context():
         run_id="r2",
         step_n=2,
         agent_id="agent.test",
+        session_id="session-test",
         permissions=frozenset(["file:read", "web:search"]),
     )
     assert_true(isinstance(ctx2.permissions, frozenset), "permissions 是 frozenset")
@@ -430,6 +442,7 @@ def test_tool_context():
         run_id="r3",
         step_n=3,
         agent_id="agent.test",
+        session_id="session-test",
         metadata=MappingProxyType({"key": "val"}),
     )
     assert_true(isinstance(ctx3.metadata, MappingProxyType), "metadata 是 MappingProxyType")
@@ -506,9 +519,6 @@ def test_decorator():
     @tool_ns.function(
         tier=ToolTier.ALWAYS,
         sensitivity=SensitivityLevel.LOW,
-        is_reversible=True,
-        audit_required=False,
-        is_idempotent=True,
         description="计算两数之和",
         when_to_use="需要进行整数加法时使用",
     )
@@ -534,9 +544,6 @@ def test_decorator():
     @tool_ns.function(
         tier=ToolTier.ALWAYS,
         sensitivity=SensitivityLevel.LOW,
-        is_reversible=True,
-        audit_required=False,
-        is_idempotent=True,
         description="带 ToolContext 的工具",
         when_to_use="测试 ToolContext 参数跳过行为时使用",
     )
@@ -560,9 +567,6 @@ def test_decorator():
     @tool_ns.function(
         tier=ToolTier.ALWAYS,
         sensitivity=SensitivityLevel.LOW,
-        is_reversible=True,
-        audit_required=False,
-        is_idempotent=True,
         description="ctx 参数名跳过测试",
         when_to_use="测试 ctx 参数名自动跳过时使用",
     )
@@ -585,9 +589,6 @@ def test_decorator():
     @tool_ns.function(
         tier=ToolTier.ALWAYS,
         sensitivity=SensitivityLevel.LOW,
-        is_reversible=True,
-        audit_required=False,
-        is_idempotent=True,
         description="含可选参数的工具",
         when_to_use="测试可选参数处理时使用",
     )
@@ -610,9 +611,6 @@ def test_decorator():
     @tool_ns.function(
         tier=ToolTier.DEFERRED,
         sensitivity=SensitivityLevel.MEDIUM,
-        is_reversible=True,
-        audit_required=False,
-        is_idempotent=True,
         description="延迟加载工具",
         when_to_use="需要进行网络搜索时使用（DEFERRED 延迟加载）",
     )
@@ -676,7 +674,7 @@ def test_registry():
         warnings.simplefilter("always")
         upgraded = validate_conflicts(t_irreversible)
 
-    assert_true(upgraded.sensitivity == SensitivityLevel.HIGH, "is_reversible=False+LOW → 升级为 HIGH")
+    assert_true(upgraded.policy.sensitivity == SensitivityLevel.HIGH, "is_reversible=False+LOW → 升级为 HIGH")
     assert_true(
         any(issubclass(warning.category, ToolValidationWarning) for warning in w),
         "is_reversible=False+LOW → 发出 ToolValidationWarning",
@@ -694,7 +692,7 @@ def test_registry():
         warnings.simplefilter("always")
         upgraded2 = validate_conflicts(t_critical)
 
-    assert_true(upgraded2.audit_required is True, "CRITICAL + audit_required=False → 强制 True")
+    assert_true(upgraded2.policy.audit_required is True, "CRITICAL + audit_required=False → 强制 True")
     assert_true(
         any(issubclass(warning.category, ToolValidationWarning) for warning in w2),
         "CRITICAL+audit_required=False → 发出 ToolValidationWarning",
@@ -736,7 +734,7 @@ def test_registry():
 
     @assert_no_raises("execute_tool 不存在工具名不抛异常（O3）")
     def _():
-        ctx = ToolContext(run_id="r1", step_n=1, agent_id="test.agent")
+        ctx = ToolContext(run_id="r1", step_n=1, agent_id="test.agent", session_id="session-test")
         tool_result = asyncio.run(
             create_tool_registry().execute_tool(
                 tool_name="nonexistent_tool",
@@ -755,10 +753,6 @@ def test_registry():
         @tool_ns.function(
             tier=ToolTier.DEFERRED,
             sensitivity=SensitivityLevel.LOW,
-            sensitive_permission=SensitivePermission.DATA_WRITE,
-            is_reversible=True,
-            audit_required=False,
-            is_idempotent=True,
             description="延迟工具（门控测试）",
             when_to_use="DEFERRED 门控测试场景",
         )
@@ -771,7 +765,7 @@ def test_registry():
             return f"result: {query}"
 
         reg3.register_tool(deferred_gate_tool)
-        ctx = ToolContext(run_id="r1", step_n=1, agent_id="test.agent")
+        ctx = ToolContext(run_id="r1", step_n=1, agent_id="test.agent", session_id="session-test")
         tr = await reg3.execute_tool(
             tool_name="deferred_gate_tool",
             args={"query": "hello"},
@@ -791,10 +785,6 @@ def test_registry():
         @tool_ns.function(
             tier=ToolTier.DEFERRED,
             sensitivity=SensitivityLevel.LOW,
-            sensitive_permission=SensitivePermission.DATA_WRITE,
-            is_reversible=True,
-            audit_required=False,
-            is_idempotent=True,
             description="网络搜索工具（DEFERRED 解锁测试）",
             when_to_use="DEFERRED 解锁后搜索测试场景",
         )
@@ -807,9 +797,9 @@ def test_registry():
             return f"搜索结果: {query}"
 
         reg4.register_tool(search_test_tool)
-        ctx = ToolContext(run_id="r2", step_n=1, agent_id="test.agent")
-        # 先执行 search_tools，同步标记为已发现
-        reg4.search_tools(tool_name="search_test_tool", context=ctx)
+        ctx = ToolContext(run_id="r2", step_n=1, agent_id="test.agent", session_id="session-test")
+        # 先 promote_to_discovered，解锁 DEFERRED 工具
+        reg4.promote_to_discovered(tool_name="search_test_tool", step_n=1)
         tr = await reg4.execute_tool(
             tool_name="search_test_tool",
             args={"query": "hello"},
@@ -818,19 +808,16 @@ def test_registry():
         return tr
 
     tr_unblocked = asyncio.run(_run_deferred_unblocked())
-    assert_true(tr_unblocked.success, "DEFERRED 经 search_tools 后 → execute_tool 成功")
+    assert_true(tr_unblocked.success, "DEFERRED 经 promote_to_discovered 后 → execute_tool 成功")
 
-    # ── search_tools：只搜 DEFERRED 工具 ──
-    print("\n  · search_tools: 只返回 DEFERRED 工具（data 包含工具名）")
+    # ── get_deferred_tool_catalog：只列 DEFERRED 工具 ──
+    print("\n  · get_deferred_tool_catalog: 只返回 DEFERRED 工具（name 包含工具名）")
     reg5 = create_tool_registry()
     t_always = _make_minimal_tool(name="always_tool", tier=ToolTier.ALWAYS)
 
     @tool_ns.function(
         tier=ToolTier.DEFERRED,
         sensitivity=SensitivityLevel.LOW,
-        is_reversible=True,
-        audit_required=False,
-        is_idempotent=True,
         description="可被搜索到的延迟工具",
         when_to_use="搜索工具时可发现此 DEFERRED 工具",
     )
@@ -844,17 +831,11 @@ def test_registry():
 
     reg5.register_tool(t_always)
     reg5.register_tool(searchable_deferred)
-    ctx5 = ToolContext(run_id="r5", step_n=1, agent_id="test.agent")
-    search_tr = reg5.search_tools(tool_name="searchable_deferred", context=ctx5)
-    assert_true(search_tr.success, "search_tools 返回 ToolResult.success=True")
-    assert_true(
-        "searchable_deferred" in str(search_tr.data),
-        "search_tools.data 包含 DEFERRED 工具名",
-    )
-    assert_true(
-        "always_tool" not in str(search_tr.data),
-        "search_tools.data 不包含 ALWAYS 工具名",
-    )
+    ctx5 = ToolContext(run_id="r5", step_n=1, agent_id="test.agent", session_id="session-test")
+    deferred_catalog = reg5.get_deferred_tool_catalog()
+    catalog_names = [entry["name"] for entry in deferred_catalog]
+    assert_true("searchable_deferred" in catalog_names, "catalog 包含 DEFERRED 工具名")
+    assert_true("always_tool" not in catalog_names, "catalog 不包含 ALWAYS 工具名")
     # 验证工具已被标记为已发现
     assert_true(
         "searchable_deferred" in reg5.discovery.snapshot(),
@@ -883,7 +864,7 @@ def test_registry():
             when_to_use="测试工具内部异常处理时使用",
         )
         reg6.register_tool(boom_tool)
-        ctx = ToolContext(run_id="r_exc", step_n=1, agent_id="test.agent")
+        ctx = ToolContext(run_id="r_exc", step_n=1, agent_id="test.agent", session_id="session-test")
         tr = await reg6.execute_tool(
             tool_name="boom_tool",
             args={},
@@ -906,11 +887,12 @@ def test_integration():
     print("7️⃣  集成测试（真实 LLM + 工具调用）")
     print("═" * 60)
 
-    llm_client = _make_llm_client()
     api_key = os.getenv("DASHSCOPE_API_KEY") or os.getenv("OPENAI_API_KEY", "")
     if not api_key:
         result.fail("集成测试跳过", "未配置 API Key（DASHSCOPE_API_KEY / OPENAI_API_KEY）")
         return
+
+    llm_client = _make_llm_client()
 
     # ── 构建一个带工具的 Agent ──
     print("\n  · 构建带工具的 Agent")
@@ -918,9 +900,6 @@ def test_integration():
     @tool_ns.function(
         tier=ToolTier.ALWAYS,
         sensitivity=SensitivityLevel.LOW,
-        is_reversible=True,
-        audit_required=False,
-        is_idempotent=True,
         description="整数加法计算器，返回 a+b 的结果",
         when_to_use="需要计算两整数之和时调用",
     )
@@ -936,9 +915,6 @@ def test_integration():
     @tool_ns.function(
         tier=ToolTier.ALWAYS,
         sensitivity=SensitivityLevel.LOW,
-        is_reversible=True,
-        audit_required=False,
-        is_idempotent=True,
         description="返回当前时间戳（秒级）",
         when_to_use="需要获取当前时间戳时调用",
     )

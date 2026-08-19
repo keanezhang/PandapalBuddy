@@ -187,6 +187,7 @@ def _make_ctx(**overrides) -> ToolContext:
         run_id="run-001",
         step_n=1,
         agent_id="test.agent",
+        session_id="session-test",
         trust_level=TrustLevel.SUB_AGENT,
     )
     defaults.update(overrides)
@@ -266,8 +267,9 @@ def test_models():
         ctx.run_id = "hacked"
 
     # 1.10 ToolContext 默认值
-    ctx2 = ToolContext(run_id="r1", step_n=0, agent_id="ag")
+    ctx2 = ToolContext(run_id="r1", step_n=0, agent_id="ag", session_id="s1")
     assert_true(ctx2.trust_level == TrustLevel.SUB_AGENT, "1.10 ToolContext 默认 trust_level=SUB_AGENT")
+    assert_true(ctx2.session_id == "s1", "1.10 ToolContext session_id 传入正确")
     assert_true(isinstance(ctx2.metadata, builtin_types.MappingProxyType), "1.10 ToolContext metadata=MappingProxyType")
 
     # 1.11 DiscoveredToolEntry frozen
@@ -749,15 +751,15 @@ def test_execute():
     assert_true(end_args[1].success is True,
                 "5.12 on_after_tool_call: result.success=True")
 
-    # 5.13 audit_required=True → _write_audit 被调用（Mock 审计 logger）
-    with patch("pandaren.tool.registry.logger") as mock_logger:
-        reg13 = _make_registry()
-        reg13.register_tool(_make_tool(name="audit_tool", audit_required=True,
-                                       executor=lambda ctx, **k: "audit_data"))
-        async_run(reg13.execute_tool("audit_tool", {}, _make_ctx()))
-        # _write_audit 内部使用独立的 audit logger
-        # 此处验证 registry logger.info 有记录（注册日志）
-        assert_true(mock_logger.info.called, "5.13 register 时 logger.info 被调用")
+    # 5.13 audit_required=True → policy 字段正确路由，工具可正常执行
+    reg13 = _make_registry()
+    audit_tool = _make_tool(name="audit_tool", audit_required=True,
+                            executor=lambda ctx, **k: "audit_data")
+    reg13.register_tool(audit_tool)
+    assert_true(audit_tool.audit_required is True,
+                "5.13 audit_required=True → policy 路由正确")
+    r13 = async_run(reg13.execute_tool("audit_tool", {}, _make_ctx()))
+    assert_true(r13.success is True, "5.13 audit_required=True 工具可正常执行")
 
     # 5.14 executor 返回 ToolResult 直接透传
     def passthrough_executor(ctx, **k):
@@ -776,65 +778,62 @@ def test_execute():
 # ════════════════════════════════════════════════════
 
 def test_search_tools():
-    """6. search_tools — DEFERRED 工具发现"""
+    """6. 工具发现 — promote_to_discovered / get_deferred_tool_catalog"""
     print("\n" + "═" * 60)
-    print("6.  search_tools — 工具搜索与发现")
+    print("6.  工具发现 — promote_to_discovered / get_deferred_tool_catalog")
     print("═" * 60)
 
-    # 6.1 search_tools 命中 → 工具出现在结果中
+    # 6.1 promote 命中 → 立即标记为已发现
     reg = _make_registry()
     reg.register_tool(_make_tool(name="file_reader",
                                  tier=ToolTier.DEFERRED,
                                  when_to_use="读取文件内容",
                                  description="文件读取器"))
     ctx = _make_ctx()
-    r = reg.search_tools("file_reader", ctx)
-    assert_true(r.success is True, "6.1 search_tools 命中 → success=True")
-
-    # 6.2 search_tools 命中 → 立即标记为已发现
+    reg.promote_to_discovered("file_reader", step_n=ctx.step_n)
     assert_true("file_reader" in reg.discovery.snapshot(),
-                "6.2 search_tools 命中后立即标记为已发现")
+                "6.1 promote_to_discovered 命中 → 立即标记为已发现")
 
-    # 6.3 search_tools 命中后 DEFERRED 工具可以执行（Step 7.0 通过）
+    # 6.2 catalog 列出已注册 DEFERRED 工具（可发现候选）
+    names = [d["name"] for d in reg.get_deferred_tool_catalog()]
+    assert_true("file_reader" in names, "6.2 catalog 包含 DEFERRED 工具名")
+
+    # 6.3 promote 后 DEFERRED 工具可以执行（Step 7.0 通过）
     reg2 = _make_registry()
     reg2.register_tool(_make_tool(name="searchable",
                                   tier=ToolTier.DEFERRED,
                                   when_to_use="搜索工具测试",
                                   executor=lambda ctx, **k: "found"))
-    reg2.search_tools("searchable", _make_ctx())
+    reg2.promote_to_discovered("searchable", step_n=1)
     r3 = async_run(reg2.execute_tool("searchable", {}, _make_ctx()))
-    assert_true(r3.success is True, "6.3 search 后 DEFERRED 工具执行成功")
+    assert_true(r3.success is True, "6.3 promote 后 DEFERRED 工具执行成功")
 
-    # 6.4 search_tools 无命中 → 不标记为已发现
+    # 6.4 promote 不存在的工具 → 不标记为已发现（静默跳过）
     reg4 = _make_registry()
     reg4.register_tool(_make_tool(name="invisible_tool",
                                   tier=ToolTier.DEFERRED,
                                   when_to_use="完全无关的描述"))
-    reg4.search_tools("数据库查询", _make_ctx())
+    reg4.promote_to_discovered("数据库查询", step_n=1)
     assert_true("invisible_tool" not in reg4.discovery.snapshot(),
-                "6.4 无命中时不标记为已发现")
+                "6.4 promote 不存在的名字 → 不标记为已发现")
 
-    # 6.5 search_tools 命中 → on_tool_discover hook 被触发
+    # 6.5 promote 命中 → 工具标记为已发现
     reg5 = _make_registry()
-    mock_h = MagicMock(spec=AgentHooks)
-    reg5.set_hooks(mock_h)
     reg5.register_tool(_make_tool(name="discover_hook_tool",
                                   tier=ToolTier.DEFERRED,
                                   when_to_use="hook 测试工具"))
-    reg5.search_tools("discover_hook_tool", _make_ctx())
-    # on_tool_discover 可能被调用（取决于模糊匹配结果）
-    # 此处验证已标记为已发现（比 hook 更可靠）
+    reg5.promote_to_discovered("discover_hook_tool", step_n=1)
     assert_true("discover_hook_tool" in reg5.discovery.snapshot(),
-                "6.5 search_tools 命中后工具标记为已发现")
+                "6.5 promote 命中后工具标记为已发现")
 
-    # 6.6 search_tools — ALWAYS 工具不出现在搜索结果（不需要发现）
+    # 6.6 ALWAYS 工具不出现在 catalog（无需发现）
     reg6 = _make_registry()
     reg6.register_tool(_make_tool(name="always_not_search",
                                   tier=ToolTier.ALWAYS,
                                   when_to_use="always tool"))
-    r6 = reg6.search_tools("always", _make_ctx())
-    # search_tools 只处理 DEFERRED 工具
-    assert_true(r6 is not None, "6.6 search_tools 返回 ToolResult 不为 None")
+    always_names = [d["name"] for d in reg6.get_deferred_tool_catalog()]
+    assert_true("always_not_search" not in always_names,
+                "6.6 catalog 不包含 ALWAYS 工具")
 
 
 # ════════════════════════════════════════════════════
@@ -966,14 +965,11 @@ def test_hooks_mock():
                 "8.4 on_halt: reason 包含工具名")
     assert_true(halt_kwargs["run_id"] == "run-halt", "8.4 on_halt: run_id 正确")
 
-    # 8.5 Mock registry logger — 注册时 logger.info 被调用
-    with patch("pandaren.tool.registry.logger") as mock_logger:
-        reg_log = _make_registry()
-        reg_log.register_tool(_make_tool(name="logger_test"))
-        assert_true(mock_logger.info.called, "8.5 register_tool 时 logger.info 被调用")
-        info_calls = [str(c) for c in mock_logger.info.call_args_list]
-        assert_true(any("logger_test" in c for c in info_calls),
-                    "8.5 logger.info 包含工具名 'logger_test'")
+    # 8.5 register_tool 注册成功 → 可查询到工具（注册留痕在 ToolStore）
+    reg_log = _make_registry()
+    reg_log.register_tool(_make_tool(name="logger_test"))
+    assert_true(reg_log.get_tool("logger_test") is not None,
+                "8.5 register_tool 后 get_tool 可查询到工具")
 
     # 8.6 Mock update_enabled_tools E4 — is_enabled 抛异常 → 工具视为不可用
     reg4 = _make_registry()
