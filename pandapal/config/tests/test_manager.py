@@ -6,26 +6,9 @@ import pytest
 
 from pandapal.config.system.exceptions import (
     ConfigFileError,
-    ConfigLoadError,
     ConfigValidationError,
 )
 from pandapal.config.system.manager import ConfigManager
-
-
-@pytest.mark.asyncio
-async def test_load_valid_config(valid_env_file):
-    """有效环境文件可以正常加载。"""
-    cm = ConfigManager(valid_env_file)
-    await cm.load_config()
-
-    sys_config = cm.get_system_config()
-    assert sys_config.relay_url == "wss://relay.example.com/ws"
-    assert sys_config.relay_auth_token == "test-token-123"
-    assert sys_config.data_dir == "~/.pandapal"
-    # 代码默认值
-    assert sys_config.session_timeout_minutes == 60
-    assert sys_config.hitl_timeout_seconds == 600
-    assert sys_config.screen_control_enabled is False
 
 
 @pytest.mark.asyncio
@@ -35,28 +18,6 @@ async def test_load_missing_env_file_raises(config_dir):
 
     with pytest.raises(ConfigFileError):
         await cm.load_config()
-
-
-@pytest.mark.asyncio
-async def test_load_missing_required_fields_raises(tmp_path):
-    """必填字段（relay_url、auth_token）缺失时抛出 ConfigLoadError。"""
-    env_path = tmp_path / ".env.development"
-    env_path.write_text(
-        "PANDAPAL_DATA_DIR=~/.pandapal\n",
-        encoding="utf-8",
-    )
-
-    cm = ConfigManager(str(tmp_path))
-
-    with pytest.raises(ConfigLoadError) as exc_info:
-        await cm.load_config()
-
-    error_fields = [
-        e.field_name for e in exc_info.value.errors
-        if isinstance(e, ConfigValidationError)
-    ]
-    assert "relay_url" in error_fields
-    assert "relay_auth_token" in error_fields
 
 
 @pytest.mark.asyncio

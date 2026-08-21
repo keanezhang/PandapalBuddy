@@ -14,7 +14,7 @@ SDK 给业务层的"三件套"（新人先读这段）
     │             VOLCENGINE_CONTEXT_API / OPENAI_CHAT /                │
     │             DEEPSEEK_CHAT /                                       │
     │             OPENAI_RESPONSES / VOLCENGINE_RESPONSES /             │
-    │             DASHSCOPE_RESPONSES (L2 声明，SDK 暂未实现调用)        │
+    │             DASHSCOPE_RESPONSES (L2 声明，ResponsesAPIClient 已实现)  │
     │    ─ 回答："这个端点能干什么？用哪套字段名？"                       │
     │    ─ 用法：                                                      │
     │         if client.capabilities.reasoning_control == \\             │
@@ -140,7 +140,7 @@ from .capabilities import (
     VOLCENGINE_CONTEXT_API,
     OPENAI_CHAT,
     DEEPSEEK_CHAT,
-    # Responses API 端点声明（L2 事实记录，SDK 暂未实现调用路径）
+    # Responses API 端点声明（L2 事实记录，调用路径由 responses_client.py 的 ResponsesAPIClient 实现）
     OPENAI_RESPONSES,
     VOLCENGINE_RESPONSES,
     DASHSCOPE_RESPONSES,

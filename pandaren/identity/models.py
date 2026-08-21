@@ -5,7 +5,8 @@ Identity 层是"看得见"的锚点、"管得住"的地基。
   - sensitive_permissions → 权限守卫的唯一判断依据（封闭枚举，非开放字符串）
   - 不可变性 → 保证运行时无法自我升权
 
-HC1：Identity 所有字段创建后不可修改（__slots__ + __setattr__ 拦截）
+HC1：Identity 所有字段创建后不可修改（__slots__ + __setattr__ 拦截；对常规赋值/删除有效，
+     无法对抗恶意代码直接调用 object.__setattr__/object.__delattr__，属 Python 固有局限）
 HC2：sensitive_permissions 结构深度不可变（frozenset + frozen enum）
 E4 ：必填字段缺失时拒绝创建
 S2 ：权限范围封闭（枚举值，不接受自由字符串）
@@ -23,8 +24,7 @@ O1 ：agent_id 是 trace 的必要锚点
 from __future__ import annotations
 
 import logging
-from enum import Enum
-from enum import IntEnum
+from enum import Enum, IntEnum
 
 logger = logging.getLogger("pandaren.identity.models")
 
@@ -99,14 +99,26 @@ def _validate_fields(
     """E4：Identity 必填字段校验（内部函数，不对外暴露）。
 
     调用方（Identity.__init__）已将 sensitive_permissions 规范化为 frozenset，
-    此处只做内容校验，不重复做类型检查。
+    此处做内容校验 + 三字符串字段的类型检查（R4 修复：非 str 统一 ValueError）。
 
     校验顺序：
+      0. 必填字符串字段类型检查（非 str → ValueError，统一类型错误语义，杜绝 strip() AttributeError 泄漏）
       1. 必填字符串字段非空
       2. sensitive_permissions 元素类型（确保都是 SensitivePermission 枚举）
       3. trust_level 枚举类型
       4. when_to_use 长度警告
     """
+    # ── 0. 必填字符串字段类型检查（R4）──
+    for field_name, value in (
+        ("agent_id", agent_id),
+        ("agent_name", agent_name),
+        ("when_to_use", when_to_use),
+    ):
+        if not isinstance(value, str):
+            reason = "不能为空" if value is None else f"类型错误: {type(value).__name__}，期望 str"
+            logger.error("Identity 创建失败：%s %s", field_name, reason)
+            raise ValueError(f"Identity.{field_name} {reason}")
+
     # ── 1. 必填字符串字段 ──
 
     if not agent_id or not agent_id.strip():
@@ -207,9 +219,22 @@ class Identity:
         ),
         trust_level: TrustLevel,
     ) -> None:
-        # 规范化为 frozenset
-        if not isinstance(sensitive_permissions, frozenset):
+        # 规范化为 frozenset（E4：类型检查先行，统一 ValueError 语义，不做 TypeError 泄漏）
+        if not isinstance(sensitive_permissions, (frozenset, set, list)):
+            raise ValueError(
+                f"Identity.sensitive_permissions 类型错误: "
+                f"{type(sensitive_permissions).__name__}，"
+                f"期望 frozenset/set/list[SensitivePermission]，"
+                f"不接受 None / 字符串 / dict 等。"
+            )
+        try:
             sensitive_permissions = frozenset(sensitive_permissions)
+        except TypeError as exc:
+            # 集合元素不可哈希（如 dict）→ 契约要求 ValueError
+            raise ValueError(
+                "Identity.sensitive_permissions 包含不可哈希元素"
+                "（如 dict），无法规范化为 frozenset。"
+            ) from exc
 
         # ── E4 参数校验 ──
         _validate_fields(
@@ -293,10 +318,23 @@ class Identity:
         return object.__getattribute__(self, "_trust_level")
 
     def has_permission(self, perm: SensitivePermission) -> bool:
-        """判断是否持有指定的高敏感权限。"""
+        """判断是否持有指定的高敏感权限（S2 封闭）。
+
+        仅接受 SensitivePermission 枚举实例；非枚举输入（字符串 / None / int /
+        不可哈希对象等）一律 fail-closed 返回 False，不隐式匹配、不抛 TypeError。
+        """
+        if not isinstance(perm, SensitivePermission):
+            logger.warning(
+                "has_permission 收到非枚举输入：agent_id='%s'，perm=%r（类型=%s）。"
+                "S2 要求仅接受 SensitivePermission 枚举，按未持有处理（fail-closed）。",
+                self._safe_agent_id(),
+                perm,
+                type(perm).__name__,
+            )
+            return False
         return perm in self.sensitive_permissions
 
-    # ── 等值比较 & 哈希（支持 set/dict 使用，如 SubAgentRegistry 去重）──
+    # ── 等值比较 & 哈希（全字段深比较：相等 ⟺ 五字段全等；hash 与 eq 一致）──
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Identity):

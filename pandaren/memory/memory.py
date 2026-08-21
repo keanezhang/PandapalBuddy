@@ -310,7 +310,7 @@ class Memory:
 
         # session-persistent meta（跨 run 同 session）
         # 与 WorkingMemory 的区别：WorkingMemory 是 session 级别的（同 session 跨 run 保留），
-        # session_meta 也是 session 级别的（典型用途：保存 plan_wip_path）
+        # session_meta 也是 session 级别的（典型用途：保存 plan_file_path）
         self._session_meta: dict[str, Any] = {}
         self._session_meta_id: str = ""  # 用于检测 session 切换
 
@@ -883,7 +883,7 @@ class Memory:
 
         与 WorkingMemory 的区别：
         - WorkingMemory：session 级 KV，跨 run 自然保留（同 session 切换时清空）
-        - session_meta：session 级元数据，典型用途是保存 plan_wip_path
+        - session_meta：session 级元数据，典型用途是保存 plan_file_path
         """
         self._session_meta[key] = value
 

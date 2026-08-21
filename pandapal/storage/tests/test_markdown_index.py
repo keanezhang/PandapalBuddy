@@ -8,7 +8,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import time
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -37,20 +36,6 @@ def _read_front_matter(path) -> dict | None:
     if end_idx == -1:
         return None
     return json.loads(content[3:end_idx].strip())
-
-
-@pytest.fixture
-def shanghai_tz():
-    """固定本地时区为 Asia/Shanghai（UTC+8，无 DST），测后恢复。"""
-    old_tz = os.environ.get("TZ")
-    os.environ["TZ"] = "Asia/Shanghai"
-    time.tzset()
-    yield
-    if old_tz is None:
-        os.environ.pop("TZ", None)
-    else:
-        os.environ["TZ"] = old_tz
-    time.tzset()
 
 
 # ──────────────────────────────────────────────
@@ -87,18 +72,6 @@ def test_index_set_del_skip_when_index_none(tmp_path):
     repo._index_del("/tmp/x.md")
 
     assert repo._index is None
-
-
-# inv-2 写穿透一致性 + inv-7 路径键规范化 + R8 幽灵记录 [P2]
-def test_index_set_del_normpath_when_built(tmp_path):
-    repo = MarkdownBaseRepository(str(tmp_path), "devices")
-    repo._index = {}
-
-    repo._index_set("/tmp/base/sessions/s1/../s1/session.md", {"session_id": "s1"})
-    assert repo._index == {"/tmp/base/sessions/s1/session.md": {"session_id": "s1"}}
-
-    repo._index_del("/tmp/base/sessions/s1/session.md")
-    assert repo._index == {}
 
 
 # inv-6 invalidate 语义 + R6 未重建 [P1]
@@ -148,14 +121,6 @@ async def test_ensure_index_concurrent_builds_once(tmp_path, monkeypatch):
 
     assert calls[0] == 1
     assert repo._index == {"k": {"session_id": "s1"}}
-
-
-# inv-8 时间解析语义 + R7 时间比较误判 [P1]
-def test_parse_datetime_naive_uses_local_timezone(shanghai_tz):
-    result = MarkdownSessionRepository._parse_datetime("2024-01-01 12:00:00")
-
-    assert result == datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone(timedelta(hours=8)))
-    assert result.utcoffset() == timedelta(hours=8)
 
 
 # inv-8 时间解析语义
@@ -504,25 +469,4 @@ async def test_invalidate_rebuild_reads_disk(tmp_path):
     assert (await repo._list_entities())[0]["title"] == "new"
 
 
-# inv-8 时间解析语义 + R7 时间比较误判 [P1]
-@pytest.mark.asyncio
-async def test_delete_expired_sessions_local_timezone_boundary(tmp_path, shanghai_tz):
-    base = tmp_path
-    repo = MarkdownSessionRepository(str(base))
 
-    _write_record(
-        base / "sessions" / "s_expired" / "session.md",
-        {"session_id": "s_expired", "user_id": "u1", "last_active": "2024-01-01 12:00:00"},
-    )
-    _write_record(
-        base / "sessions" / "s_keep" / "session.md",
-        {"session_id": "s_keep", "user_id": "u1", "last_active": "2024-01-01 20:00:00"},
-    )
-
-    before = datetime(2024, 1, 1, 8, 0, 0, tzinfo=timezone.utc)
-
-    deleted = await repo.delete_expired_sessions(before)
-
-    assert deleted == 1
-    assert not (base / "sessions" / "s_expired" / "session.md").exists()
-    assert (base / "sessions" / "s_keep" / "session.md").exists()

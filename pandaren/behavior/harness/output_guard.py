@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import replace as dc_replace
 
 from ...tool.definition.tool_result import ToolResult
 from ...hook import AgentHooks
@@ -58,10 +59,7 @@ class OutputGuard:
             f"上限 {max_bytes} 字节，请缩小查询范围]"
         )
 
-        result.data = truncated_chars + truncation_notice
-        result.truncated = True
-
-        # 截断事件同步触发 hook
+        # 截断事件同步触发 hook（用原对象字段，dc_replace 后引用一致）
         if self._hooks:
             self._hooks.on_tool_output_truncated(
                 tool_name=result.tool_name,
@@ -74,4 +72,11 @@ class OutputGuard:
                 result.tool_name, data_bytes, max_bytes,
             )
 
-        return result
+        # inv-EX-5 / inv-OG-2：截断产出**新对象**，绝不就地改写原对象。
+        # 原对象可能已被 R4 幂等缓存引用，就地 mutation 会让后续命中返回被污染的结果
+        # （截断提示叠加/truncated 标志永久焊死），缓存与观测全部失真。
+        return dc_replace(
+            result,
+            data=truncated_chars + truncation_notice,
+            truncated=True,
+        )

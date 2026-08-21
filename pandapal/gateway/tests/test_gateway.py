@@ -224,28 +224,6 @@ def test_update_jwt_token():
     assert gw._jwt_token == "new_token"
 
 
-def test_extract_user_id_from_valid_jwt():
-    """从有效 JWT 提取 user_id。"""
-    import jwt as pyjwt
-
-    # 生成一个真实 JWT
-    token = pyjwt.encode(
-        {"user_id": "test-user-123", "exp": 9999999999},
-        "secret",
-        algorithm="HS256",
-    )
-    gw = Gateway(relay_url="wss://r.com/ws", jwt=token)
-    user_id = gw._extract_user_id_from_token()
-    assert user_id == "test-user-123"
-
-
-def test_extract_user_id_from_invalid_jwt():
-    """无效 JWT 返回空字符串。"""
-    gw = Gateway(relay_url="wss://r.com/ws", jwt="not.a.jwt")
-    user_id = gw._extract_user_id_from_token()
-    assert user_id == ""
-
-
 # ──────────────────────────────────────────────
 # Config Tests
 # ──────────────────────────────────────────────

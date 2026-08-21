@@ -11,7 +11,7 @@
                          → 压缩后 AI 仍能"看到"最近读过的文件内容
   - ActiveSkillsSource:  从 SkillRegistry 拿当前激活技能内容
                          → 压缩后 AI 仍能"记住"当前激活了哪些技能
-  - PlanStateSource:     从 session_meta 拿 plan_wip_path 文件正文
+  - PlanStateSource:     从 session_meta 拿 plan_file_path 文件正文
                          → 压缩后 AI 仍能"知道"当前正在执行的 plan
 
 应用层可以单独启用/禁用任意 source，也可以实现自己的 PostCompactSource
@@ -351,14 +351,15 @@ class PlanStateSource:
     压缩后，AI 可能忘记当前的 plan 内容，导致后续执行偏离计划。
     这个 source 把 plan 文件的正文重新注入，确保 AI 继续按计划执行。
 
-    约定：``ctx.session_meta`` 中存在 key ``plan_wip_path``，值为 plan 文件的绝对路径。
-    （由 plan 工具在调用 ``enter_plan_mode`` 时通过 ``Memory.set_session_meta`` 写入。）
+    约定：``ctx.session_meta`` 中存在 key ``plan_file_path``，值为 plan 文件的绝对路径。
+    （由 run_core 在 ``enter_plan_mode`` 工具成功后通过 ``Memory.set_session_meta``
+    写入；``exit_plan_mode`` 提交审批时同样写入该 key。）
 
     若 key 不存在或文件读不到，返回空列表。
     """
 
     SOURCE_NAME = "plan_state"
-    META_KEY = "plan_wip_path"  # session_meta 中存放 plan 文件路径的 key
+    META_KEY = "plan_file_path"  # session_meta 中存放 plan 文件路径的 key
 
     def __init__(
         self,

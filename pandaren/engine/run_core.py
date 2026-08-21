@@ -3245,8 +3245,13 @@ def _handle_plan_action(
         if edited_plan_content and plan_file_path:
             try:
                 _write_plan(plan_file_path, edited_plan_content)
-            except OSError:
-                pass
+            except OSError as e:
+                # 用户编辑回写失败必须留痕：静默吞掉会让用户以为编辑已生效
+                # 而磁盘仍是旧计划（O2：故障隔离点 catch-log-转错误）。
+                logger.warning(
+                    "[plan-action] failed to write back edited plan to %s: %s",
+                    plan_file_path, e,
+                )
 
         from ..plan.prompt import PLAN_CONTEXT_REMINDER
         plan_manager.set_context_reminder(

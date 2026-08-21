@@ -139,8 +139,8 @@ class AgentHooks(Protocol):
     # ═══ H. Skill 生命周期（2）═══
 
     def on_skill_activated(
-        self, skill_name: str,
-        run_id: str, step_n: int, *, session_id: str = "",
+        self, skill_name: str, run_id: str, step_n: int,
+        skill_type: str = "", tools: list | None = None, *, session_id: str = "",
     ) -> None: ...
     """Skill 在 search_skills 中成功激活后触发。"""
 
@@ -259,8 +259,8 @@ class DefaultAgentHooks:
     # ═══ H. Skill 生命周期（2）═══
 
     def on_skill_activated(
-        self, skill_name: str,
-        run_id: str, step_n: int, *, session_id: str = "",
+        self, skill_name: str, run_id: str, step_n: int,
+        skill_type: str = "", tools: list | None = None, *, session_id: str = "",
     ) -> None:
         pass
 
@@ -520,12 +520,15 @@ class CompositeAgentHooks:
     # ═══ H. Skill 生命周期 ═══
 
     def on_skill_activated(
-        self, skill_name: str,
-        run_id: str, step_n: int, *, session_id: str = "",
+        self, skill_name: str, run_id: str, step_n: int,
+        skill_type: str = "", tools: list | None = None, *, session_id: str = "",
     ) -> None:
         for h in self._hooks:
             try:
-                h.on_skill_activated(skill_name, run_id, step_n, session_id=session_id)
+                h.on_skill_activated(
+                    skill_name=skill_name, skill_type=skill_type, tools=tools,
+                    run_id=run_id, step_n=step_n, session_id=session_id,
+                )
             except Exception:
                 _logger.debug("CompositeAgentHooks: on_skill_activated failed", exc_info=True)
 

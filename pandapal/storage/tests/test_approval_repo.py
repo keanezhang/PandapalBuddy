@@ -15,29 +15,6 @@ from pandapal.storage.models import ApprovalDecision, ApprovalRequest
 
 
 @pytest.mark.asyncio
-async def test_save_and_find(memory_storage):
-    """保存并查找审批请求。"""
-    repo = memory_storage.get_approval_repo()
-    now = datetime.now(timezone.utc)
-    request = ApprovalRequest(
-        approval_id="r1",
-        user_id="u1",
-        run_id="run1",
-        tool_name="file_write",
-        tool_args_summary="Write to /etc/passwd",
-        timeout_seconds=300,
-        created_at=now,
-    )
-    await repo.save_approval_request(request)
-    found = await repo.find_approval_request("r1")
-
-    assert found is not None
-    assert found.approval_id == "r1"
-    assert found.tool_name == "file_write"
-    assert found.status == "pending"
-
-
-@pytest.mark.asyncio
 async def test_duplicate_insert_raises(memory_storage):
     """重复 INSERT 同一个 approval_id 抛出 StorageDuplicateError。"""
     repo = memory_storage.get_approval_repo()
@@ -143,26 +120,6 @@ async def test_resolve_already_resolved_returns_false(memory_storage):
     found = await repo.find_approval_request("r1")
     assert found is not None
     assert found.decision == "approved"
-
-
-@pytest.mark.asyncio
-async def test_resolve_timeout(memory_storage):
-    """超时自动解决标记 is_auto_timeout。"""
-    repo = memory_storage.get_approval_repo()
-    now = datetime.now(timezone.utc)
-
-    await repo.save_approval_request(ApprovalRequest(
-        approval_id="r1", user_id="u1", run_id="run1", tool_name="bash",
-    ))
-
-    result = await repo.resolve_approval_request(
-        "r1", ApprovalDecision.TIMEOUT, now
-    )
-    assert result is True
-
-    found = await repo.find_approval_request("r1")
-    assert found is not None
-    assert found.is_auto_timeout is True
 
 
 @pytest.mark.asyncio

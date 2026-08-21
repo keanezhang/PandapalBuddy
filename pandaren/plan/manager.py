@@ -33,14 +33,16 @@ class PlanManager:
     # ── 常量 ──
     TURNS_BETWEEN_REMINDERS: int = 5  # 每 5 轮注入一次 Sparse Reminder
 
-    # ── 状态字段 ──
-    _plan_file_path: str | None = None
-    _plan_phase: str = "executing"  # "planning" | "executing"
-    _plan_mode_turns: int = 0  # Plan Mode 总轮次计数
-    _plan_mode_turns_since_reminder: int = 0  # 距上次 reminder 注入的轮次
-    _plan_mode_is_reentry: bool = False  # 是否 re-entry 状态
-    _methodology: str | None = None  # 用户自定义规划方法论
-    _plan_context_reminder: str | None = None  # 用户批准后注入的实施指引
+    def __init__(self) -> None:
+        # ── 实例状态（必须放 __init__：类级可变默认值会让所有实例共享同
+        #    一组状态，restore 一个实例会"污染"其它实例）──
+        self._plan_file_path: str | None = None
+        self._plan_phase: str = "executing"  # "planning" | "executing"
+        self._plan_mode_turns: int = 0  # Plan Mode 总轮次计数
+        self._plan_mode_turns_since_reminder: int = 0  # 距上次 reminder 注入的轮次
+        self._plan_mode_is_reentry: bool = False  # 是否 re-entry 状态
+        self._methodology: str | None = None  # 用户自定义规划方法论
+        self._plan_context_reminder: str | None = None  # 用户批准后注入的实施指引
 
     # ═══════════════════════════════════════════════════
     # 生命周期方法

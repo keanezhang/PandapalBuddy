@@ -104,7 +104,7 @@ class PostCompactContext:
     session_id / run_id:  当前 run 的标识
     working_memory:       run 级 KV 存储读取接口（最近文件 read 记录约定写在此处）
     skill_registry:       Skill 注册表（None = Agent 没启用 skill 层）
-    session_meta:         跨 run 同 session 的状态（plan_wip_path 等），传深拷贝
+    session_meta:         跨 run 同 session 的状态（plan_file_path 等），传深拷贝
     """
     session_id: str
     run_id: str

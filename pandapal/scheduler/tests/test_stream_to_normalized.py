@@ -427,14 +427,13 @@ def test_convert_permission_denied_missing_sensitive_falls_back_plain():
 # ──────────────────────────────────────────────
 # agent_halted：_HALT_REASON_MAP 友好提示 + halt_kind 注入
 # ──────────────────────────────────────────────
-# 所有 14 种 terminal_reason 的参数化测试
+# 所有 13 种 terminal_reason 的参数化测试
 # ──────────────────────────────────────────────
 
 # (terminal_reason, error | None, expected_halt_kind, expected_prefix)
 _HALT_PARAMS = [
-    # ── 14 种已知 terminal_reason ──
+    # ── 13 种已知 terminal_reason ──
     ("llm_error",              "LLM returned 429",           "llm_error",              "LLM 调用异常，Agent 已停止"),
-    ("halted_by_guard",        "",                           "budget_exhausted",       "费用保护触发，Agent 已停止"),
     ("max_steps_exceeded",     "",                           "max_steps",              "达到最大步数限制，Agent 已停止"),
     ("step_timeout",           "step 12 timed out",          "timeout",                "步骤执行超时，Agent 已停止"),
     ("total_timeout",          "300s reached",               "timeout",                "总执行超时，Agent 已停止"),

@@ -218,20 +218,32 @@ class HarnessExecutor:
         rate_result = self._rate_limiter.check(resolved_name, tool.max_calls_per_turn)
         if rate_result is not None:
             logger.debug("[harness_execute] ✗ R1 频率限制 | tool=%s", tool_name)
+            # inv-EX-3：被拒绝的调用同样留痕（HC4 不可关闭，按工具 audit_required 门控）
+            if tool.audit_required:
+                self._write_audit(tool=tool, args=args, result=rate_result, context=context)
             return rate_result
 
         # ── R3: 熔断检查 ──
         circuit_result = self._circuit_manager.check(resolved_name)
         if circuit_result is not None:
             logger.debug("[harness_execute] ✗ R3 熔断拦截 | tool=%s", tool_name)
+            if tool.audit_required:
+                self._write_audit(tool=tool, args=args, result=circuit_result, context=context)
             return circuit_result
 
         # ── R4: 幂等检查（async） ──
+        # _inflight_registered：本调用登记为 key 的执行者（check 未命中时），
+        # finally 用它收口 in-flight —— 无论成功/失败/异常，等待者都拿到结果或异常，绝不挂死。
+        _inflight_registered = False
         if not tool.is_idempotent:
             cached = await self._idempotency.check(resolved_name, args)
             if cached:
                 logger.debug("[harness_execute] R4 命中幂等缓存 | tool=%s", tool_name)
-                return dc_replace(cached, deduplicated=True)
+                hit = dc_replace(cached, deduplicated=True)
+                if tool.audit_required:
+                    self._write_audit(tool=tool, args=args, result=hit, context=context)
+                return hit
+            _inflight_registered = True
 
         # ── Hook: on_before_tool_call ──
         # 记录 on_before 是否已触发，供 finally 保证 on_after 必然配对（见下方 finally）。
@@ -251,10 +263,6 @@ class HarnessExecutor:
             # ══════════════════════════════════════════
             result = await self._registry.execute_tool(tool_name, args, context)
 
-            # ── R4: 幂等缓存写入 ──
-            if result.success and not tool.is_idempotent:
-                await self._idempotency.store(resolved_name, args, result)
-
             # ── R3: 熔断状态更新 ──
             if result.success:
                 self._circuit_manager.record_success(resolved_name)
@@ -264,6 +272,11 @@ class HarnessExecutor:
             # ── R2: 输出截断 ──
             if result.success and tool.max_output_bytes:
                 result = self._output_guard.check(result, tool.max_output_bytes)
+
+            # ── R4: 幂等缓存写入（在 R2 **之后**：缓存存最终结果，命中返回无需再截断；
+            #      且 R2 现返回新对象，store 存的引用不会再被后续截断污染）──
+            if result.success and not tool.is_idempotent:
+                await self._idempotency.store(resolved_name, args, result)
 
             # ── S6: halt 检查 ──
             should_halt = self._halt_checker.should_halt(result.success, tool.halt_on_failure)
@@ -308,6 +321,11 @@ class HarnessExecutor:
             )
             return result
         finally:
+            # R4 in-flight 收口：本调用登记为执行者后，无论成功/失败/异常，都必须
+            # 让并发等待者拿到结果或异常（complete 对 result=None 置 RuntimeError）。
+            # 正常路径 store 已消费 in-flight，此处为 no-op。
+            if _inflight_registered:
+                self._idempotency.complete(resolved_name, args, result)
             # on_before 触发后 on_after 必须配对触发，否则观测适配器的 FIFO 队列
             # （_tool_call_starts / _tool_spans）会泄漏一条 → 下一个同名工具 pop 到过期
             # start（duration 错乱）+ 悬挂 span 直到 run 结束。若 on_before→on_after
