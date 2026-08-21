@@ -186,6 +186,7 @@ class ResponsesAPIClient:
         self._previous_response_id: str | None = initial_response_id
         self._last_messages_len: int = initial_messages_len
         self._tools_hash: str | None = None
+        self._instructions_hash: str | None = None
         self._use_caching: bool = use_caching
 
         # AsyncClient 单例复用
@@ -341,9 +342,21 @@ class ResponsesAPIClient:
         if self._tools_hash is not None and new_tools_hash != self._tools_hash:
             self._invalidate("tools_changed")
 
-        # ── 检测 messages 缩短 → 冷启动 ──
+        # ── 检测 instructions（system）变化 → 冷启动 ──
+        new_instructions_hash = self._compute_instructions_hash(messages)
+        if (
+            self._instructions_hash is not None
+            and new_instructions_hash != self._instructions_hash
+        ):
+            self._invalidate("instructions_changed")
+
+        # ── 检测 messages 缩短（compact）→ 冷启动 ──
         if len(messages) < self._last_messages_len:
             self._invalidate("messages_shortened")
+
+        # ── 检测等长重发（无增量可发）→ 冷启动 ──
+        elif len(messages) == self._last_messages_len:
+            self._invalidate("no_increment")
 
         # ── 路径选择 ──
         if self._previous_response_id is None:
@@ -404,9 +417,21 @@ class ResponsesAPIClient:
         if self._tools_hash is not None and new_tools_hash != self._tools_hash:
             self._invalidate("tools_changed")
 
-        # ── 检测 messages 缩短 → 冷启动 ──
+        # ── 检测 instructions（system）变化 → 冷启动 ──
+        new_instructions_hash = self._compute_instructions_hash(messages)
+        if (
+            self._instructions_hash is not None
+            and new_instructions_hash != self._instructions_hash
+        ):
+            self._invalidate("instructions_changed")
+
+        # ── 检测 messages 缩短（compact）→ 冷启动 ──
         if len(messages) < self._last_messages_len:
             self._invalidate("messages_shortened")
+
+        # ── 检测等长重发（无增量可发）→ 冷启动 ──
+        elif len(messages) == self._last_messages_len:
+            self._invalidate("no_increment")
 
         # ── 路径选择 ──
         if self._previous_response_id is None:
@@ -526,7 +551,7 @@ class ResponsesAPIClient:
                                 yield LLMStreamChunk(delta_content=delta_text)
 
                         # response.reasoning_text.delta — 推理增量（如果有）
-                        elif event_type == "response.reasoning.delta":
+                        elif event_type == "response.reasoning_text.delta":
                             delta_text = parsed.get("delta", "")
                             if delta_text:
                                 yield LLMStreamChunk(delta_reasoning_content=delta_text)
@@ -671,7 +696,7 @@ class ResponsesAPIClient:
                             if delta_text:
                                 yield LLMStreamChunk(delta_content=delta_text)
 
-                        elif event_type == "response.reasoning.delta":
+                        elif event_type == "response.reasoning_text.delta":
                             delta_text = parsed.get("delta", "")
                             if delta_text:
                                 yield LLMStreamChunk(delta_reasoning_content=delta_text)
@@ -744,6 +769,7 @@ class ResponsesAPIClient:
             self._previous_response_id = stream_response_id
             self._last_messages_len = len(messages)
             self._tools_hash = new_tools_hash
+            self._instructions_hash = self._compute_instructions_hash(messages)
             logger.debug(
                 "ResponsesAPI stream state updated: response_id=%s "
                 "last_messages_len=%d",
@@ -943,10 +969,10 @@ class ResponsesAPIClient:
                 })
 
             elif role == "system":
-                # 额外的 system 消息（非首条）也作为 input
+                # system 消息原样保留（不改写 role / content）
                 input_items.append({
-                    "role": "user",
-                    "content": f"[System] {msg.get('content', '')}",
+                    "role": "system",
+                    "content": msg.get("content", ""),
                 })
 
         return input_items
@@ -1040,13 +1066,16 @@ class ResponsesAPIClient:
         # 更新 tools hash
         self._tools_hash = new_tools_hash
 
+        # 更新 instructions hash（system 指令指纹，用于下次调用检测变化）
+        self._instructions_hash = self._compute_instructions_hash(messages)
+
         logger.debug(
             "ResponsesAPI state updated: response_id=%s last_messages_len=%d",
             (self._previous_response_id or "")[:8] + "..." if self._previous_response_id else "none",
             self._last_messages_len,
         )
 
-    # ─── tools 变化检测 ───────────────────────────────────────
+    # ─── tools / instructions 变化检测 ────────────────────────
 
     @staticmethod
     def _compute_tools_hash(tools: list[dict[str, Any]] | None) -> str | None:
@@ -1056,6 +1085,32 @@ class ResponsesAPIClient:
         # 排序 keys 保证序列化稳定
         serialized = json.dumps(tools, sort_keys=True, ensure_ascii=False)
         return hashlib.sha256(serialized.encode("utf-8")).hexdigest()[:16]
+
+    @staticmethod
+    def _compute_instructions_hash(
+        messages: list[dict[str, Any]],
+    ) -> str | None:
+        """计算 system 指令（instructions）的内容指纹，用于检测 system 变化。
+
+        规则：
+          - 仅 role == "system" 且 content 为 str 的消息参与（list/结构化 content 不参与）
+          - 非 dict 消息跳过
+          - 顺序敏感（system 消息相对顺序变化视为不同）
+          - 无参与项返回 None
+        """
+        texts: list[str] = []
+        for msg in messages:
+            if not isinstance(msg, dict):
+                continue
+            if msg.get("role") != "system":
+                continue
+            content = msg.get("content")
+            if isinstance(content, str):
+                texts.append(content)
+        if not texts:
+            return None
+        joined = "\n".join(texts)
+        return hashlib.sha256(joined.encode("utf-8")).hexdigest()[:16]
 
     # ─── HTTP 层 ─────────────────────────────────────────────
 
@@ -1283,7 +1338,7 @@ class ResponsesAPIClient:
             "completed": "stop",
             "incomplete": "length",
             "cancelled": "stop",
-            "failed": "stop",
+            "failed": "error",
         }
         return mapping.get(status, "stop")
 

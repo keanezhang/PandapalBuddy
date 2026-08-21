@@ -519,7 +519,6 @@ class OpenAICompatibleClient:
             raise LLMNetworkError(f"LLM 网络异常: {exc}") from exc
 
         if not response.is_success:
-            print(f"    ❌ LLM API 返回 {response.status_code}: {response.text[:500]}")
             logger.error(
                 "LLM API error: status=%d model=%s url=%s body=%s",
                 response.status_code,

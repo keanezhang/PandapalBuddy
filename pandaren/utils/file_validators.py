@@ -8,8 +8,11 @@
 
 from __future__ import annotations
 
+import logging
 import pathlib
 import os
+
+logger = logging.getLogger("pandaren.utils.file_validators")
 
 # ────────────────────────────────────────────
 #  设备文件黑名单
@@ -51,6 +54,8 @@ def is_blocked_device_path(file_path: str) -> bool:
     Returns:
         True 如果路径对应一个应被阻止的设备文件。
     """
+    # 归一化尾部斜杠：/dev/zero/ 与 /dev/zero 等价（路径规范）
+    file_path = file_path.rstrip("/")
     if file_path in BLOCKED_DEVICE_PATHS:
         return True
     # /proc/self/fd/0-2 和 /proc/<pid>/fd/0-2 是 Linux stdio 别名
@@ -138,6 +143,8 @@ def validate_file_size(
     try:
         size = os.path.getsize(file_path)
     except OSError:
+        # 文件不存在/不可访问由上层 validate_input 处理；此处留痕便于排查。
+        logger.debug("validate_file_size: 无法获取文件大小: %s", file_path, exc_info=True)
         return None  # 文件不存在等由 validate_input 处理
 
     if size == 0:

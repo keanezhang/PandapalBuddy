@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import difflib
+import os
 import pathlib
 
 from .project_root import resolve_project_root
@@ -31,8 +32,13 @@ def expand_path(path: str, base_dir: pathlib.Path | None = None) -> pathlib.Path
 
     Returns:
         展开后的绝对 pathlib.Path。
+
+    Raises:
+        ValueError: path 为空字符串或全空白（fail-fast，防静默回落项目根写入）。
     """
     path = path.strip()
+    if not path:
+        raise ValueError("path 不能为空字符串或全空白")
     if path.startswith("~"):
         return pathlib.Path(path).expanduser()
     if pathlib.Path(path).is_absolute():
@@ -131,10 +137,15 @@ def validate_sandbox_path(
     """
     resolved = full_path.resolve() if full_path.exists() else full_path
     resolved_str = str(resolved)
+    # Windows 路径大小写不敏感：统一 normcase（小写 + 正斜杠转反斜杠）再比较，
+    # 否则 `c:\\windows\\...` 可绕过系统目录拦截 / `c:\\users\\...` 被误拒。POSIX 原样。
+    norm = os.path.normcase
+    r_norm = norm(resolved_str)
 
     # 1. 检查是否在系统禁止目录下
     for blocked in _BLOCKED_SYSTEM_DIRS:
-        if resolved_str == blocked or resolved_str.startswith(blocked + "/") or resolved_str.startswith(blocked + "\\"):
+        b_norm = norm(blocked)
+        if r_norm == b_norm or r_norm.startswith(b_norm + os.sep):
             return (
                 f"安全限制：禁止写入系统目录 '{blocked}' 下的文件。\n"
                 f"请将文件写入项目目录或用户主目录下。\n"
@@ -144,11 +155,11 @@ def validate_sandbox_path(
     # 2. 检查是否在项目根或用户主目录内
     root = project_root or resolve_project_root()
     home = pathlib.Path.home()
-    root_str = str(root.resolve())
-    home_str = str(home.resolve())
+    root_str = norm(str(root.resolve()))
+    home_str = norm(str(home.resolve()))
 
-    in_project = resolved_str == root_str or resolved_str.startswith(root_str + "/") or resolved_str.startswith(root_str + "\\")
-    in_home = resolved_str == home_str or resolved_str.startswith(home_str + "/") or resolved_str.startswith(home_str + "\\")
+    in_project = r_norm == root_str or r_norm.startswith(root_str + os.sep)
+    in_home = r_norm == home_str or r_norm.startswith(home_str + os.sep)
 
     if not in_project and not in_home:
         return (
