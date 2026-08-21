@@ -65,7 +65,7 @@ CLAUDE.md
 **/generated-images/
 
 # 历史开发文档（已出仓，保留在本地工作区，不入仓）
-docs/
+# docs/
 pandapal_desktop/docs/
 
 # 版权来源待确认的素材（PRD 文档与 demo 保留）
