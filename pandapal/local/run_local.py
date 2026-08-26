@@ -601,6 +601,7 @@ def _build_blueprint(
 
     # Skills — system/ 只读 (PROJECT) + user/ 可CRUD (USER)，同名时 USER 优先
     from pandaren.skill.models import SkillSource
+    from pandaren.sub_agent.models import SubAgentSource
 
     if _is_frozen():
         resources_dir = Path(sys._MEIPASS) / "pandapal" / "resources"  # type: ignore[attr-defined]
@@ -619,19 +620,22 @@ def _build_blueprint(
     )
 
     # 专家子 Agent —— 主 Agent 通过 call_agent 委派。与 Skills 对称的双层加载：
-    #   system/ 随 sidecar 打包（只读，如 test-designer / test-coder）；
-    #   user/   从持久化数据目录加载（用户自建，不受 rebuild/upgrade 影响）。
+    #   system/ 随 sidecar 打包（只读，如 test-designer / test-coder）→ BUILTIN；
+    #   user/   从持久化数据目录加载（用户自建，不受 rebuild/upgrade 影响）→ DIRECTORY。
+    #   BUILTIN < DIRECTORY：用户同名蓝图可直接覆盖内置（无需先 unregister）。
     #   蓝图 tools 字段从 app_tools 池按名过滤；空 tools → 只继承 SDK 内置文件工具。
     #   agent_name 即 call_agent 的调用键。目录不存在时 loader 静默返回空列表。
     agent_builder.sub_agents_from_dir(
         resources_dir / "agents" / "system",
         default_client,
         tools=app_tools,
+        source=SubAgentSource.BUILTIN,
     )
     agent_builder.sub_agents_from_dir(
         user_resources_dir / "agents",
         default_client,
         tools=app_tools,
+        source=SubAgentSource.DIRECTORY,
     )
 
     # 可观测性

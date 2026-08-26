@@ -27,7 +27,7 @@ from typing import Any, TYPE_CHECKING
 
 from ..agent import AgentStatus
 from .models import (
-    SubAgentSummary, SubAgentDelegateResult,
+    SubAgentSummary, SubAgentDelegateResult, SubAgentSource,
 )
 from .exceptions import SubAgentRegistrationError
 # token 估算系数：从全局 constants 统一引用
@@ -38,6 +38,7 @@ if TYPE_CHECKING:
     from ..identity.models import Identity
     from ..tool.registry import ToolRegistry
     from ..observability.audit import AuditLog
+    from ..memory.protocols import TokenEstimator
 
 logger = logging.getLogger("pandaren.sub_agent.registry")
 
@@ -74,6 +75,7 @@ class SubAgentRegistry:
         *,
         tool_registry: ToolRegistry | None = None,
         audit_log: AuditLog | None = None,
+        token_estimator: "TokenEstimator | None" = None,
         max_description_chars: int = _DEFAULT_MAX_DESCRIPTION_CHARS,
         max_delegate_depth: int = _DEFAULT_MAX_DELEGATE_DEPTH,
     ) -> None:
@@ -82,12 +84,16 @@ class SubAgentRegistry:
         self._factories: dict[str, Any] = {}
         # Identity 元数据缓存（agent_id → Identity，只读共享，供摘要/查询/审计）
         self._identities: dict[str, Identity] = {}
+        # 蓝图来源（agent_id → SubAgentSource，P2-5 覆盖优先级判定依据）
+        self._sources: dict[str, SubAgentSource] = {}
 
         # ── 配置（构造后只读）──
         self._max_description_chars = max_description_chars
         self._max_delegate_depth = max_delegate_depth
         self._tool_registry = tool_registry
         self._audit_log = audit_log
+        # Token 估算器（与上下文预算同一把尺子）；None = 摘要 token 粗估走字符数
+        self._token_estimator = token_estimator
 
         # ── B 类：运行时状态 ──
         # 健康状态（B 类，运行时可变）
@@ -124,13 +130,21 @@ class SubAgentRegistry:
     #  AR1：Agent 蓝图注册
     # ════════════════════════════════════════════════
 
-    def register(self, blueprint: Any) -> None:
+    def register(
+        self,
+        blueprint: Any,
+        *,
+        source: SubAgentSource | None = None,
+    ) -> None:
         """注册子 Agent 蓝图（仅接受蓝图，不接受 Agent 实例）。
 
         Args:
             blueprint: AgentBlueprint（或任何有 ``materialize()`` + ``identity``
               的对象）。委派时每次调用 materialize() 产出全新实例（独立
               Memory / Hooks）→ 多会话并发隔离。
+            source: 蓝图来源（P2-5 覆盖优先级判定）。不传时按
+              ``blueprint.source`` 属性读取；两者皆无 → DIRECTORY。
+              （Identity 无 source 字段——HC1 冻结，必须显式携带）
 
         agent_id 唯一性检查（已存在 → 抛 SubAgentRegistrationError）。
         元数据从 blueprint.identity 提取。
@@ -151,17 +165,54 @@ class SubAgentRegistry:
 
         agent_id = identity.agent_id
 
-        # 唯一性检查
+        # ── source 解析 ──
+        # 显式参数优先；其次蓝图自带 source 属性；缺失时默认 DIRECTORY。
+        # Identity 无 source 字段（HC1 冻结），必须从蓝图/参数读取，否则
+        # P2-5 覆盖语义在真实 Identity 上不可达（AttributeError）。
+        if source is None:
+            source = getattr(blueprint, "source", None)
+        if not isinstance(source, SubAgentSource):
+            source = SubAgentSource.DIRECTORY
+
+        # ── 唯一性检查 ──
+        # P2-5：同 agent_id 二次注册 → 按 source 优先级决定覆盖 or 冲突。
+        # 与 SubAgentSource 枚举注释「同 agent_id 注册时，高优先级覆盖低优先级」
+        # 对齐——修复注册行为与枚举语义不一致（此前一律抛错，用户无法用
+        # PROGRAMMATIC 蓝图替换 SDK 内置 DIRECTORY 蓝图）。
         if agent_id in self._factories:
-            raise SubAgentRegistrationError(
-                f"Agent '{agent_id}' 已注册。"
-                f"如需替换，请先调用 unregister('{agent_id}') 注销。"
+            existing_source = self._sources.get(agent_id, SubAgentSource.DIRECTORY)
+            if source <= existing_source:
+                raise SubAgentRegistrationError(
+                    f"Agent '{agent_id}' 已注册（source={existing_source.name}）。"
+                    f"同优先级或低优先级来源无法覆盖；"
+                    f"如需替换，请先调用 unregister('{agent_id}') 注销。"
+                )
+            logger.info(
+                "Agent '%s' 重复注册：source=%s 覆盖 source=%s",
+                agent_id, source.name, existing_source.name,
             )
+            # 先注销旧注册（身份/状态/审计），再按新蓝图注册
+            self._factories.pop(agent_id, None)
+            self._identities.pop(agent_id, None)
+            self._status.pop(agent_id, None)
+            self._sources.pop(agent_id, None)
+
+        # P2-4：agent_name 唯一性（大小写不敏感）——LLM 按 agent_name 委派，
+        # 重名 = 委派歧义（_find_agent_id_by_name 只能取第一个，静默路由错误）。
+        name_key = identity.agent_name.strip().lower()
+        for existing_id, existing_identity in self._identities.items():
+            if existing_identity.agent_name.strip().lower() == name_key:
+                raise SubAgentRegistrationError(
+                    f"Agent 名称 '{identity.agent_name}' 已被 Agent "
+                    f"'{existing_id}' 使用，无法注册 '{agent_id}'"
+                    f"（agent_name 需唯一，LLM 按名称委派）"
+                )
 
         # 存储
         self._factories[agent_id] = factory
         self._identities[agent_id] = identity
         self._status[agent_id] = AgentStatus.HEALTHY
+        self._sources[agent_id] = source
 
         # 审计
         self._write_audit_event(
@@ -171,10 +222,10 @@ class SubAgentRegistry:
                    f"trust={identity.trust_level.name}",
         )
 
-        # logger.info(
-        #     "Agent 已注册: %s [name=%s, trust=%s]",
-        #     agent_id, identity.agent_name, identity.trust_level.name,
-        # )
+        logger.debug(
+            "Agent 已注册: %s [name=%s, trust=%s]",
+            agent_id, identity.agent_name, identity.trust_level.name,
+        )
         self._version += 1
 
     # ════════════════════════════════════════════════
@@ -189,6 +240,7 @@ class SubAgentRegistry:
         self._factories.pop(agent_id, None)
         self._identities.pop(agent_id, None)
         self._status.pop(agent_id, None)
+        self._sources.pop(agent_id, None)
 
         self._write_audit_event(
             "AGENT_UNREGISTERED",
@@ -295,10 +347,9 @@ class SubAgentRegistry:
             desc = self._truncate_description(
                 identity.when_to_use, self._max_description_chars,
             )
-            # 粗略估算 token 数
-            entry_tokens = (
-                len(identity.agent_id) + len(identity.agent_name) + len(desc)
-            ) // _CHARS_PER_TOKEN + 5
+            # 估算 token 数：优先用注入的 TokenEstimator（与上下文预算同尺），
+            # 未注入时 fallback 到字符数粗估
+            entry_tokens = self._estimate_entry_tokens(identity, desc)
 
             if used_tokens + entry_tokens > budget_tokens:
                 logger.debug(
@@ -469,6 +520,18 @@ class SubAgentRegistry:
         )
 
         # ── Step 7: 执行（AG-S7: push/pop 对齐，finally 保证弹出）──
+        # P1-1：session_id 显式校验（SESSION_ID 契约 0 容忍空值）。
+        # 此前用 "delegate" 魔数兜底——子 Agent 以假 session_id 记账，
+        # 跨会话数据归属被污染且静默发生；缺失时显式失败，绝不降级。
+        session_id = getattr(context, "session_id", None)
+        if not session_id or not str(session_id).strip():
+            return ToolResult(
+                success=False,
+                error="ToolContext.session_id 缺失或为空，无法委派子 Agent"
+                      "（SESSION_ID 契约：0 容忍空值，禁止魔数兜底）",
+                tool_name="call_agent",
+            )
+
         stack.append(caller_agent_id)
         self._delegate_stack.set(stack)
         start_time = time.monotonic()
@@ -476,26 +539,32 @@ class SubAgentRegistry:
         # （见契约 §3.6 方案 B）。父取消 → 子级联取消，多层委派天然递归。
         # 父 token 由 run_core 注入 ctx.metadata["cancel_token"]。
         _parent_cancel_token = None
+        _parent_accounting_run_id = None
         _ctx_meta = getattr(context, "metadata", None)
         if _ctx_meta is not None:
             _parent_cancel_token = _ctx_meta.get("cancel_token")
-        _delegate_metadata = (
-            {"parent_cancel_token": _parent_cancel_token}
-            if _parent_cancel_token is not None
-            else None
-        )
-        if _delegate_metadata is not None:
+            # 记账 run_id 同源透传：子 Agent 的 LLM 费用归入委派链根 run 账户
+            # （StepGuard 分账身份，run_core 入口据此记账，见 run_core accounting_run_id）。
+            # 与 cancel_token 解耦：即使父 token 为 None，记账身份也必须透传。
+            _parent_accounting_run_id = _ctx_meta.get("accounting_run_id")
+        _delegate_metadata: dict | None = None
+        if _parent_cancel_token is not None:
+            _delegate_metadata = {"parent_cancel_token": _parent_cancel_token}
             logger.info(
                 "[cancel] Layer3 · delegating %s → %s WITH parent cancel token (cascade armed)",
                 caller_agent_id, agent_id,
             )
+        if _parent_accounting_run_id is not None:
+            if _delegate_metadata is None:
+                _delegate_metadata = {}
+            _delegate_metadata["accounting_run_id"] = _parent_accounting_run_id
         # 每次委派 materialize 全新实例（独立 Memory / Hooks）→ 多会话并发隔离。
         # materialize 放 try 内：失败 → ToolResult(success=False)，不向上抛。
         try:
             target_agent = factory()
             agent_result = await target_agent.run(
                 task,
-                session_id=getattr(context, "session_id", None) or "delegate",
+                session_id=session_id,
                 metadata=_delegate_metadata,
             )
         except Exception as e:
@@ -660,6 +729,33 @@ class SubAgentRegistry:
             return text
         return text[:max_chars - 3] + "..."
 
+    def _estimate_entry_tokens(self, identity: Identity, desc: str) -> int:
+        """估算单条 Agent 摘要的 token 数。
+
+        优先使用注入的 TokenEstimator（与上下文预算/压缩管线同一把尺子），
+        保证 build_agent_summaries 的 1% 预算判定与父 Agent 的量纲一致；
+        未注入或估算失败时 fallback 到字符数粗估（chars/CHARS_PER_TOKEN + 5）。
+        """
+        if self._token_estimator is not None:
+            try:
+                tokens = self._token_estimator.estimate([{
+                    "role": "system",
+                    "content": (
+                        f"agent_name: {identity.agent_name}\n"
+                        f"when_to_use: {desc}"
+                    ),
+                }])
+                if isinstance(tokens, int) and tokens > 0:
+                    return tokens
+            except Exception as e:
+                # 估算器异常不阻断摘要构建，降级到字符粗估并留痕
+                logger.debug(
+                    "TokenEstimator 估算失败（fallback 字符粗估）: %s", e,
+                )
+        return (
+            len(identity.agent_id) + len(identity.agent_name) + len(desc)
+        ) // int(_CHARS_PER_TOKEN) + 5
+
     # ════════════════════════════════════════════════
     #  审计事件写入
     # ════════════════════════════════════════════════
@@ -686,7 +782,7 @@ class SubAgentRegistry:
                 "AGENT_DELEGATE_COMPLETED": AuditEventType.AGENT_DELEGATE_COMPLETED,
                 "AGENT_DELEGATE_DENIED": AuditEventType.AGENT_DELEGATE_DENIED,
                 "AGENT_DELEGATE_CYCLE": AuditEventType.AGENT_DELEGATE_CYCLE,
-                "AGENT_DELEGATE_DEPTH_EXCEEDED": AuditEventType.AGENT_DELEGATE_CYCLE,
+                "AGENT_DELEGATE_DEPTH_EXCEEDED": AuditEventType.AGENT_DELEGATE_DEPTH_EXCEEDED,
             }
             event_type = event_type_map.get(
                 event_name, AuditEventType.AGENT_REGISTERED,
@@ -710,3 +806,4 @@ class SubAgentRegistry:
             f"healthy={sum(1 for s in self._status.values() if s == AgentStatus.HEALTHY)}, "
             f"delegate_depth={depth})"
         )
+

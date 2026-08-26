@@ -50,7 +50,6 @@ class ToolPolicy:
     read_only: bool = False
 
     # ── 输出控制 ──
-    default_result_limit: int | None = None
     supports_offset_pagination: bool = False
 
     # ── 交互型工具 ──

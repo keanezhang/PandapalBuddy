@@ -78,7 +78,7 @@ class AuditEventType(Enum):
     - Agent 管控：AGENT_TERMINATED / INPUT_BLOCKED / AUDIT_WRITE_FAILED
     - Tool 层：TOOL_EXECUTED
     - Skill 层：SKILL_INVOKED / SKILL_AUTO_TRIGGER_DENIED / SKILL_OVERRIDDEN
-    - Agent Registry 层：AGENT_REGISTERED … AGENT_DELEGATE_CYCLE
+    - Agent Registry 层：AGENT_REGISTERED … AGENT_DELEGATE_DEPTH_EXCEEDED
     """
     # ── Run 生命周期 ──
     RUN_STARTED                  = "run_started"
@@ -114,6 +114,7 @@ class AuditEventType(Enum):
     AGENT_DELEGATE_COMPLETED     = "agent_delegate_completed"   # 委派任务完成
     AGENT_DELEGATE_DENIED        = "agent_delegate_denied"      # 委派被权限拒绝
     AGENT_DELEGATE_CYCLE         = "agent_delegate_cycle"       # 检测到委派环路
+    AGENT_DELEGATE_DEPTH_EXCEEDED = "agent_delegate_depth_exceeded"  # 委派深度超限
 
 
 class AuditSeverity(Enum):

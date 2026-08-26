@@ -66,7 +66,11 @@ class StepGuard(Protocol):
         """记账本步用量并裁决是否停机。
 
         约定：
-          - 按 `run_id` 维护自己的累计状态（如净费用），据应用层策略判定是否停机。
+          - 按 `run_id`（记账身份）维护自己的累计状态（如净费用），据应用层策略判定是否停机。
+            **记账身份语义**：SDK 传入的 run_id 是本 run 的**记账 run_id**——子 Agent 委派
+            （嵌套 run）会继承父级记账身份（见 run_core 的 accounting_run_id），整棵委派树
+            的费用归入根 run 账户；守卫据此把子 Agent 花费计入根 run 的累计与裁决。
+            守卫如需以自身 run_id 记账，请勿依赖该参数（该参数已归一为根 run 身份）。
           - SDK 只读 `GuardDecision.halt`；`reason` 由 SDK 透传，不做任何解读。
           - **Fail-Safe（O3）**：实现内部任何异常都应吞掉并返回 `GuardDecision(False)`，
             绝不因守卫自身问题把 run 炸断。

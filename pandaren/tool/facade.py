@@ -16,7 +16,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import types as builtin_types
-from typing import Any
+from typing import Any, Callable
 
 from .definition.tool import Tool
 from .definition.tool_result import ToolResult
@@ -203,13 +203,13 @@ class ToolRegistry:
         返回的名称使用 safe_name，确保 system prompt 中的
         <available_tools> 与 search_tools enum 一致。
         """
-        from .safe_name import to_safe_name
+        from .safe_name import to_safe_name_parts
 
         catalog: list[dict] = []
         for full_name, tool in self._store.items():
             if tool.tier != ToolTier.ALWAYS:
                 catalog.append({
-                    "name": to_safe_name(full_name),
+                    "name": to_safe_name_parts(tool.namespace, tool.name),
                     "when_to_use": tool.when_to_use,
                 })
         catalog.sort(key=lambda d: d["name"])
@@ -265,8 +265,9 @@ class ToolRegistry:
         # 参数清洗：过滤多余参数 + 类型强制转换（在 Schema 校验之前）
         # LLM 可能传入不存在的参数名（如 time_range/num_results）或字符串类型值（如 "5"），
         # 必须先清洗再校验，否则 _validate_args 的 additionalProperties: false 会直接拒绝。
-        args, _ = self._executor._filter_extra_args(tool, args)
-        args, _ = self._executor._coerce_args(tool, args)
+        # executor.execute 内部还会再做一次执行前兜底清洗（双保险，见 executor.py）。
+        args, _ = self._executor.filter_extra_args(tool, args)
+        args, _ = self._executor.coerce_args(tool, args)
 
         # 参数 JSON Schema 校验
         validation_error = self._validate_args(tool, args)
@@ -283,7 +284,12 @@ class ToolRegistry:
 
         # 发现状态维护（使用 tool.full_name 确保 discovery key 统一）
         if result.success and tool.tier != ToolTier.ALWAYS:
-            self._discovery.discover(tool.full_name, context.step_n)
+            if self._discovery.is_discovered(tool.full_name):
+                # 已发现 → 刷新 step_n（LRU 按「最近使用」而非「首次发现」排序，
+                # 长循环中反复使用的工具不会被提前逐出）
+                self._discovery.update_step(tool.full_name, context.step_n)
+            else:
+                self._discovery.discover(tool.full_name, context.step_n)
 
         logger.info(
             "[facade] execute_tool 完成 | tool=%s | success=%s",
@@ -299,7 +305,7 @@ class ToolRegistry:
         self,
         context: ToolContext | None = None,
         *,
-        is_circuit_tripped: Any | None = None,
+        is_circuit_tripped: Callable[[str], bool] | None = None,
     ) -> None:
         """每轮开始前调用，并发重新计算所有工具的可用性。"""
         async def _check_one(name: str, tool: Tool) -> tuple[str, bool]:

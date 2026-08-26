@@ -181,7 +181,7 @@ class GateChain:
 
     @classmethod
     def default(cls) -> "GateChain":
-        """创建默认门链（5 道门，固定顺序）。"""
+        """创建默认门链（4 道门，固定顺序）。"""
         return cls(gates=[
             AllowListGate(),
             EnabledGate(),

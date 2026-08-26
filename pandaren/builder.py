@@ -442,6 +442,7 @@ class AgentBuilder:
         skills: list | None = None,
         pattern: str = "*.md",
         recursive: bool = True,
+        source: "SubAgentSource | None" = None,
     ) -> "AgentBuilder":
         """从目录加载 Agent 蓝图，构建时自动创建 sub-agent 并注册。
 
@@ -459,17 +460,23 @@ class AgentBuilder:
             skills:     父级 Skill 池（蓝图按 skills 字段过滤；None = 空池）
             pattern:    文件匹配模式（默认 "*.md"）
             recursive:  是否递归扫描子目录，默认 True
+            source:     蓝图来源标记（P2-5 覆盖优先级判定）。内置/随包目录传
+                        SubAgentSource.BUILTIN，用户目录默认 DIRECTORY。
         """
-        from .sub_agent import load_agents_from_dir
-        blueprints = load_agents_from_dir(directory, pattern=pattern, recursive=recursive)
+        from .sub_agent import SubAgentSource, load_agents_from_dir
+        if source is None:
+            source = SubAgentSource.DIRECTORY
+        blueprints = load_agents_from_dir(
+            directory, source=source, pattern=pattern, recursive=recursive
+        )
         logger.info(
-            "[user sub-agent loader] 从 '%s' 加载了 %d 个 sub-agent blueprint",
-            directory, len(blueprints),
+            "[sub-agent loader] 从 '%s' 加载了 %d 个 sub-agent blueprint (source=%s)",
+            directory, len(blueprints), source.name,
         )
         for bp in blueprints:
             self._sub_agent_blueprints.append((bp, llm_client, tools or [], skills or []))
             logger.debug(
-                "[user sub-agent loader]   agent_id='%s'  name='%s'  tools=%s  skills=%s  sub_agents=%s",
+                "[sub-agent loader]   agent_id='%s'  name='%s'  tools=%s  skills=%s  sub_agents=%s",
                 bp.agent_id, bp.agent_name, bp.tools, bp.skills, bp.sub_agents,
             )
         return self
@@ -485,14 +492,16 @@ class AgentBuilder:
             return self
 
         from pathlib import Path
-        from .sub_agent import load_agents_from_dir
+        from .sub_agent import SubAgentSource, load_agents_from_dir
 
         default_dir = Path(__file__).parent / "agents"
         if not default_dir.is_dir():
             return self
 
         try:
-            blueprints = load_agents_from_dir(str(default_dir))
+            blueprints = load_agents_from_dir(
+                str(default_dir), source=SubAgentSource.BUILTIN
+            )
         except Exception as e:
             logger.warning("[pandaren builtin sub-agents] 加载失败: %s", e)
             return self
@@ -1134,6 +1143,7 @@ class AgentBuilder:
         registry = SubAgentRegistry(
             tool_registry=tool_registry,
             audit_log=audit_log,
+            token_estimator=self._token_estimator,
         )
 
         # 使用已完成注册的父级 tool_registry 作为工具池，确保基础工具可见
@@ -1149,7 +1159,9 @@ class AgentBuilder:
                     skills_pool=skills_pool,
                     audit_log=audit_log,
                 )
-                registry.register(sub_agent)
+                # 注册到子 Agent 注册表（传入蓝图来源，供 P2-5 覆盖优先级判定；
+                # Identity 无 source 字段，必须显式携带）
+                registry.register(sub_agent, source=bp.source)
                 # 从蓝图直接计算 tool/skill 数量
                 if not bp.tools:
                     t_cnt = 0

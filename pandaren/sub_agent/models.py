@@ -26,9 +26,17 @@ class SubAgentSource(IntEnum):
 
     与 SkillSource 对称设计。
     同 agent_id 注册时，高优先级覆盖低优先级。
+
+    三级语义（2026 新增 BUILTIN 档）：
+      BUILTIN     随 SDK/产品打包的只读内置（pandaren/agents/、
+                  pandapal resources/agents/system）——最低优先级，
+                  用户目录蓝图（DIRECTORY）可直接覆盖，无需先 unregister。
+      DIRECTORY   用户目录加载（.pandapal/agents、resources/agents/user）。
+      PROGRAMMATIC 代码直接构建（AgentBuilder 手动创建）——最高优先级。
     """
-    DIRECTORY = 1      # 从 .agent/ 目录加载
-    PROGRAMMATIC = 2   # 代码直接构建（AgentBuilder 手动创建）
+    BUILTIN = 1      # 随 SDK/产品打包的只读内置蓝图
+    DIRECTORY = 2    # 用户目录加载的蓝图
+    PROGRAMMATIC = 3 # 代码直接构建（AgentBuilder 手动创建）
 
 
 # ════════════════════════════════════════════════

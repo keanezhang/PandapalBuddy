@@ -10,7 +10,7 @@ import logging
 from ..definition.tool import Tool
 from ..types import ToolTier
 from ..exceptions import ToolRegistrationError
-from ..safe_name import to_safe_name
+from ..safe_name import to_safe_name_parts
 from .validator import validate_required_fields, validate_conflicts
 
 logger = logging.getLogger("pandaren.tool.registry.store")
@@ -64,7 +64,8 @@ class ToolStore:
         self._tools[full_name] = tool
 
         # Step 6: 维护 safe_name → full_name 反向索引（用于 LLM 回调时的名称解析）
-        safe_name = to_safe_name(full_name)
+        # 用 parts 精确计算：name 本身可能含下划线，字符串 rsplit 猜测会误拆
+        safe_name = to_safe_name_parts(tool.namespace, tool.name)
         if safe_name != full_name:
             self._safe_name_index[safe_name] = full_name
 
@@ -82,8 +83,8 @@ class ToolStore:
         """获取已注册的工具定义（只读）。
 
         支持两种名称格式：
-          - 原始全名（如 "skill.天气预报"）
-          - LLM-safe 名称（如 "skill.e4d7f2a1"）
+          - 原始全名（如 "skill_天气预报"）
+          - LLM-safe 名称（如 "skill_a68661fb"）
         """
         tool = self._tools.get(name)
         if tool is not None:
@@ -100,23 +101,29 @@ class ToolStore:
         Returns:
             True 表示成功注销，False 表示工具不存在。
         """
-        full_name = self._safe_name_index.pop(name, None)
-        if full_name is None:
-            # 可能传入的就是原始全名
-            if name in self._tools:
-                full_name = name
-            else:
+        # 先解析出 Tool 对象（原始全名直接命中，safe_name 走反向索引）
+        tool = self._tools.get(name)
+        if tool is None:
+            full_name = self._safe_name_index.get(name)
+            if full_name is None:
                 return False
+            tool = self._tools.get(full_name)
+            if tool is None:
+                return False
+        else:
+            full_name = name
 
-        # 也清理 safe_name → full_name 的反向索引
-        safe_name = to_safe_name(full_name)
+        # 清理 safe_name → full_name 的反向索引（用 parts 精确计算 key）
+        safe_name = to_safe_name_parts(tool.namespace, tool.name)
         if safe_name != full_name:
             self._safe_name_index.pop(safe_name, None)
 
         del self._tools[full_name]
 
         # 清理命名空间（如果该 ns 下没有其他工具了）
-        ns = full_name.split(".", 1)[0] if "." in full_name else ""
+        # 注意：不能用 full_name.split("_") 猜 ns——name 本身可能含下划线，
+        # 必须用 Tool 对象的 namespace 字段（full_name = f"{ns}_{name}"）
+        ns = tool.namespace
         if ns and ns in self._namespace_registry:
             still_used = any(
                 t.namespace == ns for t in self._tools.values()

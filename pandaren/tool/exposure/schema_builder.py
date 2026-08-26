@@ -16,7 +16,7 @@ from ..definition.tool_schema import ToolSchema
 from ..registry.store import ToolStore
 from ..registry.discovery import DiscoveryManager
 from ..types import ToolTier
-from ..safe_name import to_safe_name
+from ..safe_name import to_safe_name_parts
 from .gate_chain import GateChain, ExposureContext
 from .budget import ToolBudget
 
@@ -99,17 +99,17 @@ class SchemaBuilder:
                 schemas_deferred_found.append(self._to_schema(tool))
                 # 延迟虽然已经发现了，但是还是需要把摘要也保留下来，主要是用于保持缓存命中不被破坏
                 deferred_unfound_summaries.append({
-                    "name": to_safe_name(full_name),
+                    "name": to_safe_name_parts(tool.namespace, tool.name),
                     "when_to_use": tool.when_to_use,
                 })
                 result.stats.deferred_found_count += 1
             else:
                 # 延迟未发现 → 仅摘要
                 deferred_unfound_summaries.append({
-                    "name": to_safe_name(full_name),
+                    "name": to_safe_name_parts(tool.namespace, tool.name),
                     "when_to_use": tool.when_to_use,
                 })
-                deferred_unfound_names.append(to_safe_name(full_name))
+                deferred_unfound_names.append(to_safe_name_parts(tool.namespace, tool.name))
                 result.stats.deferred_unfound_count += 1
 
         # 各段内按 name 字母序排序
@@ -163,7 +163,7 @@ class SchemaBuilder:
     def _to_schema(self, tool: Tool) -> ToolSchema:
         """将 Tool 转换为 ToolSchema（使用 LLM-safe 名称）。"""
         params = self._to_serializable(tool.input_schema)
-        safe_name = to_safe_name(tool.full_name)
+        safe_name = to_safe_name_parts(tool.namespace, tool.name)
         return ToolSchema(
             name=safe_name,
             description=tool.description,

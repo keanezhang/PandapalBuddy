@@ -123,13 +123,13 @@ def load_agent_from_file(
     sensitive_permissions = _parse_sensitive_permissions(frontmatter.get("permissions"))
 
     # ── tools（可选，逗号分隔的工具名；"*" = 继承全部；空 = 不用工具）──
-    tools = _parse_comma_list(frontmatter.get("tools"))
+    tools = _parse_comma_list(frontmatter.get("tools"), field_name="tools")
 
     # ── skills（可选，逗号分隔的 Skill 名；"*" = 继承全部；空 = 不从父级继承）──
-    skills = _parse_comma_list(frontmatter.get("skills"))
+    skills = _parse_comma_list(frontmatter.get("skills"), field_name="skills")
 
     # ── sub_agents（可选，逗号分隔的 agent_id；"*" = 可委派全部；空 = 不委派）──
-    sub_agents = _parse_comma_list(frontmatter.get("sub_agents"))
+    sub_agents = _parse_comma_list(frontmatter.get("sub_agents"), field_name="sub_agents")
 
     # ── model（可选，顶层字段 → 构建时映射 ModelSettings.target_model）──
     model = _as_str(frontmatter.get("model")).strip() or None
@@ -191,10 +191,10 @@ def load_agents_from_dir(
                     "Agent 蓝图加载失败（跳过）: %s → %s", file_path, e,
                 )
 
-    # logger.info(
-    #     "从 %s 加载了 %d 个 Agent 蓝图（来源: %s, 递归: %s）",
-    #     dir_path, len(blueprints), source.name, recursive,
-    # )
+    logger.debug(
+        "从 %s 加载了 %d 个 Agent 蓝图（来源: %s, 递归: %s）",
+        dir_path, len(blueprints), source.name, recursive,
+    )
     return blueprints
 
 
@@ -212,7 +212,11 @@ def _parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
         str / list / dict / bool / int / None，调用方需用 ``_as_str()`` 等
         helper 规范化。
     """
-    pattern = r"^---\s*\n(.*?)\n---\s*\n(.*)$"
+    # 兼容 UTF-8 BOM（Windows 记事本可能写入）与前导空白/空行：
+    # 此前要求 frontmatter 严格首行，BOM 或空行开头的文件会被误判为无 frontmatter
+    if text.startswith("\ufeff"):
+        text = text[1:]
+    pattern = r"^[ \t\r\n]*---\s*\n(.*?)\n---\s*\n(.*)$"
     match = re.match(pattern, text, re.DOTALL)
     if not match:
         # 无 frontmatter，整个文本作为 body
@@ -237,6 +241,8 @@ def _parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
         return {}, body
 
     frontmatter: dict[str, Any] = {str(k): v for k, v in parsed.items()}
+    # 注：source 由加载器参数注入（load_agent_from_file(source=...)），
+    # 不是 frontmatter 声明字段。
     return frontmatter, body
 
 
@@ -277,23 +283,37 @@ def _parse_trust_level(raw: str, file_path: Path) -> "TrustLevel":
     return result
 
 
-def _parse_comma_list(raw: Any) -> tuple[str, ...]:
+def _parse_comma_list(raw: Any, field_name: str = "field") -> tuple[str, ...]:
     """解析逗号分隔的字符串列表。
 
     兼容 YAML 的多种来源：
     - ``None`` / 空串 → ``()``
     - ``str`` → 按逗号切
     - ``list`` / ``tuple`` → 逐项 ``str().strip()``
+
+    Args:
+        raw: YAML 还原的原始值。
+        field_name: 字段名（仅用于告警日志定位）。
+
+    Returns:
+        规范化后的 tuple；类型不合法时返回 ``()`` 并记录 warning（不静默）。
     """
     if raw is None:
         return ()
     if isinstance(raw, (list, tuple)):
-        return tuple(str(t).strip() for t in raw if str(t).strip())
+        result = tuple(str(t).strip() for t in raw if str(t).strip())
+        return result
     if isinstance(raw, str):
         if not raw.strip():
             return ()
-        return tuple(t.strip() for t in raw.split(",") if t.strip())
-    # 其他类型（int/bool 等）不合法，静默退回空
+        result = tuple(t.strip() for t in raw.split(",") if t.strip())
+        return result
+    # 其他类型（int/bool 等）不合法：显式告警留痕，不静默退回空
+    logger.warning(
+        "frontmatter 字段 '%s' 类型不合法（type=%s），已按空列表处理。"
+        "有效类型: str（逗号分隔）或 list/tuple",
+        field_name, type(raw).__name__,
+    )
     return ()
 
 

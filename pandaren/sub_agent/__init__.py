@@ -9,7 +9,7 @@
   SubAgentSummary          — 摘要（注入 system prompt）
   SubAgentDelegateResult   — 委派执行结果
   SubAgentBlueprint        — 蓝图（从 .agent/ 目录加载的中间结构）
-  SubAgentSource           — 来源枚举（DIRECTORY < PROGRAMMATIC）
+  SubAgentSource           — 来源枚举（BUILTIN < DIRECTORY < PROGRAMMATIC）
   SubAgentRegistry         — 运行时管理器
 
 辅助工具：

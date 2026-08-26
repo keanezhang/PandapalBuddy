@@ -33,10 +33,13 @@ class ToolExecutor:
         lifecycle = tool.lifecycle
 
         # 过滤多余参数（LLM 幻觉容错）
-        args, filtered_keys = self._filter_extra_args(tool, args)
+        # 注：facade.execute_tool 在 Schema 校验前也调用 filter_extra_args/coerce_args
+        # （双保险设计：facade 为「校验前清洗」，此处为「执行前兜底」，语义不同，
+        #   facade 直接独立调用 execute 的场景依赖此处防御）
+        args, filtered_keys = self.filter_extra_args(tool, args)
 
         # 类型强制转换（LLM 可能传字符串 "20" 而非整数 20）
-        args, coerced_info = self._coerce_args(tool, args)
+        args, coerced_info = self.coerce_args(tool, args)
 
         # 构建参数修正提示（帮助 LLM 学习正确参数名和类型）
         _fix_hint = ""
@@ -93,6 +96,9 @@ class ToolExecutor:
                 result = ToolResult(success=True, data=raw, tool_name=tool_name)
 
         except Exception as exc:
+            # 故障隔离点：工具执行异常统一转为 ToolResult（O3 精神）。
+            # 白名单说明：仅捕获 Exception；SystemExit/KeyboardInterrupt 等
+            # BaseException 有意放行（不应被工具实现吞掉，需穿透至 Agent 循环）。
             error_msg = self._format_error(tool, exc)
             logger.warning("工具 '%s' 执行异常: %s", tool_name, exc)
             result = ToolResult(
@@ -126,7 +132,7 @@ class ToolExecutor:
 
         return result
 
-    def _filter_extra_args(self, tool: Tool, args: dict) -> tuple[dict, list[str]]:
+    def filter_extra_args(self, tool: Tool, args: dict) -> tuple[dict, list[str]]:
         """过滤不在 schema properties 中的参数。
         
         Returns:
@@ -146,7 +152,7 @@ class ToolExecutor:
                 args = {k: v for k, v in args.items() if k in allowed_keys}
         return args, removed
 
-    def _coerce_args(self, tool: Tool, args: dict) -> tuple[dict, list[str]]:
+    def coerce_args(self, tool: Tool, args: dict) -> tuple[dict, list[str]]:
         """根据 JSON Schema 类型声明对参数做基础类型强制转换。
 
         LLM 有时会把 integer 值序列化为字符串（如 "20" 而非 20），
@@ -222,8 +228,12 @@ class ToolExecutor:
         if formatter:
             try:
                 return formatter(exc, tool.full_name)
-            except Exception:
-                pass
+            except Exception as fmt_exc:
+                # formatter 自身异常 → 留痕后回落默认格式（不静默吞）
+                logger.warning(
+                    "[format_error] error_formatter 异常，回落默认格式 | tool=%s | formatter_err=%s",
+                    tool.full_name, fmt_exc,
+                )
         return f"工具 '{tool.full_name}' 执行失败: {type(exc).__name__}: {exc}"
 
     @staticmethod

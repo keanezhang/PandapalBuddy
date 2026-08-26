@@ -585,6 +585,18 @@ class RunCoreMixin:
         #   多 Session 并发下，每个 session 各自的 AgentLoop 实例互不干扰。
         self._current_session_id = session_id
         run_id = resume_state.run_id if resume_state else generate_id()
+        # ── 记账 run_id（StepGuard 分账身份）──
+        # 语义：本 run 的 LLM 费用按哪个 run 记账。子 Agent 是嵌套 run（独立 run_id），
+        # 但账目应归入委派链的根 run：registry.delegate 透传父级记账身份
+        # （metadata["accounting_run_id"]），此处沿用；resume 时从 RunState.metadata 兜底
+        # （暂停序列化已持久化，见 HITL/交互暂停处）；均无 → 本 run 即根（自身 run_id）。
+        # 效果：子 run（含多层嵌套）费用全部计入根 run 账户 → 归属正确（已 register_run）、
+        # 根 run 的 summary 含子费用、根 run 预算停机覆盖子 Agent 花费（should_halt 传此值）。
+        _parent_accounting_run_id = (metadata or {}).get("accounting_run_id")
+        if _parent_accounting_run_id is None and resume_state is not None:
+            _resume_meta = getattr(resume_state, "metadata", None) or {}
+            _parent_accounting_run_id = _resume_meta.get("accounting_run_id")
+        accounting_run_id = _parent_accounting_run_id or run_id
         # raw_log 的 run 上下文：run 起始阶段（含 task/user 消息）step=None；
         # 每个 step 开始时再更新为 step_n。使 raw_log 每条带 (run_id, step)，
         # 供离线分析与 traces 的 llm_call 按 key join（多 run/多会话不错位）。
@@ -969,6 +981,8 @@ class RunCoreMixin:
                             # 审批后 resume 执行的 call_agent 拿不到父 cancel_token，
                             # 子 Agent 级联链无法武装 → 用户 STOP 对子 Agent 失效。
                             "cancel_token": self._cancel_token,
+                            # 记账 run_id 透传（与主路径一致，见主路径 ctx 构建注释）。
+                            "accounting_run_id": accounting_run_id,
                         }
                         if self._skill_registry is not None:
                             _hitl_metadata_dict["skill_registry"] = self._skill_registry
@@ -1141,6 +1155,8 @@ class RunCoreMixin:
                             # 与主路径 / HITL resume 一致：下发取消令牌，令交互工具
                             # 内部 checkpoint 与子 Agent 级联链在 STOP 后能生效。
                             "cancel_token": self._cancel_token,
+                            # 记账 run_id 透传（与主路径一致，见主路径 ctx 构建注释）。
+                            "accounting_run_id": accounting_run_id,
                         }
                         if self._skill_registry is not None:
                             _int_meta["skill_registry"] = self._skill_registry
@@ -1352,9 +1368,9 @@ class RunCoreMixin:
                         all_registry_tools = self._tool_registry.list_tools()
                         filtered_tools = plan_manager.filter_tools(all_registry_tools)
                         # 使用 safe_name 确保与 ToolSchema.name 一致（兼容中文工具名）
-                        from ..tool.safe_name import to_safe_name
+                        from ..tool.safe_name import to_safe_name_parts
                         allowed_tool_names = {
-                            to_safe_name(t.full_name) for t in filtered_tools
+                            to_safe_name_parts(t.namespace, t.name) for t in filtered_tools
                         }
                         tool_schemas = [
                             ts for ts in tool_schemas
@@ -1847,6 +1863,8 @@ class RunCoreMixin:
 
                     # 通用停机守卫：SDK 不知道停机理由——把本步用量事实交给应用层 StepGuard，
                     # 由它据自身策略（如按净费用累加判断超预算）裁决 halt/继续 + 理由（纯机制）。
+                    # 传 accounting_run_id（记账身份）：子 run 的用量记入根 run 账户，
+                    # 使父 run 预算裁决覆盖整棵委派树的真实花费（父子同账）。
                     if self._step_guard is not None:
                         _ptd = usage.get("prompt_tokens_details", {}) or {}
                         _ctd = usage.get("completion_tokens_details", {}) or {}
@@ -1854,7 +1872,7 @@ class RunCoreMixin:
                         _step_creation = _ptd.get("cache_creation_input_tokens", 0) or 0
                         _step_reasoning = _ctd.get("reasoning_tokens", 0) or 0
                         _decision = self._step_guard.should_halt(
-                            run_id=run_id,
+                            run_id=accounting_run_id,
                             usage=StepUsage(
                                 model=_effective_model,
                                 input_tokens=step_input_tokens,
@@ -2166,6 +2184,9 @@ class RunCoreMixin:
                                     pending_tool_call=tc,
                                     working={},
                                     metadata={
+                                        # 记账身份随 RunState 持久化：resume 时据此延续
+                                        # 分账归属（子 run 暂停 → 审批 → resume 不丢根账户）。
+                                        "accounting_run_id": accounting_run_id,
                                         "discovered_set": self._tool_registry.discovery.snapshot(),
                                         "pending_approval": {
                                             "tool_call": tc,
@@ -2278,6 +2299,8 @@ class RunCoreMixin:
                                     pending_tool_call=tc,
                                     working={},
                                     metadata={
+                                        # 记账身份随 RunState 持久化（同 HITL 暂停）。
+                                        "accounting_run_id": accounting_run_id,
                                         "discovered_set": self._tool_registry.discovery.snapshot(),
                                         "pending_interaction": {
                                             "tool_call": tc,
@@ -2393,6 +2416,9 @@ class RunCoreMixin:
                             #   ctx.metadata["cancel_token"].raise_if_cancelled()；
                             #   子 Agent 委派处 link 父子 token（见 registry）。
                             "cancel_token": self._cancel_token,
+                            # 记账 run_id：委派处据此透传给子 Agent（见 registry.delegate），
+                            # 令整棵委派树的费用归入根 run 账户（StepGuard 分账身份）。
+                            "accounting_run_id": accounting_run_id,
                         }
 
                         # 注入 skill_registry（可选，仅在有 SkillRegistry 时注入）
