@@ -47,28 +47,36 @@ class InMemoryAuditBackend:
 
 
 class InMemoryTracerBackend:
-    """内存 Tracer 后端：存储 span 列表，供查询。"""
+    """内存 Tracer 后端：存储 span 列表，供查询。
+
+    线程安全（对齐同文件 Audit/Logger/Metrics 后端）：SessionAgentPool 多会话
+    并发 export/get/clear 时，切片赋值与迭代交错会丢数据/抛 RuntimeError。
+    """
 
     def __init__(self, max_spans: int = 10000) -> None:
         self._spans: list[Span] = []
         self._max_spans = max_spans
+        self._lock = threading.Lock()
 
     def export_span(self, span: Span) -> None:
-        self._spans.append(span)
-        if len(self._spans) > self._max_spans:
-            self._spans = self._spans[-self._max_spans:]
+        with self._lock:
+            self._spans.append(span)
+            if len(self._spans) > self._max_spans:
+                self._spans = self._spans[-self._max_spans:]
 
     def get_spans(self, run_id: str | None = None) -> list[Span]:
-        if run_id:
-            return [s for s in self._spans if s.run_id == run_id]
-        return list(self._spans)
+        with self._lock:
+            if run_id:
+                return [s for s in self._spans if s.run_id == run_id]
+            return list(self._spans)
 
     def query_spans(self, run_id: str) -> list[Span]:
         """TracerBackend Protocol 要求的查询接口。"""
         return self.get_spans(run_id)
 
     def clear(self) -> None:
-        self._spans.clear()
+        with self._lock:
+            self._spans.clear()
 
 
 class InMemoryLoggerBackend:

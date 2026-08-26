@@ -29,9 +29,9 @@ from .backend import (
     # Console
     ConsoleAuditBackend, ConsoleTracerBackend, ConsoleMetricsBackend, ConsoleLoggerBackend,
     # InMemory
-    InMemoryAuditBackend, InMemoryTracerBackend, InMemoryMetricsBackend,
+    InMemoryAuditBackend, InMemoryTracerBackend, InMemoryMetricsBackend, InMemoryLoggerBackend,
     # Markdown
-    MarkdownAuditBackend, MarkdownTracerBackend, MarkdownMetricsBackend,
+    MarkdownAuditBackend, MarkdownTracerBackend, MarkdownMetricsBackend, MarkdownLoggerBackend,
     # SQLite
     SQLiteAuditBackend, SQLiteTracerBackend, SQLiteMetricsBackend, SQLiteLoggerBackend,
 )
@@ -55,9 +55,9 @@ __all__ = [
     # Backend — Console
     "ConsoleAuditBackend", "ConsoleTracerBackend", "ConsoleMetricsBackend", "ConsoleLoggerBackend",
     # Backend — InMemory
-    "InMemoryAuditBackend", "InMemoryTracerBackend", "InMemoryMetricsBackend",
+    "InMemoryAuditBackend", "InMemoryTracerBackend", "InMemoryMetricsBackend", "InMemoryLoggerBackend",
     # Backend — Markdown
-    "MarkdownAuditBackend", "MarkdownTracerBackend", "MarkdownMetricsBackend",
+    "MarkdownAuditBackend", "MarkdownTracerBackend", "MarkdownMetricsBackend", "MarkdownLoggerBackend",
     # Backend — SQLite
     "SQLiteAuditBackend", "SQLiteTracerBackend", "SQLiteMetricsBackend", "SQLiteLoggerBackend",
     # 工厂 + 适配器

@@ -1,7 +1,7 @@
 # 06 — pandaren/engine（8-Phase ReAct 执行内核）
 
 > 模块总结 · 以代码为准（不依赖外部设计文档）· 锚点均为本次核实的 file:line
-> 生成时点：2026-08-18 @ git 09b92ff
+> 生成时点：2026-08-18 @ git 09b92ff · 锚点复核：2026-08-26（run_core.py 修复 P4/c/d 后行号漂移 +1~+34，已同步）
 
 ## 1. 模块定位与职责
 
@@ -15,7 +15,7 @@
 
 | 文件 | 行数 | 角色 |
 |------|------|------|
-| `pandaren/engine/run_core.py` | 3310 | ★ 执行内核 RunCoreMixin：`_run_stream_core()` 单一体承载 8-Phase |
+| `pandaren/engine/run_core.py` | 3337 | ★ 执行内核 RunCoreMixin：`_run_stream_core()` 单一体承载 8-Phase |
 | `pandaren/engine/loop.py` | 269 | AgentLoop：`__slots__` + `_FROZEN_ATTRS` 冻结安全组件、Prefix Cache 脏检查 |
 | `pandaren/engine/message_builder.py` | 235 | MessageBuilder：静态前缀 + 动态 reminder（PC1-PC5） |
 | `pandaren/engine/models.py` | 73 | AgentResult / RunState / StepRecord 数据模型 |
@@ -23,7 +23,7 @@
 | `pandaren/engine/stream.py` | 157 | StreamEventType 17 种 + StreamEvent（零依赖，可被上层 import） |
 | `pandaren/engine/output_parser.py` | 45 | LLM 响应解析 → FINAL / TOOL_CALLS |
 | `pandaren/engine/step_counter.py` | 54 | 只增不减的步数计数器（HC5） |
-| `pandaren/engine/tests/` | — | test_engine_mock / test_loop_integration / test_cancel_resume_mock / test_render_tool_result + ob_engine_list.md |
+| `pandaren/engine/tests/` | — | test_denied_calls_feedback.py（全部 tool_calls 被拒 → 补占位结果反馈闭环）；mock 集成测试已随 063a3fd 移除（组件级纯函数测试策略） |
 
 ---
 
@@ -40,14 +40,14 @@
 | 用户中途喊停 | 已有 | 协作式取消：CancelToken 单向闸门 + 分层检查点，取消转 `agent_cancelled` 事件而非裸异常 |
 | Agent 陷入死循环/超时/超步数 | 已有 | 有界循环 + StepCounter 只增不减 + TerminalReason 19 种终止原因可观测 |
 | 上下文塞满 | 已有 | Phase 1 压缩（compact_if_needed），压完仍超 → `CONTEXT_OVERFLOW` 终止 |
-| 多会话并发下日志/审计归属混乱 | 已有 | `_current_session_id` 每次 run 入口设置、finally 清空，审计/tracer 透传（run_core.py:329 `_audit`） |
+| 多会话并发下日志/审计归属混乱 | 已有 | `_current_session_id` 每次 run 入口设置、finally 清空，审计/tracer 透传（run_core.py:330 `_audit`） |
 | 想实现「同样上下文不重复计费」（Prefix Cache） | 已有 | 静态前缀一次序列化 + 三注册表版本脏检查，字节级稳定保命中 |
 
 ### 2b. 总体方案思路
 
 | 关键思路 | 回答的问题 | 核心机制 |
 |---------|-----------|---------|
-| 单一体内核 | "8 个 Phase 的编排逻辑放哪？" | `_run_stream_core()` 一个方法（run_core.py:512 起 2600+ 行），run/run_stream 只是它的两种消费方式 |
+| 单一体内核 | "8 个 Phase 的编排逻辑放哪？" | `_run_stream_core()` 一个方法（run_core.py:513 起 2800+ 行），run/run_stream 只是它的两种消费方式 |
 | 双出口共享内核 | "流式和非流式会不会两套逻辑两处 bug？" | 共享零代码，`run()` drain、`run_stream()` passthrough（stream.py:8） |
 | 安全闸门硬编码 | "怎么保证权限/审计不被绕过？" | HC3/HC4：check_permission / audit.write_sync 硬编码在 Phase 4/关键节点，不在可选 hook 里（loop.py:6-11） |
 | 安全组件冻结 | "运行中能换掉审计/权限对象吗？" | `__slots__` + `_FROZEN_ATTRS`，构造后 `__setattr__` 拦截（loop.py:78-154） |
@@ -62,23 +62,23 @@
 
 ```
 Phase 0       task 入口 → memory 追加 user message（+ 手动指定 Skill 预加载）
-Phase 0.5     802  Manual Skill 预校验：命中 → 直接执行返回，不走 LLM
-Phase 1       1293 Prepare — memory.compact_if_needed()（溢出 → AGENT_TERMINATED）
+Phase 0.5     817  Manual Skill 预校验：命中 → 直接执行返回，不走 LLM（invoke_skill_manually:821）
+Phase 1       1309 Prepare — memory.compact_if_needed()（溢出 → AGENT_TERMINATED）
                             — build_tool_schemas（含 ContextWindowBudget 配额）
-                            — Plan Mode 工具过滤（plan_manager.filter_tools，1349-1367）
-Phase 2       1480 Think   — LLM 调用：真增量流式 path(1503) + 非流式降级(1605)
-Phase 3       1898 Parse   — output_parser.parse()，is_final / is_empty 分支
-Phase 3.5     1994 预扫描 tool_calls — id 归一化(generate_id)、注册/权限/HITL 边界识别
-Phase 4-5     2064 Guard + HITL 串行预检
-                            — permission_guard.check_permission → deny 分支(2087)
-                            — hitl_controller.check_approval(2109)
-                            — interaction 工具（ask_user）识别(2243)
-Phase 6       2378 Act     — 构建 ToolContext.metadata（tool_store/discovery/cancel_token/
-                             skill_registry/agent_registry，2389-2404）
-                            — 并发执行 + 取消竞态（_execute_tools_with_cancel_race:359）
+                            — Plan Mode 工具过滤（plan_manager.filter_tools，1356-1368）
+Phase 2       1502 Think   — LLM 调用：真增量流式 path(1517) + 非流式降级(1625)
+Phase 3       1916 Parse   — output_parser.parse()，is_final / is_empty 分支（1918-1919）
+Phase 3.5     2009 预扫描 tool_calls — id 归一化、注册/权限/HITL 边界识别（prescan 预检 2042/2051）
+Phase 4-5     2091 Guard + HITL 串行预检
+                            — permission_guard.check_permission → deny 分支(2115 结果写入)
+                            — hitl_controller.check_approval(2119)
+                            — interaction 工具（ask_user）识别(2350)
+Phase 6       2414 Act     — 构建 ToolContext.metadata（tool_store/discovery/cancel_token/
+                             skill_registry/agent_registry）
+                            — 并发执行 + 取消竞态（_execute_tools_with_cancel_race:2478）
                             — 原子提交：assistant(tool_calls) 与工具结果一并写 memory
-                              （_commit_tool_step_atomically:450）
-Phase 7-8     2451 Halt + Observe — _tool_halt_signal / _plan_complete_signal
+                              （_commit_tool_step_atomically:451）
+Phase 7-8     2485 Halt + Observe — _tool_halt_signal / _plan_complete_signal
                             统一提交再停机；工具结果全部落 _pending_tool_results
 ```
 
@@ -86,16 +86,16 @@ Phase 7-8     2451 Halt + Observe — _tool_halt_signal / _plan_complete_signal
 
 | 方法 | 行号 | 职责 |
 |------|------|------|
-| `run_stream()` | 199 | passthrough：逐个 yield StreamEvent |
-| `run()` | 256 | drain 消费内核，永远返回 AgentResult（O3） |
-| `_audit()` | 329 | 审计写入单点，session_id 透传（HC4） |
-| `_execute_tools_with_cancel_race()` | 359 | 工具并发执行 + 取消竞速（asyncio.wait） |
-| `_commit_tool_step_atomically()` | 450 | assistant(tool_calls) 与工具结果原子写入 memory |
-| `_resolve_run_llm()` | 481 | 解析本次 run 的 LLM 客户端（子 Agent 覆盖） |
-| `_run_stream_core()` | 512 | ★ 8-Phase 单一体 |
-| `_safe_hook()` | 3124 | hook 调用单点：session_id 注入 + 异常抑制（hook 不炸主循环） |
-| `_resolve_progress_label()` | 3153 | 进度标签解析 |
-| `_rebuild_pending_approval()` | 3188 | resume 时从 RunState 重建 PendingApproval |
+| `run_stream()` | 200 | passthrough：逐个 yield StreamEvent |
+| `run()` | 257 | drain 消费内核，永远返回 AgentResult（O3） |
+| `_audit()` | 330 | 审计写入单点，session_id 透传（HC4） |
+| `_execute_tools_with_cancel_race()` | 360 | 工具并发执行 + 取消竞速（asyncio.wait） |
+| `_commit_tool_step_atomically()` | 451 | assistant(tool_calls) 与工具结果原子写入 memory |
+| `_resolve_run_llm()` | 482 | 解析本次 run 的 LLM 客户端（子 Agent 覆盖） |
+| `_run_stream_core()` | 513 | ★ 8-Phase 单一体 |
+| `_safe_hook()` | 3147 | hook 调用单点：session_id 注入 + 异常抑制（hook 不炸主循环） |
+| `_resolve_progress_label()` | 3176 | 进度标签解析 |
+| `_rebuild_pending_approval()` | 3211 | resume 时从 RunState 重建 PendingApproval |
 
 ### 3a. Step 循环与 NextStep 决策
 
@@ -120,19 +120,19 @@ Phase 7-8     2451 Halt + Observe — _tool_halt_signal / _plan_complete_signal
 
 | 维度 | `run()` | `run_stream()` |
 |------|---------|----------------|
-| 行号 | run_core.py:256 | run_core.py:199 |
+| 行号 | run_core.py:257 | run_core.py:200 |
 | 语义 | drain 消费内核 | passthrough |
 | 返回 | `AgentResult`（永不抛异常，O3） | `AsyncIterator[StreamEvent]` |
 | 消费方 | 应用层直接调用（pandapal AgentExecutor） | 需要实时进度的前端/流式消费方 |
 | 异常 | 内部转换为 AgentResult.error | 内部转换为 AGENT_HALTED / AGENT_CANCELLED 事件 |
 
-**AgentResult**（models.py:46）关键字段：`success/output/error/terminal_reason/run_id/total_steps/total_duration_ms/total_input_tokens/total_output_tokens/steps/run_state/started_at/finished_at/plan_path`。`paused` property = `not success and run_state is not None`（models.py:71）。
+**AgentResult**（models.py:47）关键字段：`success/output/error/terminal_reason/run_id/total_steps/total_duration_ms/total_input_tokens/total_output_tokens/steps/run_state/started_at/finished_at/plan_path`。`paused` property = `not success and run_state is not None`（models.py:71）。
 
 > 注：费用**不在 SDK 计算**——价格与预算归应用层（models.py:59 注释：SDK 只报 token 用量，应用层按价格表自算，如看板 cost_breakdown）。
 
 ### 4a. HITL 暂停与恢复（RunState）
 
-`RunState`（models.py:25）是 PAUSE 时的**可序列化快照**：`run_id/agent_id/step_n/session_id/messages/pending_tool_call/working/metadata`，全部字段 JSON 安全（禁存自定义对象）。`session_id` 是隔离必填字段——resume 时必须与 pause 时一致，防跨会话越权恢复（SESSION_ID 契约红线 7）。恢复路径：`resume_state` → `_rebuild_pending_approval`（run_core.py:3188）重建审批上下文。
+`RunState`（models.py:26）是 PAUSE 时的**可序列化快照**：`run_id/agent_id/step_n/session_id/messages/pending_tool_call/working/metadata`，全部字段 JSON 安全（禁存自定义对象）。`session_id` 是隔离必填字段——resume 时必须与 pause 时一致，防跨会话越权恢复（SESSION_ID 契约红线 7）。恢复路径：`resume_state` → `_rebuild_pending_approval`（run_core.py:3211）重建审批上下文。
 
 ### 4b. 协作式取消
 
@@ -140,13 +140,13 @@ Phase 7-8     2451 Halt + Observe — _tool_halt_signal / _plan_complete_signal
 - `CancelledSignal` 继承 `Exception` 而非 `asyncio.CancelledError`——后者继承 BaseException 会绕过 O3 的 `except Exception` 兜底（cancellation.py:16-19）。
 - 检查点分层（loop.py:159-163）：Layer 0 step 循环头 / Layer 1 LLM 流式逐 chunk / Layer 2-3 工具边界与子 Agent。
 - 每次 run 入口**重建 token**（loop.py:127-128），确保干净起点、AgentLoop 可复用。
-- `AgentLoop.cancel()`（loop.py:156）供外部触发；`_cancelled` 保留为只读 property 读 token（loop.py:171）。
+- `AgentLoop.cancel()`（loop.py:156）供外部触发；`_cancelled` 保留为只读 property 读 token（loop.py:172）。
 
 ---
 
 ## 5. 流式事件（StreamEventType，17 种）
 
-> ⚠️ stream.py:19 的 docstring 写「16 种」是**过时注释**——实际枚举 17 个（新增 `PLAN_APPROVAL_REQUESTED` 或 `LLM_REASONING_TOKEN` 时未同步注释）。
+> stream.py:19 docstring 已同步为「17 种」（2026-08-26 复核）。
 
 | # | 事件 | 值 | 携带数据 | 层级 |
 |---|------|----|---------|------|
@@ -168,7 +168,7 @@ Phase 7-8     2451 Halt + Observe — _tool_halt_signal / _plan_complete_signal
 | 16 | `HANDOFF` | handoff | target_agent_id（P2 预留） | 预留 |
 | 17 | `PLAN_APPROVAL_REQUESTED` | plan_approval_requested | plan_path + plan_content | Plan Mode |
 
-`StreamEvent`（stream.py:130）frozen dataclass：`type/data/run_id/agent_id/step_n(-1=Run 级)/tool_name`。设计原则：最小传输单元、不携带可变对象引用、枚举可扩展（stream.py:5-9）。
+`StreamEvent`（stream.py:131）frozen dataclass：`type/data/run_id/agent_id/step_n(-1=Run 级)/tool_name`。设计原则：最小传输单元、不携带可变对象引用、枚举可扩展（stream.py:5-8）。
 
 ---
 
@@ -197,7 +197,7 @@ MessageBuilder（message_builder.py:41）把 Memory 的 messages + 工具/技能
 
 | 决策 | 选择 | 理由 / 代价 |
 |------|------|------------|
-| 单一体 vs 分阶段类 | `_run_stream_core` 单方法 2600+ 行 | 8-Phase 状态全在局部变量，避免跨对象传状态；代价是方法超大、新人不友好 |
+| 单一体 vs 分阶段类 | `_run_stream_core` 单方法 2800+ 行 | 8-Phase 状态全在局部变量，避免跨对象传状态；代价是方法超大、新人不友好 |
 | 双出口共享内核 | run()/run_stream() 零共享代码 | 同一逻辑不会分叉成两套行为；代价是 run() 必须先消费流 |
 | 安全闸门硬编码 vs hook | HC3/HC4 在主路径 | hook 可能被覆盖/遗漏，硬编码保证不可绕过；代价是扩展点灵活性下降 |
 | 安全组件冻结 | `__slots__` + `_FROZEN_ATTRS`（12 个） | 防运行期替换审计/权限/工具注册表；静态缓存字段（_static_context_str）故意不冻结，因为 Skill/Tool 增删后需重建（loop.py:74-77） |
@@ -217,7 +217,7 @@ MessageBuilder（message_builder.py:41）把 Memory 的 messages + 工具/技能
 | 工具返回强制停止信号 | 工具主动终止 | `TOOL_HALT`，统一提交再停机（Phase 7-8） |
 | 熔断器触发 | 连续失败过多 | `CIRCUIT_BREAKER` 立即终止（R3） |
 | LLM 输出雷同死循环 | 浪费 token | `LLM_LOOP_DETECTED` 终止 |
-| hook 抛异常 | 不应炸主循环 | `_safe_hook` 异常抑制（run_core.py:3124） |
+| hook 抛异常 | 不应炸主循环 | `_safe_hook` 异常抑制（run_core.py:3147） |
 | 审计写入失败 | 审计不可丢 | `_audit` 走 AuditLog.write_sync → AuditWriteError 不可忽略（HC4） |
 | 工具并发执行中取消 | 部分工具已跑 | `_execute_tools_with_cancel_race` 竞速，结果不落 memory（原子提交保护） |
 
@@ -227,11 +227,10 @@ MessageBuilder（message_builder.py:41）把 Memory 的 messages + 工具/技能
 
 | 测试文件 | 覆盖重点 |
 |---------|---------|
-| `tests/test_engine_mock.py` (37KB) | Mock LLM 下的 8-Phase 主路径、NextStep 决策、终止原因 |
-| `tests/test_loop_integration.py` (65KB) | 集成：真实 Memory/Tool 下的完整循环、HITL 暂停恢复 |
-| `tests/test_cancel_resume_mock.py` (14.8KB) | 取消语义 + RunState 快照恢复 |
-| `tests/test_render_tool_result.py` (7.9KB) | 工具结果渲染格式 |
-| `tests/ob_engine_list.md` (7.9KB) | 观测清单（engine 侧可观测点盘点） |
+| `tests/test_denied_calls_feedback.py` | 全部 tool_calls 被拒 → 补占位结果原子提交 → 第二轮 LLM 收到拒绝反馈（2026-08-26 修复验证） |
+| `tests/test_cancel_resume_mock.py` | 取消语义 + RunState 快照恢复 |
+| `tests/test_render_tool_result.py` | 工具结果渲染格式 |
+| ~~test_engine_mock / test_loop_integration / ob_engine_list.md~~ | 随 063a3fd 移除（mock 集成测试策略废弃，改组件级纯函数测试） |
 
 ---
 

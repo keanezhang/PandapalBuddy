@@ -658,6 +658,13 @@ class Memory:
         │ Layer 4: 写 boundary + 通知冷启动 + PostCompact 回注  │
         └─────────────────────────────────────────────────────┘
 
+        ⚠️ L4 预算张力（设计内行为）：PostCompact 回注发生在切分**之后**——
+        Layer 2 的 ``target_tokens`` 只扣了压缩前的旧 attachments 开销，而
+        Layer 4 收集的新回注（默认预算 50K）会在 ``estimate_tokens`` 里重新计入。
+        若 system + kept + 新回注 重新超过阈值，本方法返回 overflow（int），
+        由调用方（AgentLoop）终止——这是"最后一层防线"。应用层如频繁触发，
+        应调小 ``post_compact_sources`` 各自的 token 预算，或提高压缩阈值。
+
         Returns:
             None — 无需压缩，或压缩成功且 < 阈值
             int  — 压缩后仍超过阈值的 token 数（Context Overflow，调用方应终止）
@@ -798,15 +805,38 @@ class Memory:
 
         # 重新估算（含 attachments）；仍超阈值则返回 overflow
         final_total = self.estimate_tokens()
-        logger.info(
-            "Memory.compact: %d → %d tokens (threshold %d, kept %d msgs, "
-            "dropped %d msgs, summary=%s, %d attachments)",
-            current_tokens, final_total, self._compact_threshold,
-            len(kept), len(dropped),
-            "yes" if summary_msg else "no",
-            len(self._post_compact_attachments),
-        )
-        return final_total if final_total > self._compact_threshold else None
+        overflow = final_total > self._compact_threshold
+        if overflow:
+            # 归因：区分"PostCompact 回注把总量推超阈值"与"压缩本身不足"。
+            # 前者见 docstring 的 L4 预算张力——应用层调小回注预算/提高阈值即可；
+            # 后者意味着上下文预算配置过紧，压缩已无计可施，应终止。
+            without_attachments = final_total - self._token_estimator.estimate(
+                self._build_attachment_messages()
+            )
+            cause = (
+                "post-compact reinjection pushed over threshold"
+                if without_attachments <= self._compact_threshold
+                else "compaction itself insufficient"
+            )
+            logger.warning(
+                "Memory.compact: OVERFLOW after compaction: %d > threshold %d "
+                "(kept %d msgs, dropped %d msgs, summary=%s, %d attachments, cause=%s)",
+                final_total, self._compact_threshold,
+                len(kept), len(dropped),
+                "yes" if summary_msg else "no",
+                len(self._post_compact_attachments),
+                cause,
+            )
+        else:
+            logger.info(
+                "Memory.compact: %d → %d tokens (threshold %d, kept %d msgs, "
+                "dropped %d msgs, summary=%s, %d attachments)",
+                current_tokens, final_total, self._compact_threshold,
+                len(kept), len(dropped),
+                "yes" if summary_msg else "no",
+                len(self._post_compact_attachments),
+            )
+        return final_total if overflow else None
 
     # ─────────────────────────────────────────
     # Phase 4: Raw Log Flush

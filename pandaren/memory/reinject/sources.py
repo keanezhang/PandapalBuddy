@@ -36,6 +36,7 @@ from ..constants import (
     DEFAULT_POST_COMPACT_MAX_TOKENS_PER_SKILL,   # 每个技能的 token 上限
     DEFAULT_POST_COMPACT_PLAN_MAX_TOKENS,        # plan 文件的 token 上限
     DEFAULT_POST_COMPACT_SKILLS_TOKEN_BUDGET,    # 技能回注的总 token 预算
+    DEFAULT_POST_COMPACT_MAX_BYTES_PER_FILE,     # 文件读取前的字节上限（1 MiB）
     RECENT_FILE_READS_WM_KEY,                    # WorkingMemory 中记录最近读文件的 key
     CHARS_PER_TOKEN,                             # 估算比例：每个 token ≈ 多少个字符
 )
@@ -68,6 +69,40 @@ def _truncate_to_tokens(text: str, max_tokens: int) -> tuple[str, int]:
     return truncated, max_tokens
 
 
+def _read_file_with_size_limit(
+    path: str,
+    max_bytes: int,
+    source_name: str,
+) -> str | None:
+    """带字节上限的文件读取：**先 stat 后读**，超限跳过（避免超大文件整读进内存白耗 IO）。
+
+    Args:
+        path:        文件绝对路径
+        max_bytes:   允许读取的最大字节数；超过即跳过该文件
+        source_name: 日志归属（当前 source 的 SOURCE_NAME）
+
+    Returns:
+        文件文本；文件不存在 / 读取失败 / 超限时返回 None（调用方跳过该文件）。
+    """
+    try:
+        size = os.path.getsize(path)
+    except OSError as exc:
+        logger.info("%s: cannot stat %s, skipping: %s", source_name, path, exc)
+        return None
+    if size > max_bytes:
+        logger.warning(
+            "%s: skipping %s — size %d bytes exceeds limit %d",
+            source_name, path, size, max_bytes,
+        )
+        return None
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            return f.read()
+    except (OSError, IOError) as exc:
+        logger.info("%s: failed to read %s, skipping: %s", source_name, path, exc)
+        return None
+
+
 # ─────────────────────────────────────────────
 # RecentFilesSource — 回注最近读过的文件
 # ─────────────────────────────────────────────
@@ -97,7 +132,8 @@ class RecentFilesSource:
 
     工作流程：
       1. 从 WorkingMemory 拿列表，按 timestamp 倒序、去重路径，取前 max_files
-      2. 实际读取文件内容（OS 文件系统）；读不到的跳过
+      2. 实际读取文件内容（OS 文件系统）；读不到的跳过；
+         超过 max_bytes_per_file 的（先 stat 后读）也跳过——防超大文件白读 IO
       3. 每个文件截断到 max_tokens_per_file
       4. 累计超 total_token_budget 时不再添加更多文件
     """
@@ -109,10 +145,12 @@ class RecentFilesSource:
         max_files: int = DEFAULT_POST_COMPACT_MAX_FILES,
         max_tokens_per_file: int = DEFAULT_POST_COMPACT_MAX_TOKENS_PER_FILE,
         total_token_budget: int = DEFAULT_POST_COMPACT_FILES_TOKEN_BUDGET,
+        max_bytes_per_file: int = DEFAULT_POST_COMPACT_MAX_BYTES_PER_FILE,
     ) -> None:
         self._max_files = max_files              # 最多回注几个文件
         self._max_tokens_per_file = max_tokens_per_file  # 单个文件的 token 上限
         self._total_token_budget = total_token_budget    # 所有文件合计的 token 上限
+        self._max_bytes_per_file = max_bytes_per_file    # 单个文件的字节上限（读取前检查）
 
     def collect(self, ctx: PostCompactContext) -> list[ReinjectionAttachment]:
         """收集最近读过的文件内容，作为回注附件返回。
@@ -168,15 +206,11 @@ class RecentFilesSource:
         used_tokens = 0
         for r in sorted_records:
             path = r["path"]
-            try:
-                # 从文件系统实际读取文件内容
-                with open(path, "r", encoding="utf-8", errors="replace") as f:
-                    raw = f.read()
-            except (OSError, IOError) as exc:
-                # 文件读不到（可能已被删除），跳过
-                logger.info(
-                    "RecentFilesSource: failed to read %s, skipping: %s", path, exc
-                )
+            # 带字节上限读取：先 stat 后读，超大文件跳过（不白读 IO）
+            raw = _read_file_with_size_limit(
+                path, self._max_bytes_per_file, self.SOURCE_NAME
+            )
+            if raw is None:
                 continue
 
             # 截断到单文件 token 上限
@@ -364,8 +398,10 @@ class PlanStateSource:
     def __init__(
         self,
         max_tokens: int = DEFAULT_POST_COMPACT_PLAN_MAX_TOKENS,
+        max_bytes: int = DEFAULT_POST_COMPACT_MAX_BYTES_PER_FILE,
     ) -> None:
         self._max_tokens = max_tokens  # plan 文件的 token 上限
+        self._max_bytes = max_bytes    # plan 文件的字节上限（读取前检查，防超大文件白读 IO）
 
     def collect(self, ctx: PostCompactContext) -> list[ReinjectionAttachment]:
         """收集当前 plan 文件的内容，作为回注附件返回。
@@ -384,14 +420,9 @@ class PlanStateSource:
             # 没有 plan 文件路径，说明当前不在 plan 模式，返回空
             return []
 
-        # 读取 plan 文件内容
-        try:
-            with open(path, "r", encoding="utf-8", errors="replace") as f:
-                raw = f.read()
-        except (OSError, IOError) as exc:
-            logger.info(
-                "PlanStateSource: failed to read plan file %s: %s", path, exc
-            )
+        # 读取 plan 文件内容（带字节上限，先 stat 后读）
+        raw = _read_file_with_size_limit(path, self._max_bytes, self.SOURCE_NAME)
+        if raw is None:
             return []
 
         # plan 文件内容为空，不需要回注

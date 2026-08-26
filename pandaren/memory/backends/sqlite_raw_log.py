@@ -41,7 +41,9 @@ CREATE TABLE IF NOT EXISTS raw_messages (
     run_id       TEXT,
     step         INTEGER
 );
-CREATE INDEX IF NOT EXISTS idx_raw_session_seq ON raw_messages(session_id, seq);
+-- 唯一索引：seq 是 session 内单调序号，重复即并发写竞争（见 _next_seq 注释）。
+-- 用 UNIQUE 而非普通索引，让多进程竞争从"静默错位"变为显式 IntegrityError（fail-fast）。
+CREATE UNIQUE INDEX IF NOT EXISTS uq_raw_session_seq ON raw_messages(session_id, seq);
 """
 
 _SCHEMA_COMPACT_BOUNDARIES = """
@@ -52,7 +54,9 @@ CREATE TABLE IF NOT EXISTS compact_boundaries (
     ts          TEXT    NOT NULL,
     metadata    TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_boundary_session_seq ON compact_boundaries(session_id, seq);
+-- 同上：compact_boundaries 与 raw_messages 共享同一 seq 序列（_next_seq 跨表取 MAX），
+-- 每表内部仍须唯一。
+CREATE UNIQUE INDEX IF NOT EXISTS uq_boundary_session_seq ON compact_boundaries(session_id, seq);
 """
 
 
@@ -156,10 +160,23 @@ class SQLiteRawLogBackend:
     # ─────────────────────────────────────────
 
     def _init_schema(self) -> None:
-        """初始化 schema（IF NOT EXISTS，幂等）。"""
+        """初始化 schema（IF NOT EXISTS，幂等）。
+
+        唯一索引创建失败（历史库已存在重复 (session_id, seq)）时抛出带引导信息的
+        RuntimeError——重复数据意味着此前有多写者并发竞争，静默放行只会让 seq 错位
+        继续扩大，必须显式暴露让应用层修复。
+        """
         with self._conn:  # 自动 commit
-            self._conn.executescript(_SCHEMA_RAW_MESSAGES)
-            self._conn.executescript(_SCHEMA_COMPACT_BOUNDARIES)
+            try:
+                self._conn.executescript(_SCHEMA_RAW_MESSAGES)
+                self._conn.executescript(_SCHEMA_COMPACT_BOUNDARIES)
+            except sqlite3.IntegrityError as exc:
+                raise RuntimeError(
+                    "SQLiteRawLogBackend: failed to create unique index — the database "
+                    "contains duplicate (session_id, seq) rows, which indicates concurrent "
+                    "writers to the same db file. Ensure exactly one writer per database "
+                    "(see _next_seq docstring). Original error: %s" % exc
+                ) from exc
             self._migrate_reasoning_content()
 
     def _migrate_reasoning_content(self) -> None:
@@ -176,7 +193,18 @@ class SQLiteRawLogBackend:
             )
 
     def _next_seq(self, session_id: str) -> int:
-        """计算指定 session 的下一个 seq（在 raw_messages 与 compact_boundaries 之间统一）。"""
+        """计算指定 session 的下一个 seq（在 raw_messages 与 compact_boundaries 之间统一）。
+
+        实现：跨两表取 MAX(seq) 后 +1。在单连接写事务内安全——``with self._conn``
+        的 DEFERRED 事务首次写时升级为写锁，同库写操作串行化。
+
+        ⚠️ 并发约束：**同一个 db 文件必须只有单一写者**。
+        ``MAX(seq)+1`` 是读-改-写序列，多进程（或多连接）并发 append 同一 session
+        时存在竞态窗口，可能各自读到相同 MAX 而生成同 seq。此时唯一索引
+        ``uq_raw_session_seq`` / ``uq_boundary_session_seq`` 会抛出 IntegrityError
+        （fail-fast），**不会**静默写入错位的 seq。跨进程共享同一 db 文件的编排
+        由应用层负责（如：单 sidecar 进程 + 单 FlushPolicy 写者）。
+        """
         cur = self._conn.execute(
             "SELECT COALESCE(MAX(seq), 0) AS m FROM raw_messages WHERE session_id = ?",
             (session_id,),
@@ -265,6 +293,11 @@ class SQLiteRawLogBackend:
              （早于该 boundary 的消息已被压缩，对当前 STM 来说不再有意义）
           2. 按 seq 升序取消息，按 token 估算累加；超过 budget 立即停
           3. 返回的消息列表按时间从旧到新排列
+
+        ⚠️ 边界语义：**"至少保留一条"是有意为之**——当预算内放不下任何一条
+        消息时（首条即超预算），仍保留最新那条，避免恢复出"空 STM"导致调用方
+        逻辑异常。代价是单条巨型消息可突破 token_budget（极端输入下的有界越界），
+        由上层（AgentLoop 上下文预算守卫）兜底。
         """
         if not session_id or token_budget <= 0:
             return []
@@ -294,6 +327,8 @@ class SQLiteRawLogBackend:
         keep_count = 0
         for msg in reversed(messages_in_order):
             t = self._token_estimator.estimate([msg])
+            # "至少保留一条"：keep_count == 0 时首条消息即使超预算也保留（不 break），
+            # 保证恢复出的 STM 非空。语义与上面 docstring 的边界说明一致。
             if accumulated + t > token_budget and keep_count > 0:
                 break
             accumulated += t

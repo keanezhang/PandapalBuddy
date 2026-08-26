@@ -13,12 +13,17 @@ Logger 子系统：结构化日志记录。
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Any
 
 from .types import LogLevel, generate_id
 from .protocols import LoggerBackend
 from .backend.console import ConsoleLoggerBackend
+
+# 观测 Fail-Safe 边界：Logger 后端写失败不传播到 Loop（非 HC4），但按 §九「降级必留痕」，
+# 用标准库 logging debug 留痕（非终端 sink，不会递归回本子系统）。
+logger = logging.getLogger(__name__)
 
 
 class Logger:
@@ -58,7 +63,7 @@ class Logger:
             record = self._format_record(level, message, context)
             self._backend.write_log(record)
         except Exception:
-            pass
+            logger.debug("observability logger write failed", exc_info=True)
 
     def log(self, level: LogLevel, message: str, **context: Any) -> None:
         """通用日志方法——按指定级别输出结构化日志。

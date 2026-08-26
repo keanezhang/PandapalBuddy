@@ -28,6 +28,7 @@ import dataclasses
 import json
 import logging
 import time
+import types
 import uuid
 from collections import Counter
 from datetime import datetime, timezone
@@ -972,7 +973,6 @@ class RunCoreMixin:
                             self._tool_registry.promote_to_discovered(rc["name"], step_n)
 
                         # 构建 HITL resume 路径的 metadata（与主路径一致）
-                        import types as _types_mod_hitl
                         _hitl_metadata_dict: dict = {
                             "tool_store": self._tool_registry.store,
                             "discovery_manager": self._tool_registry.discovery,
@@ -1002,7 +1002,7 @@ class RunCoreMixin:
                             ),
                             trust_level=self._identity.trust_level,
                             working_memory=self._memory.working_memory_accessor,
-                            metadata=_types_mod_hitl.MappingProxyType(_hitl_metadata_dict) if _hitl_metadata_dict else _types_mod_hitl.MappingProxyType({}),
+                            metadata=types.MappingProxyType(_hitl_metadata_dict) if _hitl_metadata_dict else types.MappingProxyType({}),
                         )
 
                         for rc in resume_calls:
@@ -1148,7 +1148,6 @@ class RunCoreMixin:
                         _interaction_user_response = None
 
                         # 构建 ToolContext
-                        import types as _types_mod_int
                         _int_meta: dict = {
                             "tool_store": self._tool_registry.store,
                             "discovery_manager": self._tool_registry.discovery,
@@ -1175,7 +1174,7 @@ class RunCoreMixin:
                             ),
                             trust_level=self._identity.trust_level,
                             working_memory=self._memory.working_memory_accessor,
-                            metadata=_types_mod_int.MappingProxyType(_int_meta) if _int_meta else _types_mod_int.MappingProxyType({}),
+                            metadata=types.MappingProxyType(_int_meta) if _int_meta else types.MappingProxyType({}),
                         )
 
                         # 合并需要执行的 tool_calls：
@@ -2023,8 +2022,6 @@ class RunCoreMixin:
                         if isinstance(_tc_raw, dict):
                             _tc_raw["id"] = _tc_raw.get("id") or generate_id()
 
-                    _prescan_normalized: list[dict] = []
-                    _prescan_denied: dict[str, tuple[str, str]] = {}  # tc_id -> (name, error_text)
                     _prescan_first_hitl_idx: int | None = None
                     _prescan_first_interaction_idx: int | None = None
 
@@ -2040,8 +2037,6 @@ class RunCoreMixin:
 
                         _pdef = self._tool_registry.get_tool(_ptc_name)
                         if not _pdef:
-                            _prescan_denied[_ptc_id] = (_ptc_name, f"Error: Tool '{_ptc_name}' is not registered")
-                            _prescan_normalized.append({"id": _ptc_id, "name": _ptc_name, "args": _ptc_args})
                             continue
 
                         _pguard = self._permission_guard.check_permission(
@@ -2050,8 +2045,6 @@ class RunCoreMixin:
                             _pdef.sensitive_permission,
                         )
                         if _pguard == "deny":
-                            _prescan_denied[_ptc_id] = (_ptc_name, f"Error: Permission denied for tool '{_ptc_name}'")
-                            _prescan_normalized.append({"id": _ptc_id, "name": _ptc_name, "args": _ptc_args})
                             continue
 
                         if _prescan_first_hitl_idx is None:
@@ -2061,8 +2054,6 @@ class RunCoreMixin:
 
                         if _prescan_first_interaction_idx is None and _pdef.requires_user_interaction:
                             _prescan_first_interaction_idx = _pi
-
-                        _prescan_normalized.append({"id": _ptc_id, "name": _ptc_name, "args": _ptc_args})
 
                     _will_pause = _prescan_first_hitl_idx is not None or _prescan_first_interaction_idx is not None
 
@@ -2263,7 +2254,8 @@ class RunCoreMixin:
 
                             # ═══ 交互型工具检测（Phase 5）═══
                             if tool_def.requires_user_interaction:
-                                step_record.tool_calls.append(tc_name)
+                                # 注：tool_calls 已在 Phase 4-5 循环头（step_record.tool_calls.append(tc_name)）
+                                # 记录过，这里不再重复 append，避免暂停前 StepRecord 数据重复。
 
                                 # 构建 PendingInteraction
                                 pending = PendingInteraction(
@@ -2400,15 +2392,29 @@ class RunCoreMixin:
 
                     # ═══ Phase 6: Act ═══
                     if not approved_calls:
-                        # 无 approved_calls：权限全部拒绝时，continue 给 LLM 自我纠正机会，
-                        # 由跨轮累计 consecutive_permission_denied_rounds >= 3 触发 PERMISSION_EXHAUSTED
-                        pass
+                        # 无 approved_calls：全部 tool_calls 被权限拒绝 / 工具未注册。
+                        # 仍必须原子提交 assistant(tool_calls) + denied 结果——
+                        # 否则 LLM 下一轮看不到「调用被拒」的反馈，只会盲目重复同一批调用，
+                        # 直到 3 轮后 PERMISSION_EXHAUSTED（白耗 2 轮 LLM 调用，体验像卡死）。
+                        # denied 结果也是 tool 结果，同样遵守「齐备后与 assistant 一起原子提交」。
+                        _written_ids = {r[0] for r in _pending_tool_results}
+                        for _tc in parsed.tool_calls:
+                            _tid = _tc.get("id")
+                            if _tid and _tid not in _written_ids:
+                                _pending_tool_results.append(
+                                    (_tid, _tc.get("function", _tc).get("name", ""),
+                                     "Error: Tool execution produced no result")
+                                )
+                        await self._commit_tool_step_atomically(
+                            parsed.content, parsed.tool_calls,
+                            llm_response.get("reasoning_content") if isinstance(llm_response, dict) else None,
+                            _pending_tool_results,
+                        )
                     else:
                         # ── 构建 ToolContext.metadata ──
                         # 内置工具 executor 通过 ctx.metadata 获取依赖（无闭包捕获）：
                         #   search_tools  → metadata["tool_store"] + metadata["discovery_manager"]
                         #   search_skills → metadata["skill_registry"]
-                        import types as _types_mod
                         _ctx_metadata_dict: dict = {
                             "tool_store": self._tool_registry.store,
                             "discovery_manager": self._tool_registry.discovery,
@@ -2443,7 +2449,7 @@ class RunCoreMixin:
                             ),
                             trust_level=self._identity.trust_level,
                             working_memory=self._memory.working_memory_accessor,
-                            metadata=_types_mod.MappingProxyType(_ctx_metadata_dict) if _ctx_metadata_dict else _types_mod.MappingProxyType({}),
+                            metadata=types.MappingProxyType(_ctx_metadata_dict) if _ctx_metadata_dict else types.MappingProxyType({}),
                         )
 
                         for ac in approved_calls:
@@ -3228,10 +3234,9 @@ class RunCoreMixin:
             tc_func = tc.get("function", tc)
             tc_name = tc_func.get("name", "")
             tc_args_raw = tc_func.get("arguments", "{}")
-            import json as _json
             try:
-                tc_args = _json.loads(tc_args_raw) if isinstance(tc_args_raw, str) else tc_args_raw
-            except (_json.JSONDecodeError, TypeError):
+                tc_args = json.loads(tc_args_raw) if isinstance(tc_args_raw, str) else tc_args_raw
+            except (json.JSONDecodeError, TypeError):
                 tc_args = {}
             return PendingApproval(
                 tool_call=tc,

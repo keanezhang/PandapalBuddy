@@ -56,6 +56,13 @@ class CharBasedTokenEstimator:
 
     估算公式：token ≈ total_chars / CHARS_PER_TOKEN。
     tool_calls 字段的 JSON 序列化字符串也计入估算。
+
+    ⚠️ 已知近似误差：``chars / CHARS_PER_TOKEN`` 对**中文、代码**系统性低估
+    ~2x（一个汉字/一个 token 占比高的代码行远高于 4 字符/token），会导致
+    压缩触发**过晚**（实际已超上下文窗口才压缩）。如需精确估算，应用层应
+    显式注入 ``TiktokenEstimator``（``memory/estimators.py``，真实 BPE）：
+    ``AgentBuilder.memory(token_estimator=TiktokenEstimator(...))``。
+    默认保持字符估算是为了零依赖（B3），SDK 不替应用层决定 token 口径。
     """
 
     def estimate(self, messages: list[MessageDict]) -> int:

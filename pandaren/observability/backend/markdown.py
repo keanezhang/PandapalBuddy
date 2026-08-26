@@ -286,6 +286,8 @@ class MarkdownTracerBackend:
                 if parts:
                     attrs = ", ".join(parts)
             line = f"| {ts} | {span_type} | {name} | {status} | {terminal_reason} | {duration} | {step} | {run_short} | {attrs} |\n"
+            # 防御：清理 surrogate 字符（与 audit 后端一致），避免 UnicodeEncodeError 丢整条 span
+            line = line.encode("utf-8", errors="surrogateescape").decode("utf-8", errors="replace")
             with open(path, "a", encoding="utf-8") as f:
                 f.write(line)
 
@@ -491,6 +493,8 @@ class MarkdownLoggerBackend:
                 f"| {ts} | {level_badge} | {module} | {message} | {agent_id} | "
                 f"{sess_short} | {run_short} | {step} | {extra_str} |\n"
             )
+            # 防御：清理 surrogate 字符（与 audit 后端一致），避免 UnicodeEncodeError 丢整条日志
+            line = line.encode("utf-8", errors="surrogateescape").decode("utf-8", errors="replace")
             with open(path, "a", encoding="utf-8") as f:
                 f.write(line)
 

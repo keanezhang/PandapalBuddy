@@ -16,7 +16,7 @@ from typing import Any
 
 
 class StreamEventType(str, Enum):
-    """流式事件类型枚举（16 种）。
+    """流式事件类型枚举（17 种）。
 
     命名规则：<对象>_<动作>，START/END 成对出现。
     使用 str 混入使得 event.type == "llm_token" 判断可正常工作。
