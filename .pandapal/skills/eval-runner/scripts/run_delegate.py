@@ -341,7 +341,10 @@ def build_orchestrator_agent(client: OpenAICompatibleClient, blueprints: list[Su
         .llm_settings(temperature=0.3, include_usage=True)
         .tools(TOOLS)
         .system_prompt(ORCHESTRATOR_SYSTEM_PROMPT)
-        .sub_agents(blueprints, llm_client=client, tools=TOOLS)
+        # sub_agents 不再接受 tools 参数（死参数，已移除）：样本子 Agent 的工具
+        # 按各自蓝图 tools 字段（SAMPLE_TOOL_NAMES）从完整 tool_registry 按名过滤，
+        # 而 registry 已含上面 .tools(TOOLS) 注册的工具池——解析路径不变。
+        .sub_agents(blueprints, llm_client=client)
         .behavior(max_steps=max_steps, step_timeout=step_timeout, total_timeout=total_timeout,
                   auto_confirm_high=True)  # call_agent 敏感度=HIGH，评测环境无人审批 → 自动放行（CRITICAL 仍强制 HITL）
         .build()

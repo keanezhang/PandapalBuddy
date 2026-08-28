@@ -274,15 +274,8 @@ def test_rl_02_over_limit_returns_rejection_toolresult():
     assert result.tool_name == "write_file"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "known-gap: 设计 inv-RL-2 要求超限调用同样计数（get_count==3），"
-        "实现超限分支不递增计数器（当前 get_count==2）。修复后本用例应转 passed。"
-    ),
-)
 def test_rl_02_rejected_call_still_counts():
-    """RL-02(副作用): 超限调用同样计数（设计预期 ==3，inv-RL-2）"""
+    """RL-02(副作用): 超限调用同样计数（inv-RL-2，拒绝路径计入尝试次数，供观测层使用）"""
     rl = RateLimiter()
     rl.check("write_file", max_calls=2)
     rl.check("write_file", max_calls=2)

@@ -46,18 +46,35 @@ class OutputGuard:
 
         # 字符级截断，避免切断多字节字符（如中文）
         # 使用二分查找高效定位截断点
-        lo, hi = 0, len(serialized)
-        while lo < hi:
-            mid = (lo + hi + 1) // 2
-            if len(serialized[:mid].encode("utf-8")) <= max_bytes:
-                lo = mid
-            else:
-                hi = mid - 1
-        truncated_chars = serialized[:lo]
+        # inv-OG-1：截断点按「数据前缀 + 截断提示」经消费方 json 序列化后的总长收敛到
+        # max_bytes 内——二分直接以最终序列化长度为判据（json.dumps 加两端引号并转义
+        # 内部字符，只按原始编码长度截会多出序列化开销，见 OG-01 known-gap 转正）。
         truncation_notice = (
             f"\n[输出已截断，原始大小 {data_bytes} 字节，"
             f"上限 {max_bytes} 字节，请缩小查询范围]"
         )
+
+        def _fits(data_prefix: str) -> bool:
+            return (
+                len(json.dumps(data_prefix + truncation_notice, ensure_ascii=False).encode("utf-8"))
+                <= max_bytes
+            )
+
+        if not _fits(""):
+            # 极端：提示本身经序列化已超上限 → 仅保留提示（字节级截断，不切断多字节字符）
+            truncated_chars = ""
+            truncation_notice = (
+                truncation_notice.encode("utf-8")[:max_bytes].decode("utf-8", errors="ignore")
+            )
+        else:
+            lo, hi = 0, len(serialized)
+            while lo < hi:
+                mid = (lo + hi + 1) // 2
+                if _fits(serialized[:mid]):
+                    lo = mid
+                else:
+                    hi = mid - 1
+            truncated_chars = serialized[:lo]
 
         # 截断事件同步触发 hook（用原对象字段，dc_replace 后引用一致）
         if self._hooks:

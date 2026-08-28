@@ -50,7 +50,7 @@
 | 17 | on_hitl_resolved | tool_name=`"approve_loan"`, decision=`"approved"`, run_id=`"run-1"`, session_id=`"sess-42"` | ✅ |
 | 18 | on_error | error=`RuntimeError("boom")`, run_id=`"run-1"`, session_id=`"sess-42"` | ✅ |
 | 19 | on_halt | reason=`"user_stop"`, run_id=`"run-1"`, session_id=`"sess-42"` | ✅ |
-| 20 | on_skill_activated | skill_name=`"math"`, skill_type=`"ACTION"`, tools=`["calc"]`, run_id=`"run-1"`, step_n=`1`, session_id=`"sess-42"` | ✅ |
+| 20 | on_skill_activated | skill_name=`"math"`, run_id=`"run-1"`, step_n=`1`, session_id=`"sess-42"` | ✅ |
 | 21 | on_skill_cleared | skill_name=`"math"`, run_id=`"run-1"`, session_id=`"sess-42"` | ✅ |
 
 ---
@@ -145,6 +145,7 @@
 | U15 参数透传完整性 | | | | | | | | | | | | | ✅ | | component(fake) |
 | U16 BaseException 传播边界 | | | | | | | | | | | | | | ✅ | component(fake) |
 | U17 真实 adapter 链式（integration） | ✅ | ✅ | | | ✅ | | | | | | | | ✅ | | integration |
+| U18 显式签名 hook 兼容回归 | ✅ | | | | | | | ✅ | | | | | | | unit |
 
 ---
 
@@ -571,13 +572,37 @@
 - ① `composite.on_run_start(task="task-1", run_id="run-1", session_id="sess-42")`
 - ② `composite.on_before_llm_call(messages=[{"role":"user","content":"hi"}], run_id="run-1", model="gpt-4o", tools=None, call_type="main", session_id="sess-42", provider="openai")`
 - ③ `composite.on_tool_register(tool_name="web_search", tier="standard", sensitivity="high", namespace=None)`
-- ④ `composite.on_skill_activated(skill_name="math", skill_type="ACTION", tools=["calc"], run_id="run-1", step_n=1, session_id="sess-42")`
+- ④ `composite.on_skill_activated(skill_name="math", run_id="run-1", step_n=1, session_id="sess-42")`
 
 **Then**（预期结果）：
 - ① 不抛异常；`adapter._run_start_mono_by_run` 含 key `"run-1"`；logger backend 记录含 `run_id="run-1"` 与 `session_id="sess-42"`（session_id 真实落观测，验证 inv-5 端到端）
 - ② 不抛异常；adapter 内部 `_llm_call_provider_by_run["run-1"] == "openai"`（provider 真实送达消费方，验证 inv-2 端到端）；`user.calls` 中 provider=`"openai"`（用户 hook 同步收到）
 - ③ 不抛异常；`user.calls` 有 on_tool_register 记录且 kwargs 无 session_id 键
 - ④ **不抛异常**（KG-1：adapter 无 on_skill_activated → AttributeError → Composite 容错吞掉）→ `user.calls` 有 on_skill_activated 记录（后续 hook 未被中断）——同时回归验证 inv-1 在真实消费方缺方法场景下成立
+
+---
+
+#### 用例 U18：显式签名 hook 兼容回归（防 `**kwargs` 掩盖签名漂移）
+
+| 属性 | 内容 |
+|------|------|
+| 关联风险/不变式 | inv-1 [P0] + inv-8 [P0]（2026-08-26 事故复盘：RecordingHook 用 `**kwargs` 接受一切参数 → 协议 6 参、消费方 4 参签名漂移时测试全绿、生产 TypeError 被 Composite 静默吞掉） |
+| 测试层级 | unit |
+| 覆盖准则 | 分支 1/2（显式签名 hook：`_accepts` 为 True；间接验证 **kwargs hook：兼容路径） |
+| Oracle | 状态 oracle（显式签名 hook 的 `calls` 列表） |
+| Mock | 否 |
+
+**等价类划分**：hook 实现签名风格 = 显式全参 / `**kwargs` 兜底；异常路径 = 无
+
+**Given**（前置条件）：
+- 定义显式签名 hook：`class ExplicitHook: def on_skill_activated(self, skill_name, run_id, step_n, *, session_id): self.calls.append(...)`（**不接受多余参数、无 `**kwargs` 兜底**）
+- `composite.add(ExplicitHook())`
+
+**When**（操作/动作）：
+- `composite.on_skill_activated(skill_name="math", run_id="run-1", step_n=1, session_id="sess-42")`（协议实际 4 参）
+
+**Then**（预期结果）：
+- 不抛异常；`ExplicitHook.calls` 恰 1 条且字段齐全——若协议再漂移（如多传参），显式签名 hook 立即 TypeError，测试即红（**这正是 RecordingHook 当年漏掉的生产事故信号**）
 
 ---
 
@@ -596,3 +621,4 @@
 | 版本 | 日期 | 变更 | 理由 |
 |------|------|------|------|
 | v1 | 初始 | 建立全部用例 | — |
+| v2 | 2026-08-26 | on_skill_activated 参数表删 skill_type/tools（协议 6 参 → 4 参）；U17 ④ 同步；新增 U18（显式签名 hook 兼容回归） | 领域模型 Skill 无 skill_type 字段、run_core 调用点不传、唯一消费方 SkillAwareHooks 为 4 参签名——6 参协议是僵尸参数，且 Composite 恒传 6 参导致 4 参消费方 TypeError 被静默吞掉（SKILL_ACTIVATED 永不推送，见 12-hook.md §5）。经确认删除不适用参数，协议与领域模型/调用方/消费方对齐 |

@@ -623,18 +623,17 @@ def _build_blueprint(
     #   system/ 随 sidecar 打包（只读，如 test-designer / test-coder）→ BUILTIN；
     #   user/   从持久化数据目录加载（用户自建，不受 rebuild/upgrade 影响）→ DIRECTORY。
     #   BUILTIN < DIRECTORY：用户同名蓝图可直接覆盖内置（无需先 unregister）。
-    #   蓝图 tools 字段从 app_tools 池按名过滤；空 tools → 只继承 SDK 内置文件工具。
+    #   蓝图 tools 字段按名从完整 tool_registry（app_tools + SDK 内置工具）过滤；
+    #   空 tools → 只继承 SDK 内置文件工具。
     #   agent_name 即 call_agent 的调用键。目录不存在时 loader 静默返回空列表。
     agent_builder.sub_agents_from_dir(
         resources_dir / "agents" / "system",
         default_client,
-        tools=app_tools,
         source=SubAgentSource.BUILTIN,
     )
     agent_builder.sub_agents_from_dir(
         user_resources_dir / "agents",
         default_client,
-        tools=app_tools,
         source=SubAgentSource.DIRECTORY,
     )
 

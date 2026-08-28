@@ -142,7 +142,7 @@ METHOD_PARAMS: dict[str, dict] = {
     "on_hitl_resolved": {"tool_name": "approve_loan", "decision": "approved", "run_id": "run-1", "session_id": "sess-42"},
     "on_error": {"error": RuntimeError("boom"), "run_id": "run-1", "session_id": "sess-42"},
     "on_halt": {"reason": "user_stop", "run_id": "run-1", "session_id": "sess-42"},
-    "on_skill_activated": {"skill_name": "math", "skill_type": "ACTION", "tools": ["calc"], "run_id": "run-1", "step_n": 1, "session_id": "sess-42"},
+    "on_skill_activated": {"skill_name": "math", "run_id": "run-1", "step_n": 1, "session_id": "sess-42"},
     "on_skill_cleared": {"skill_name": "math", "run_id": "run-1", "session_id": "sess-42"},
 }
 
@@ -171,7 +171,7 @@ _POS_ARGS: dict[str, tuple[str, ...]] = {
     "on_hitl_resolved": ("tool_name", "decision", "run_id"),
     "on_error": ("error", "run_id"),
     "on_halt": ("reason", "run_id"),
-    "on_skill_activated": ("skill_name", "skill_type", "tools", "run_id", "step_n"),
+    "on_skill_activated": ("skill_name", "run_id", "step_n"),
     "on_skill_cleared": ("skill_name", "run_id"),
 }
 
@@ -701,8 +701,39 @@ def test_u17_real_adapter_chain_integration():
 
     # ④ on_skill_activated：KG-1 缺方法容错——adapter 抛 AttributeError 被吞，用户 hook 继续
     composite.on_skill_activated(
-        skill_name="math", skill_type="ACTION", tools=["calc"],
-        run_id="run-1", step_n=1, session_id="sess-42",
+        skill_name="math", run_id="run-1", step_n=1, session_id="sess-42",
     )
     act = [c for c in user.calls if c[0] == "on_skill_activated"]
     assert act and act[-1][1]["session_id"] == "sess-42"
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# U18 显式签名 hook 兼容（回归：on_skill_activated 曾因 Composite 恒传
+#      skill_type/tools 而吞掉 4 参消费方，见 12-hook.md §5；P0, regression）
+# ═══════════════════════════════════════════════════════════════════════
+
+
+def test_u18_explicit_signature_skill_hook_not_swallowed():
+    # 显式签名 hook（无 **kwargs）模拟真实消费方（如 SkillAwareHooks 4 参签名）；
+    # 回归防护：协议参数变化时若漏同步消费方，此用例会因 TypeError 被吞而断言失败
+    # （不像 RecordingHook 的 **kwargs 会掩盖签名漂移）。
+    class ExplicitSkillHook:
+        def __init__(self) -> None:
+            self.calls: list[dict] = []
+
+        def on_skill_activated(
+            self, skill_name: str, run_id: str, step_n: int, *, session_id: str = "",
+        ) -> None:
+            self.calls.append(
+                {"skill_name": skill_name, "run_id": run_id, "step_n": step_n, "session_id": session_id}
+            )
+
+    hook = ExplicitSkillHook()
+    composite = CompositeAgentHooks()
+    composite.add(hook)
+
+    composite.on_skill_activated(skill_name="math", run_id="run-1", step_n=1, session_id="sess-42")
+
+    assert hook.calls == [
+        {"skill_name": "math", "run_id": "run-1", "step_n": 1, "session_id": "sess-42"}
+    ]

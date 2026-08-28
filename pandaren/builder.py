@@ -149,7 +149,9 @@ class AgentBuilder:
         self._skill_list: list[Any] = []
         
         # ── sub_agent─────────────────────────
-        self._sub_agent_blueprints: list[tuple[Any, LLMClient, list, list]] = []
+        # 三元组: (AgentBlueprint, LLMClient, skills 池)。tools 不在其中——
+        # 子 Agent 工具从已注册的完整 tool_registry 按名过滤（见 _resolve_agent_registry）。
+        self._sub_agent_blueprints: list[tuple[Any, LLMClient, list]] = []
 
         # ── System Prompt ─────────────────────────────────────────────────────
         self._system_prompt: str = "You are a helpful assistant."
@@ -419,7 +421,6 @@ class AgentBuilder:
         self,
         blueprints: list,
         llm_client: LLMClient,
-        tools: list | None = None,
         skills: list | None = None,
     ) -> "AgentBuilder":
         """追加用户自定义子 Agent（通过 SubAgentBlueprint 列表）。
@@ -427,18 +428,19 @@ class AgentBuilder:
         Args:
             blueprints:  SubAgentBlueprint 对象列表
             llm_client:  子 Agent 使用的 LLM 客户端（想复用主 Agent 的直接传同一实例）
-            tools:       父级工具池（蓝图按名过滤；None = 不传入工具）
-            skills:      父级 Skill 池（None = 不传入 Skill）
+            skills:      父级 Skill 池（None = 不传入 Skill）。
+                         工具池始终取 build 时已注册的完整 tool_registry，蓝图
+                         tools 字段按名从中过滤（见 _resolve_agent_registry）——
+                         历史教训：用调用方传入的池快照会漏掉 SDK 内置基础工具。
         """
         for bp in blueprints:
-            self._sub_agent_blueprints.append((bp, llm_client, tools or [], skills or []))
+            self._sub_agent_blueprints.append((bp, llm_client, skills or []))
         return self
 
     def sub_agents_from_dir(
         self,
         directory: str | Any,
         llm_client: LLMClient,
-        tools: list | None = None,
         skills: list | None = None,
         pattern: str = "*.md",
         recursive: bool = True,
@@ -449,15 +451,16 @@ class AgentBuilder:
         便捷方法，等价于手动调用 load_agents_from_dir + AgentBuilder + registry.register。
 
         蓝图中可声明：
-          tools:       工具名列表（从 tools 池过滤），"*" = 继承全部，空 = 不用工具
+          tools:       工具名列表（从完整 tool_registry 过滤），"*" = 继承全部，空 = 不用工具
           skills:      Skill 名列表（从 skills 池过滤），"*" = 继承全部，空 = 不继承
           sub_agents:  子 Agent 名列表（从蓝图中过滤），"*" = 可委派全部，空 = 不委派
 
         Args:
             directory:  Agent 定义目录（如 ".agent/"）
             llm_client: sub-agent 使用的 LLM 客户端（想复用主 Agent 的直接传同一实例）
-            tools:      父级工具池（蓝图按名过滤；None = 空池）
-            skills:     父级 Skill 池（蓝图按 skills 字段过滤；None = 空池）
+            skills:     父级 Skill 池（蓝图按 skills 字段过滤；None = 空池）。
+                        工具池始终取 build 时已注册的完整 tool_registry（含 SDK 内置
+                        基础工具），蓝图 tools 字段按名从中过滤。
             pattern:    文件匹配模式（默认 "*.md"）
             recursive:  是否递归扫描子目录，默认 True
             source:     蓝图来源标记（P2-5 覆盖优先级判定）。内置/随包目录传
@@ -474,7 +477,7 @@ class AgentBuilder:
             directory, len(blueprints), source.name,
         )
         for bp in blueprints:
-            self._sub_agent_blueprints.append((bp, llm_client, tools or [], skills or []))
+            self._sub_agent_blueprints.append((bp, llm_client, skills or []))
             logger.debug(
                 "[sub-agent loader]   agent_id='%s'  name='%s'  tools=%s  skills=%s  sub_agents=%s",
                 bp.agent_id, bp.agent_name, bp.tools, bp.skills, bp.sub_agents,
@@ -491,7 +494,6 @@ class AgentBuilder:
         if _default_agents_loaded:
             return self
 
-        from pathlib import Path
         from .sub_agent import SubAgentSource, load_agents_from_dir
 
         default_dir = Path(__file__).parent / "agents"
@@ -513,15 +515,12 @@ class AgentBuilder:
 
         for bp in blueprints:
             self._sub_agent_blueprints.append(
-                (bp, self._llm_client, self._tool_list, self._skill_list)
+                (bp, self._llm_client, self._skill_list)
             )
             logger.info(
                 "[pandaren builtin sub-agents]   agent_id='%s'  name='%s'  tools=%s  skills=%s  sub_agents=%s",
                 bp.agent_id, bp.agent_name, bp.tools, bp.skills, bp.sub_agents,
             )
-        # logger.info(
-        #     "[pandaren builtin sub-agents] 共加载 %d 个内置子 Agent", len(blueprints),
-        # )
         return self
 
     # ── System Prompt ──
@@ -815,10 +814,9 @@ class AgentBuilder:
           1. 基础设施（Behavior + Observability）— 零依赖，最先就绪
           2. 能力层（ToolRegistry + HarnessExecutor）— hooks 在注册前注入
           3. 高层注册（SkillRegistry / SubAgentRegistry）— 依赖 tool_registry + audit_log
-          4. Cost 计算 + memory_factory 闭包
+          4. Memory 工厂闭包 + step_guard
           5. 打包 AgentBlueprint（无 AgentLoop 构造，materialize 时才建）
         """
-        from .agent import Agent  # noqa: F401  — 类型别名一致性引用
         from .agent.blueprint import AgentBlueprint
 
         # ── 0. 前置校验 ─────────────────────────────────────────────────────
@@ -928,7 +926,7 @@ class AgentBuilder:
 
         内部分 5 步：
           A. 创建 ToolRegistry（带预算配置）+ 早期 hooks 注入
-          B. 内置工具注册（Phase 1：不依赖 Skill/Agent）
+          B. 内置工具工厂注册（SearchToolFactory / PlanToolFactory）
           C. SDK 内置通用工具注册（glob / grep / read_file / write_file / edit_file / bash / time）
           D. 用户工具注册
           E. HarnessExecutor 创建（包裹已完成注册的 registry）
@@ -950,7 +948,7 @@ class AgentBuilder:
         tool_registry = create_tool_registry(budget=tool_budget)
         tool_registry.set_hooks(hooks)  # 早期注入：后续注册都能触发 on_tool_register
 
-        # ─ B. 内置工具注册（Phase 1：不依赖 SkillRegistry / SubAgentRegistry）─
+        # ─ B. 内置工具工厂注册（Phase 1：不依赖 SkillRegistry / SubAgentRegistry）─
         phase1_factories = [
             SearchToolFactory(),
             PlanToolFactory(
@@ -959,17 +957,17 @@ class AgentBuilder:
         ]
         tool_registry.register_builtin_factories(phase1_factories)
 
-        # ─ D. SDK 内置通用工具注册（glob / grep / read_file / write_file / edit_file / bash / time）─
+        # ─ C. SDK 内置通用工具注册（glob / grep / read_file / write_file / edit_file / bash / time）─
         # SDK 自带的基础工具，始终可用，无需应用层手动注入
         from .tools import get_builtin_tools
         for tool in get_builtin_tools():
             tool_registry.register_tool(tool)
 
-        # ─ E. 用户工具注册 ─
+        # ─ D. 用户工具注册 ─
         for tool in self._tool_list:
             tool_registry.register_tool(tool, skip_if_exists=True)
 
-        # ─ F. HarnessExecutor（behavior 层包裹 capability 层）─
+        # ─ E. HarnessExecutor（behavior 层包裹 capability 层）─
         harness_executor = HarnessExecutor(
             tool_registry,
             feedback_providers=self._tool_feedback_providers,
@@ -1150,7 +1148,7 @@ class AgentBuilder:
         full_tools_pool = tool_registry.list_tools()
         summary_parts: list[str] = []
 
-        for bp, bp_llm_client, _tools_pool, skills_pool in self._sub_agent_blueprints:
+        for bp, bp_llm_client, skills_pool in self._sub_agent_blueprints:
             try:
                 sub_agent = self._build_sub_agent_from_blueprint(
                     bp=bp,
@@ -1269,6 +1267,10 @@ class AgentBuilder:
                 # 注意子 Agent **不继承** .hooks()，故 provider 的 on_run_end 不会因子 Agent
                 # 收尾而触发 —— 父 run 的熔断计数不会被子 Agent 提前清掉。
                 tool_feedback_providers=self._tool_feedback_providers,
+                # 继承 stream：父级显式关闭流式时子 Agent 不应自行开启（行为一致性）。
+                # max_steps / auto_confirm_high / 重试参数**不继承**——子 Agent 是委派型
+                # 短期执行，默认 30 步 / HIGH 需审批 / 默认重试即更保守的安全下限，有意为之。
+                stream=self._stream,
             )
         )
         # 继承父级的上下文窗口预算，确保子 Agent 与父 Agent 使用一致的 compact_threshold
@@ -1291,6 +1293,9 @@ class AgentBuilder:
                 tracer=self._tracer if self._tracer is not _UNSET else False,
                 metrics=self._metrics if self._metrics is not _UNSET else False,
                 log=self._log if self._log is not _UNSET else False,
+                # 继承 sanitizer：父级配置了脱敏器时，子 Agent 的 trace 必须同样脱敏，
+                # 否则敏感数据经子 Agent 委派路径绕过脱敏写入观测后端。
+                sanitizer=self._sanitizer,
             )
             
         )

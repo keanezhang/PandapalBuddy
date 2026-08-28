@@ -79,18 +79,20 @@ class AgentHooks(Protocol):
     def on_before_tool_call(
         self, tool_name: str, args: dict, run_id: str,
         *, step_n: int = 0, session_id: str = "",
-    ) -> None: ...
-    """工具执行开始。
-    step_n 由 HarnessExecutor 传入（engine 层可不传，默认 0）。
-    """
+    ) -> None:
+        """工具执行开始。
+        step_n 由 HarnessExecutor 传入（engine 层可不传，默认 0）。
+        """
+        ...
 
     def on_after_tool_call(
         self, tool_name: str, result: Any, run_id: str,
         *, step_n: int = 0, duration_ms: float = 0.0, session_id: str = "",
-    ) -> None: ...
-    """工具执行结束。
-    step_n 和 duration_ms 由 HarnessExecutor 传入。
-    """
+    ) -> None:
+        """工具执行结束。
+        step_n 和 duration_ms 由 HarnessExecutor 传入。
+        """
+        ...
 
     # ═══ E. Tool 管理 ═══
 
@@ -126,28 +128,30 @@ class AgentHooks(Protocol):
     # ═══ G. 控制流事件 ═══
 
     def on_hitl_requested(self, tool_name: str, run_id: str, *, session_id: str = "") -> None: ...
-    def on_hitl_resolved(self, tool_name: str, decision: str, run_id: str, *, session_id: str = "") -> None: ...
-    """HITL 审批被人工裁决后触发（与 on_hitl_requested 配对，在 resume 段落里）。
+    def on_hitl_resolved(self, tool_name: str, decision: str, run_id: str, *, session_id: str = "") -> None:
+        """HITL 审批被人工裁决后触发（与 on_hitl_requested 配对，在 resume 段落里）。
 
-    decision: "approved" | "rejected"。用于把审批「结果」计入指标
-    （hitl_approval_total{result=approved|rejected}），补齐 on_hitl_requested
-    只记 need_approval 的观测缺口——否则审批通过率/拒绝数在指标层不可观测。
-    """
+        decision: "approved" | "rejected"。用于把审批「结果」计入指标
+        （hitl_approval_total{result=approved|rejected}），补齐 on_hitl_requested
+        只记 need_approval 的观测缺口——否则审批通过率/拒绝数在指标层不可观测。
+        """
+        ...
     def on_error(self, error: Exception, run_id: str, *, session_id: str = "") -> None: ...
     def on_halt(self, reason: str, run_id: str, *, session_id: str = "") -> None: ...
 
     # ═══ H. Skill 生命周期（2）═══
 
     def on_skill_activated(
-        self, skill_name: str, run_id: str, step_n: int,
-        skill_type: str = "", tools: list | None = None, *, session_id: str = "",
-    ) -> None: ...
-    """Skill 在 search_skills 中成功激活后触发。"""
+        self, skill_name: str, run_id: str, step_n: int, *, session_id: str = "",
+    ) -> None:
+        """Skill 在 search_skills 中成功激活后触发。"""
+        ...
 
     def on_skill_cleared(
         self, skill_name: str, run_id: str, *, session_id: str = "",
-    ) -> None: ...
-    """Turn 结束时 clear_active_skill() 调用后触发。"""
+    ) -> None:
+        """Turn 结束时 clear_active_skill() 调用后触发。"""
+        ...
 
 
 class DefaultAgentHooks:
@@ -259,8 +263,7 @@ class DefaultAgentHooks:
     # ═══ H. Skill 生命周期（2）═══
 
     def on_skill_activated(
-        self, skill_name: str, run_id: str, step_n: int,
-        skill_type: str = "", tools: list | None = None, *, session_id: str = "",
+        self, skill_name: str, run_id: str, step_n: int, *, session_id: str = "",
     ) -> None:
         pass
 
@@ -520,14 +523,12 @@ class CompositeAgentHooks:
     # ═══ H. Skill 生命周期 ═══
 
     def on_skill_activated(
-        self, skill_name: str, run_id: str, step_n: int,
-        skill_type: str = "", tools: list | None = None, *, session_id: str = "",
+        self, skill_name: str, run_id: str, step_n: int, *, session_id: str = "",
     ) -> None:
         for h in self._hooks:
             try:
                 h.on_skill_activated(
-                    skill_name=skill_name, skill_type=skill_type, tools=tools,
-                    run_id=run_id, step_n=step_n, session_id=session_id,
+                    skill_name=skill_name, run_id=run_id, step_n=step_n, session_id=session_id,
                 )
             except Exception:
                 _logger.debug("CompositeAgentHooks: on_skill_activated failed", exc_info=True)

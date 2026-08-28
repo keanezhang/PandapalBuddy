@@ -24,6 +24,9 @@ class RateLimiter:
         """
         current = self._counters.get(tool_name, 0)
 
+        # inv-RL-2：无论是否超限都计数（供观测层使用，拒绝路径同样计入尝试次数）
+        self._counters[tool_name] = current + 1
+
         if max_calls is not None and current >= max_calls:
             return ToolResult(
                 success=False,
@@ -31,7 +34,6 @@ class RateLimiter:
                 tool_name=tool_name,
             )
 
-        self._counters[tool_name] = current + 1
         return None
 
     def reset_turn(self) -> None:

@@ -34,6 +34,11 @@ class _CircuitBreakerState:
         if self.state == CircuitState.CLOSED:
             return True
         if self.state == CircuitState.OPEN:
+            # inv-CB-5：退避已钳制到 max_recovery_timeout → 永久 OPEN，不再自动探活。
+            # 故障持续到退避上限说明工具已不可救药，继续探活只会浪费调用；
+            # 恢复只能靠外部重新 register（重置状态）。
+            if self.current_recovery_timeout >= self.config.max_recovery_timeout:
+                return False
             elapsed = time.monotonic() - self.last_failure_time
             if elapsed >= self.current_recovery_timeout:
                 self.state = CircuitState.HALF_OPEN
@@ -105,12 +110,20 @@ class CircuitBreakerManager:
             return None  # 未配置熔断器，通过
         if breaker.should_allow():
             return None
-        return ToolResult(
-            success=False,
-            error=(
+        # 区分永久熔断（达退避上限）与可恢复熔断，消息准确（看得见原则）
+        if breaker.current_recovery_timeout >= breaker.config.max_recovery_timeout:
+            reason = (
+                f"Tool '{tool_name}' 已达退避上限（{breaker.current_recovery_timeout:.0f}s），"
+                f"已永久熔断（不再自动恢复）"
+            )
+        else:
+            reason = (
                 f"Tool '{tool_name}' 已熔断，"
                 f"预计 {breaker.current_recovery_timeout:.0f}s 后恢复"
-            ),
+            )
+        return ToolResult(
+            success=False,
+            error=reason,
             tool_name=tool_name,
         )
 

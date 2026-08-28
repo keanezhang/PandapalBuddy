@@ -110,39 +110,35 @@ CompositeAgentHooks
 
 | # | 风险 | 状态 | 说明 |
 |---|------|------|------|
-| 1 | **测试与实现签名漂移（on_skill_activated）** | ⚠️ **实测 4 failed** | 见下节详述 |
+| 1 | **on_skill_activated 协议僵尸参数 + 消费方签名漂移** | ✅ **2026-08-26 已修复** | 见下节详述 |
 | 2 | hook 名拼写无编译期检查 | ⏸ 设计权衡 | `_safe_hook` 字符串派发，拼错静默失效；靠测试覆盖主路径 |
 | 3 | 单 hook 性能风险 | ⏸ 量级可忽略 | 每次 LLM 调用 `_accepts` 有签名内省开销——已被 `_sig_cache` 缓存消除（U4 验证） |
 | 4 | KG-1：adapter 缺 skill hook | ⏸ 已知差距 | 观测层不记录 skill 激活事件，靠应用层 SkillAwareHooks 兜底 |
 
-### ⚠️ 风险 1 详述：`on_skill_activated` 测试参数表与实现不一致（pre-existing）
+### ✅ 风险 1 详述：`on_skill_activated` 协议僵尸参数与消费方签名漂移（2026-08-26 修复）
 
-**实测**：`python -m pytest pandaren/hook/tests/test_hooks.py` → **71 passed, 4 failed**：
+**现状（修复后）**：`python -m pytest pandaren/hook/tests/test_hooks.py` → **76 passed / 0 failed**（U1~U18，含新增 U18 回归）。
 
-```
-test_u1_single_hook_exception_swallowed[on_skill_activated]
-test_u7_session_id_forwarded_to_each_hook[on_skill_activated]
-test_u13_empty_composite_calls_are_noop[on_skill_activated]
-test_u17_real_adapter_chain_integration
-```
+**原始问题（两个生产 bug，此前被误判为「测试侧 bug」）**：
 
-**根因（三重不一致，判定为测试侧 bug）**：
+时间线还原：
+1. hooks.design.md v1 为 `on_skill_activated` 定义了 6 参协议（`skill_type`/`tools`）——**超前于领域模型**（Skill 无 skill_type 字段）
+2. hooks.py 曾为 4 参、测试照抄 6 参 → 4 failed（本文件旧版 §5 记录的正是此状态）
+3. 某次改动把 hooks.py 升级为 6 参 + 测试同步 6 参 → **75 passed**（测试变绿，但本文件未同步更新）
+4. **生产 bug ①**：唯一消费方 `SkillAwareHooks.on_skill_activated` 保持 **4 参**签名未同步 → Composite 恒传 6 参 → TypeError → 被 `except Exception` 静默吞掉（仅 debug 日志）→ **SKILL_ACTIVATED 永不推送**
+5. **生产 bug ②**：`app._register_skill_hooks` 只遍历一层 `_hooks` 找 SkillAwareHooks，而真实装配是**双层嵌套**（builder 外层 Composite → run_local 内层 Composite → SkillAwareHooks）→ 找不到 → `bind_broadcast` 从未调用 → 即使签名修好也推不出去
+6. 两 bug 叠加：**前端永远收不到技能激活/清除事件**；且测试全绿（RecordingHook 用 `**kwargs` 接受一切，掩盖签名漂移）
 
-| 侧 | on_skill_activated 参数 |
-|----|------------------------|
-| hooks.py 协议（141-145）与 Composite（522-530） | `skill_name, run_id, step_n, *, session_id`（4 参） |
-| 生产调用方 run_core.py:2572-2577 | `skill_name, run_id, step_n`（3 参，经 _safe_hook） |
-| Skill 领域模型 skill/models.py:36 | **无 skill_type 字段**（只有 name/description/when_to_use/content/source/allowed_tools/allow_auto_trigger/tags） |
-| 测试 METHOD_PARAMS（test_hooks.py:145）+ 设计文档 §1.3 第 20 行 | `skill_name, skill_type="ACTION", tools=["calc"], run_id, step_n, session_id`（**凭空多 2 参**） |
+**修复内容（2026-08-26）**：
+1. **协议收敛 4 参**：hooks.py 三处（AgentHooks Protocol / DefaultAgentHooks / CompositeAgentHooks）`on_skill_activated` 删 `skill_type`/`tools`——该两参在协议、调用方、领域模型三层均无数据来源（僵尸参数），经确认删除，协议与调用方/消费方对齐
+2. **递归查找**：app.py 查找逻辑提取为模块级 `_find_skill_hooks_in`，递归遍历嵌套 Composite 的 `_hooks` 列表（可独立测试）
+3. **测试同步 + 回归**：test_hooks.py METHOD_PARAMS / _POS_ARGS / U17 同步 4 参；**新增 U18**（显式签名 hook 兼容回归）——防「`**kwargs` 掩盖签名漂移」复发
+4. **设计文档同步**：hooks.design.md §1.3 参数表 + U17 详设 + 修订记录 v2
 
-**结论**：hooks.design.md v1 的参数表推导超前/失真，测试照抄后与实现脱节——`skill_type`/`tools` 在协议、调用方、领域模型三层都不存在。失败发生在参数绑定层（TypeError），**U1/U7/U13 的参数化与 U17 集成全部被这一个错参数打穿**。
-
-**修复方向**（测试侧，2 处同步）：
-1. `test_hooks.py:145` METHOD_PARAMS → 删 `skill_type`/`tools`，保留 `skill_name/run_id/step_n/session_id`
-2. `test_hooks.py:174` `_POS_ARGS["on_skill_activated"]` → `("skill_name", "run_id", "step_n")`
-3. `hooks.design.md` §1.3 第 20 行参数表同步修正
-
-修复后预期 75 passed / 0 failed。**非本模块逻辑问题——hooks.py 三类的实现与协议一致**。
+**经验教训**：
+- 测试的 `**kwargs` hook（RecordingHook）会掩盖签名漂移——测试全绿 ≠ 生产正常；U18 用显式签名 hook 补上盲区
+- 协议新增/修改参数必须**四处同步**：调用方（run_core）、消费方（SkillAwareHooks）、测试、设计文档
+- 关联产出：pandapal/app.py `_find_skill_hooks_in` + 验证脚本 `scripts/_verify_hook_fix.py`
 
 ---
 
@@ -150,7 +146,7 @@ test_u17_real_adapter_chain_integration
 
 | 维度 | 现状 | 影响 |
 |------|------|------|
-| 单元测试 | U1~U17 共 **75 用例**（参数化展开后；实测 71 通过 / 4 失败见 §5） | 协议一致性（U8：21 方法集合 + 签名约束）、容错、兼容、clone、顺序、透传全覆盖 |
+| 单元测试 | U1~U18 共 **76 用例**（参数化展开后；实测 76 passed / 0 failed，2026-08-26 全绿） | 协议一致性（U8：21 方法集合 + 签名约束）、容错、兼容、clone、顺序、透传全覆盖；U18 显式签名回归 |
 | 覆盖矩阵 | P0×11 / P1×3 / P2×2 / P3×1 | 高优先级不变式全部有对应用例 |
 | 集成测试 | U17 真实 ObservabilityHooksAdapter 链式 + InMemory 后端断言 | session_id 端到端落观测、provider 真实送达、KG-1 容错 |
 | 可测性 | 零 mock（RecordingHook 家族有真实状态可审计）；仅 U4 用 monkeypatch 包装 inspect 做探测计数 | 高 |
@@ -162,4 +158,4 @@ test_u17_real_adapter_chain_integration
 
 1. **hook 是 SDK 的观测总线**——21 个扩展点把引擎/工具/harness 生命周期事件统一出口，`CompositeAgentHooks` 让「内置观测 + 用户扩展」共存而非互斥。
 2. **session_id 一等透传是核心隔离机制**——run 级 17 个 hook 全部带会话归属，`_safe_hook` 单点注入杜绝漏传；非 run 级 4 个明确全局。
-3. **唯一待处理问题**：测试参数表 `on_skill_activated` 多传 `skill_type/tools` 导致 4 个用例失败——**测试侧 bug，修复路径已明确（删 2 参 + 同步设计文档）**，实现本体无问题。
+3. **on_skill_activated 僵尸参数已删除、消费方签名漂移已修复**（2026-08-26）——协议 6 参 → 4 参（与领域模型/调用方/消费方对齐），app 查找改递归（`_find_skill_hooks_in`），U18 回归防复发。曾因「测试 `**kwargs` 掩盖签名漂移」+「只遍历一层绑定查找」双因叠加，导致前端收不到技能事件且测试全绿。

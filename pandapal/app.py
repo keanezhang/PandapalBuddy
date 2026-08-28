@@ -49,6 +49,27 @@ from pandapal.degradation import DegradationEvent, report_degradation
 logger = logging.getLogger(__name__)
 
 
+def _find_skill_hooks_in(hooks: Any) -> Any:
+    """在（可能多层嵌套的）hook 组合中递归查找 SkillAwareHooks 实例。
+
+    builder 外层 CompositeAgentHooks 会包 run_local 内层 CompositeAgentHooks，
+    再包 SkillAwareHooks——真实的 _hooks 是两层嵌套列表，只遍历一层会漏掉
+    （曾导致 broadcast 绑定失败、SKILL_ACTIVATED 永不推送，见 12-hook.md §5）。
+    返回 None 表示未启用 SkillAwareHooks。
+    """
+    from pandapal.hooks.skill_hooks import SkillAwareHooks
+
+    if isinstance(hooks, SkillAwareHooks):
+        return hooks
+    inner = getattr(hooks, "_hooks", None)
+    if isinstance(inner, list):
+        for sub in inner:
+            found = _find_skill_hooks_in(sub)
+            if found is not None:
+                return found
+    return None
+
+
 class PandaPalApp:
     """PandaPal Backend 应用容器（唯一启动入口）。
 
@@ -209,19 +230,7 @@ class PandaPalApp:
         if hooks is None:
             return
 
-        from pandapal.hooks.skill_hooks import SkillAwareHooks
-
-        # CompositeAgentHooks 内可能包含多个子 hook，需要遍历找 SkillAwareHooks
-        skill_hooks: Any = None
-        if isinstance(hooks, SkillAwareHooks):
-            skill_hooks = hooks
-        else:
-            inner = getattr(hooks, "_hooks", None)
-            if isinstance(inner, list):
-                for h in inner:
-                    if isinstance(h, SkillAwareHooks):
-                        skill_hooks = h
-                        break
+        skill_hooks = _find_skill_hooks_in(hooks)
 
         if skill_hooks is None:
             # 未启用 SkillAwareHooks 时静默跳过

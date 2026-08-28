@@ -74,10 +74,12 @@ build_blueprint()  = 6 阶段组装，返回 AgentBlueprint   # 多 session 场�
 | Skill | 与工具对称过滤 |
 | 停机守卫 step_guard | **继承**父级 |
 | tool_feedback_providers | **继承**（子 Agent 写文件也受同一把尺子约束） |
+| stream | **继承**（父级显式关闭流式时子 Agent 不应自行开启） |
 | context_budget / token_estimator | **继承**（阈值与尺子一致，否则压缩触发判据退回 chars/4.0 量纲） |
 | llm_settings | 父级作底 → 蓝图字段逐字段覆盖（非 None 才覆盖）→ bp.model 仅覆盖 target_model |
 | hooks | **不继承**（注释明确：否则 provider 的 on_run_end 会因子 Agent 收尾触发，父 run 熔断计数被提前清掉） |
-| observability | 继承父级配置（audit 特判 `_UNSET→None`，其余 `_UNSET→False`） |
+| observability | 继承父级配置（audit 特判 `_UNSET→None`，其余 `_UNSET→False`；sanitizer **继承**，防敏感数据经委派路径绕过脱敏） |
+| max_steps / auto_confirm_high / 重试 | **不继承**——子 Agent 是委派型短期执行，默认 30 步 / HIGH 需审批 / 默认重试即更保守的安全下限（有意为之） |
 
 ### 2.5 观测底座组合（_build_observability_and_hooks，891-913）
 

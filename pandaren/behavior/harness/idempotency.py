@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+from dataclasses import replace as dc_replace
 
 from ...tool.definition.tool_result import ToolResult
 
@@ -18,7 +19,9 @@ class IdempotencyGuard:
     """Turn 级幂等性去重。
 
     并发契约（inv-ID-7）：并发同 key 的调用中，仅第一个真正执行，
-    其余等待 in-flight 结果并命中缓存（deduplicated 由调用方标记）。
+    其余等待 in-flight 结果并命中缓存。
+    命中语义（inv-ID-2）：check/check_sync 命中一律返回 deduplicated=True 副本
+    （不在原缓存对象上就地改绑，防缓存污染），等待 in-flight 的结果同样标记。
     等待在锁**外**进行（锁内 await 会让执行方的 store 拿不到锁而死锁）。
     """
 
@@ -51,7 +54,8 @@ class IdempotencyGuard:
                 # （inv-ID-7「仅第一个真正执行」在异常路径同样成立），直接传播失败。
                 raise self._failed[key]
             if key in self._cache:
-                return self._cache[key]
+                # inv-ID-2：命中即 deduplicated（副本标记，不就地改绑缓存对象）
+                return dc_replace(self._cache[key], deduplicated=True)
             fut = self._inflight.get(key)
             if fut is None:
                 # 第一个到达者：登记 in-flight 后返回 None，指示调用方去执行
@@ -59,7 +63,9 @@ class IdempotencyGuard:
                 self._inflight[key] = fut
                 return None
         # 后续并发者：锁外等待执行方 store/complete 的结果（锁内 await 会死锁）
-        return await fut
+        cached = await fut
+        # inv-ID-2：等待 in-flight 命中同样标记 deduplicated（等待者 = 去重命中）
+        return dc_replace(cached, deduplicated=True)
 
     async def store(self, tool_name: str, args: dict, result: ToolResult) -> None:
         """存储执行结果到幂等缓存，并唤醒等待 in-flight 的并发调用者。"""
@@ -92,9 +98,15 @@ class IdempotencyGuard:
         self._failed[key] = exc
 
     def check_sync(self, tool_name: str, args: dict) -> ToolResult | None:
-        """同步版本的幂等检查（用于非 async 场景）。"""
+        """同步版本的幂等检查（用于非 async 场景）。
+
+        inv-ID-2：命中同样返回 deduplicated=True 副本（与 async check 语义一致）。
+        """
         key = self._make_key(tool_name, args)
-        return self._cache.get(key)
+        cached = self._cache.get(key)
+        if cached is None:
+            return None
+        return dc_replace(cached, deduplicated=True)
 
     def store_sync(self, tool_name: str, args: dict, result: ToolResult) -> None:
         """同步版本的缓存存储。"""

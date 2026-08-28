@@ -11,10 +11,11 @@
   EX-05        R2 截断已 dc_replace 产出新对象 + R4 store 移至 R2 后（inv-EX-5）
   ID-08        并发同 key 已 in-flight 去重，仅 1 次执行、等待者不挂死（inv-ID-7）
 
-known-gap（主断言按实际行为 + xfail(strict) 按设计预期，修复后意外通过即报警）：
-  CB-07        退避达 max_recovery_timeout 后仍转 HALF_OPEN 探活（设计 inv-CB-5 要求永久 OPEN）
-  ID-02        check 命中返回缓存对象原样（deduplicated 由 executor R4 命中路径标记）
-  OG-01        截断后追加提示，序列化总长 > max_bytes（设计 inv-OG-1 要求 ≤ 上限）
+已对齐设计契约（4 个 known-gap 全部关闭，xfail 转正）：
+  RL-02        RateLimiter 超限调用同样计数（inv-RL-2，rate_limiter.py check 先计数后判定）
+  CB-07        退避达 max_recovery_timeout 后永久 OPEN 不再探活（inv-CB-5，circuit_breaker.py should_allow）
+  ID-02        check/check_sync 命中返回 deduplicated=True 副本（inv-ID-2，idempotency.py dc_replace）
+  OG-01        截断后「数据前缀 + 提示」总长 ≤ max_bytes（inv-OG-1，output_guard.py 二分收敛预留提示空间）
 
 Fixture 粒度：每个用例内新建 Fake 实例（防用例间状态串扰，§7 落地约定 2）。
 确定性：时间依赖仅 CB-05/06/07 的 asyncio.sleep(0.06)（≥2 倍量级差，§7 约定 4）；
@@ -505,7 +506,7 @@ async def test_cb_06_half_open_failure_backs_off():
 
 
 async def test_cb_07_backoff_capped_at_max():
-    """CB-07: 退避被 max_recovery_timeout 钳制（0.02→0.04→0.05），不再翻倍增长"""
+    """CB-07: 退避被 max_recovery_timeout 钳制（0.02→0.04→0.05），达上限后永久 OPEN（inv-CB-5）"""
     hooks = RecordingHooks()
     mgr = _cb_manager(hooks)
     mgr.register("tool_a", CircuitBreakerConfig(
@@ -514,48 +515,17 @@ async def test_cb_07_backoff_capped_at_max():
 
     mgr.record_failure("tool_a")                # OPEN #1：退避 0.02
     await asyncio.sleep(0.06)
-    mgr.check("tool_a")                         # → HALF_OPEN
+    assert mgr.check("tool_a") is None          # 未达上限：超时 → HALF_OPEN 探活
     mgr.record_failure("tool_a")                # OPEN #2：退避 0.04
     await asyncio.sleep(0.06)
-    mgr.check("tool_a")                         # → HALF_OPEN
+    assert mgr.check("tool_a") is None          # 未达上限：仍探活
     mgr.record_failure("tool_a")                # OPEN #3：退避 min(0.08, 0.05) = 0.05
 
     assert mgr.is_tripped("tool_a") is True
     assert hooks.on_tool_circuit_open_calls[2]["recovery_timeout"] == 0.05  # 钳制生效
 
     await asyncio.sleep(0.06)                   # 超过 0.05 上限
-    assert mgr.check("tool_a") is None          # 现状：仍转 HALF_OPEN 放行（达上限不阻止探活）
-
-    mgr.record_failure("tool_a")                # OPEN #4：仍 0.05，不再翻倍
-    assert hooks.on_tool_circuit_open_calls[3]["recovery_timeout"] == 0.05
-
-
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "known-gap: 设计 inv-CB-5 要求退避达 max_recovery_timeout 后永久 OPEN（不再探活）；"
-        "实现 _CircuitBreakerState.should_allow 无上限判断，超时仍转 HALF_OPEN 放行探活。"
-        "修复后本用例应转 passed。"
-    ),
-)
-async def test_cb_07_stays_open_after_max_backoff():
-    """CB-07(设计预期): 达 max_recovery_timeout 后永久 OPEN，check 仍拒绝（inv-CB-5）"""
-    hooks = RecordingHooks()
-    mgr = _cb_manager(hooks)
-    mgr.register("tool_a", CircuitBreakerConfig(
-        failure_threshold=1, recovery_timeout=0.02, max_recovery_timeout=0.05,
-    ))
-
-    mgr.record_failure("tool_a")
-    await asyncio.sleep(0.06)
-    mgr.check("tool_a")
-    mgr.record_failure("tool_a")
-    await asyncio.sleep(0.06)
-    mgr.check("tool_a")
-    mgr.record_failure("tool_a")                # 达上限 0.05
-
-    await asyncio.sleep(0.06)
-    assert mgr.check("tool_a") is not None      # 设计预期：仍拒绝（永久 OPEN）
+    assert mgr.check("tool_a") is not None      # 达上限 → 永久 OPEN：仍拒绝，不再探活（inv-CB-5）
 
 
 def test_cb_08_closed_success_resets_count_no_hook():
@@ -589,34 +559,17 @@ async def test_id_01_first_check_miss_returns_none():
     assert result is None
 
 
-async def test_id_02_hit_returns_cached_result():
-    """ID-02: 已 store 的同 key check → 命中返回缓存结果（不重新执行，Risk-ID-1；deduplicated 由 executor 层标记）"""
+async def test_id_02_hit_returns_deduplicated_result():
+    """ID-02: 已 store 的同 key check → 命中返回 deduplicated=True 副本（inv-ID-2，不重新执行，Risk-ID-1）"""
     guard = IdempotencyGuard()
     cached = ToolResult(success=True, data="ok")
     await guard.store("write_file", {"path": "a.txt"}, cached)
 
     result = await guard.check("write_file", {"path": "a.txt"})
 
-    assert result is cached
-
-
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "known-gap: 设计 inv-ID-2 要求 check 命中返回 deduplicated=True 结果；"
-        "实现 check 命中返回缓存对象原样（deduplicated 标记由 HarnessExecutor R4 命中路径 "
-        "dc_replace(cached, deduplicated=True) 添加，见 EX-04）。修复后本用例应转 passed。"
-    ),
-)
-async def test_id_02_hit_marks_deduplicated():
-    """ID-02(设计预期): 命中结果带 deduplicated=True（inv-ID-2）"""
-    guard = IdempotencyGuard()
-    cached = ToolResult(success=True, data="ok")
-    await guard.store("write_file", {"path": "a.txt"}, cached)
-
-    result = await guard.check("write_file", {"path": "a.txt"})
-
+    assert result is not None
     assert result.deduplicated is True
+    assert result is not cached                 # 命中产出副本，不就地改绑缓存对象（防缓存污染）
 
 
 async def test_id_03_different_args_no_false_positive():
@@ -665,14 +618,16 @@ async def test_id_06_locks_no_leak():
 
 
 async def test_id_07_async_check_sync_store_shared():
-    """ID-07: async check 与 sync store 共享同一 _cache（inv-ID-6 + Risk-ID-3）"""
+    """ID-07: async check 与 sync store 共享同一 _cache（inv-ID-6 + Risk-ID-3），命中带 deduplicated"""
     guard = IdempotencyGuard()
     cached = ToolResult(success=True, data="ok")
     guard.store_sync("write_file", {"path": "a.txt"}, cached)
 
     result = await guard.check("write_file", {"path": "a.txt"})
 
-    assert result is cached                       # async/sync 互见，不各自为政
+    assert result is not None                    # async/sync 互见，不各自为政
+    assert result.deduplicated is True           # inv-ID-2：命中语义一致
+    assert result.data == "ok"
 
 
 async def test_id_08_concurrent_same_key_runs_once():
@@ -726,7 +681,7 @@ async def test_id_09_executor_abort_wakes_waiters():
 
 
 def test_og_01_oversized_truncates_with_hook():
-    """OG-01: 超限截断 —— truncated + 截断提示 + hook 参数精确（inv-OG-1 的序列化长度 ≤ 上限见 xfail）"""
+    """OG-01: 超限截断 —— truncated + 截断提示 + hook 参数精确 + 序列化总长 ≤ 上限（inv-OG-1）"""
     guard = OutputGuard()
     hooks = RecordingHooks()
     guard.set_hooks(hooks)
@@ -737,29 +692,12 @@ def test_og_01_oversized_truncates_with_hook():
     assert out.truncated is True
     assert len(out.data) < 100_000                 # 确实截断（蜕变关系：不硬编码截断内容）
     assert "输出已截断" in out.data                # 截断说明存在
+    assert len(json.dumps(out.data, ensure_ascii=False).encode("utf-8")) <= 1024  # inv-OG-1：UTF-8 字节口径（与 check 的 data_bytes 一致）
     assert len(hooks.on_tool_output_truncated_calls) == 1
     call = hooks.on_tool_output_truncated_calls[0]
     assert call["tool_name"] == "write_file"
     assert call["original_size"] == 100_002        # json.dumps 含两端引号
     assert call["max_size"] == 1024
-
-
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "known-gap: 设计 inv-OG-1 要求截断后序列化长度 ≤ max_bytes（二分收敛到上限内）；"
-        "实现只保证截断前缀 ≤ max_bytes，追加截断提示后 json 序列化总长超限。"
-        "修复后本用例应转 passed。"
-    ),
-)
-def test_og_01_truncated_length_within_max():
-    """OG-01(设计预期): 截断后 json 序列化长度 ≤ max_bytes（inv-OG-1）"""
-    guard = OutputGuard()
-    result = ToolResult(success=True, data="x" * 100_000)
-
-    out = guard.check(result, max_bytes=1024)
-
-    assert len(json.dumps(out.data)) <= 1024
 
 
 def test_og_02_within_limit_returns_original():
@@ -777,15 +715,15 @@ def test_og_02_within_limit_returns_original():
 
 
 def test_og_03_three_truncations_three_hooks():
-    """OG-03: 连续 3 次截断 → hook 触发 3 次，每次参数含 max_size=1024（inv-OG-3）"""
+    """OG-03: 连续 3 次独立超限输入 → hook 触发 3 次，每次参数含 max_size=1024（inv-OG-3）"""
     guard = OutputGuard()
     hooks = RecordingHooks()
     guard.set_hooks(hooks)
-    result = ToolResult(success=True, data="x" * 100_000, tool_name="write_file")
 
     for _ in range(3):
-        result = guard.check(result, max_bytes=1024)
-        assert result.truncated is True
+        result = ToolResult(success=True, data="x" * 100_000, tool_name="write_file")
+        out = guard.check(result, max_bytes=1024)
+        assert out.truncated is True              # 每次独立超限都触发截断
 
     assert len(hooks.on_tool_output_truncated_calls) == 3
     for call in hooks.on_tool_output_truncated_calls:
