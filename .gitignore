@@ -28,10 +28,8 @@ Thumbs.db
 # Logs
 logs/
 
-# .pandapal 数据目录（忽略运行时数据，保留配置）
-.pandapal/*.db
-.pandapal/*.db-shm
-.pandapal/*.db-wal
+# .pandapal（本地 Agent/Skills 数据目录，禁止上传 GitHub）
+.pandapal/
 
 # 环境变量文件（含 API Key，绝不提交；仅保留 .env.example 模板）
 .env
@@ -76,3 +74,4 @@ docs/prd/pets/*.webp
 
 skillhub/
 简历/
+
