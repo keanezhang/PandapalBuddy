@@ -476,6 +476,48 @@ class IpcStdoutTransport(Transport):
                 "session_id": p.get("session_id", ""),
             }
 
+        # ── MCP 服务器管理（全局级：scope=global，不带 session_id）──
+        if t == EventType.MCP_LIST_RESULT:
+            return {
+                "type": IpcMessageType.MCP_LIST_RESULT, **base,
+                "servers": p.get("servers", []),
+            }
+        if t == EventType.MCP_GET_RESULT:
+            return {
+                "type": IpcMessageType.MCP_GET_RESULT, **base,
+                "server": p.get("server", {}),
+            }
+        if t == EventType.MCP_SAVED:
+            return {
+                "type": IpcMessageType.MCP_SAVED, **base,
+                "name": p.get("name", ""),
+            }
+        if t == EventType.MCP_DELETED:
+            return {
+                "type": IpcMessageType.MCP_DELETED, **base,
+                "name": p.get("name", ""),
+            }
+        if t == EventType.MCP_STATUS_CHANGED:
+            return {
+                "type": IpcMessageType.MCP_STATUS_CHANGED, **base,
+                "name": p.get("name", ""),
+                "status": p.get("status", "disconnected"),
+                "error": p.get("error"),
+            }
+        if t == EventType.MCP_TOOLS_RESULT:
+            return {
+                "type": IpcMessageType.MCP_TOOLS_RESULT, **base,
+                "name": p.get("name", ""),
+                "tools": p.get("tools", []),
+            }
+        if t == EventType.MCP_TEST_RESULT:
+            return {
+                "type": IpcMessageType.MCP_TEST_RESULT, **base,
+                "ok": p.get("ok", False),
+                "tools": p.get("tools", []),
+                "error": p.get("error"),
+            }
+
         # 未知事件类型：走 extra 兜底
         return {
             "type": IpcMessageType.UNKNOWN, **base,

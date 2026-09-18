@@ -28,7 +28,7 @@ from typing import Any
 
 
 class EventType(str, Enum):
-    """统一事件类型枚举（**45 种**全保留，不合并）。
+    """统一事件类型枚举（全量保留，不合并）。
 
     命名空间划分：
     - 流式生命周期 **4** 种（REPLY_START/REPLY_END/RUN_START/RUN_END）
@@ -37,6 +37,7 @@ class EventType(str, Enum):
     - 暂停/恢复 4 种（HITL_REQUEST/INTERACTION_REQUEST/PERMISSION_DENIED/AGENT_HALTED）
     - 终端 2 种（ERROR/APPROVAL_RESULT）
     - 系统 5 种（USER_INPUT_ECHO/TASK_NOTIFICATION/AGENT_TASK_EVENT/AGENT_REPLY/QUICK_APP_DATA）
+    - MCP 服务器管理 7 种（全局级，scope=global）
 
     ★ 注意：HITL_REQUEST 是事件类型之一，HITL 不是独立通道。
     ★ 流式分类（见 EVENT_CATEGORY）：2 种 STREAMING（LLM_TOKEN/REASONING_TOKEN）+ 其余 DISCRETE。
@@ -125,6 +126,15 @@ class EventType(str, Enum):
 
     # ── 预算额度（按 provider 分账）──
     BUDGET_STATUS        = "budget_status"         # 每 provider 额度视图（额度条）
+
+    # ── MCP 服务器管理（全局级：scope=global，不带 session_id）──
+    MCP_LIST_RESULT    = "mcp_list_result"     # 服务器摘要列表响应
+    MCP_GET_RESULT     = "mcp_get_result"      # 单服务器详情响应
+    MCP_SAVED          = "mcp_saved"           # 配置保存成功确认
+    MCP_DELETED        = "mcp_deleted"         # 配置删除成功确认
+    MCP_STATUS_CHANGED = "mcp_status_changed"  # 连接状态变化推送
+    MCP_TOOLS_RESULT   = "mcp_tools_result"    # 某服务器工具清单（连接/重连后推送）
+    MCP_TEST_RESULT    = "mcp_test_result"     # 连接测试结果
 
 
 # ── 事件作用域标记 ──────────────────────────────────────────────────────────
@@ -454,6 +464,78 @@ class NormalizedEvent:
                 "error_code":    error_code,
                 "error_message": error_message,
                 "error_detail":  error_detail,
+                EVENT_SCOPE_KEY: SCOPE_GLOBAL,
+            },
+        )
+
+    # ── MCP 服务器管理（全局级：显式 scope=global，不带 session_id）──────────
+    # 契约依据 SESSION_ID §八 #4「全局级明确不带」：MCP 是应用级能力，
+    # 任意会话都可能消费其工具目录变化，故不隶属任何会话。
+
+    @classmethod
+    def mcp_list_result(cls, servers: list[dict]) -> "NormalizedEvent":
+        """MCP 服务器摘要列表（MCP_LIST 应答）。"""
+        return cls(
+            event_type=EventType.MCP_LIST_RESULT,
+            payload={"servers": servers, EVENT_SCOPE_KEY: SCOPE_GLOBAL},
+        )
+
+    @classmethod
+    def mcp_get_result(cls, server: dict) -> "NormalizedEvent":
+        """单个 MCP 服务器详情（MCP_GET 应答）。"""
+        return cls(
+            event_type=EventType.MCP_GET_RESULT,
+            payload={"server": server, EVENT_SCOPE_KEY: SCOPE_GLOBAL},
+        )
+
+    @classmethod
+    def mcp_saved(cls, name: str) -> "NormalizedEvent":
+        """配置保存成功确认。"""
+        return cls(
+            event_type=EventType.MCP_SAVED,
+            payload={"name": name, EVENT_SCOPE_KEY: SCOPE_GLOBAL},
+        )
+
+    @classmethod
+    def mcp_deleted(cls, name: str) -> "NormalizedEvent":
+        """配置删除成功确认。"""
+        return cls(
+            event_type=EventType.MCP_DELETED,
+            payload={"name": name, EVENT_SCOPE_KEY: SCOPE_GLOBAL},
+        )
+
+    @classmethod
+    def mcp_status_changed(cls, name: str, status: str,
+                           error: str | None = None) -> "NormalizedEvent":
+        """连接状态变化推送（connected / connecting / disconnected / error）。"""
+        return cls(
+            event_type=EventType.MCP_STATUS_CHANGED,
+            payload={
+                "name": name,
+                "status": status,
+                "error": error,
+                EVENT_SCOPE_KEY: SCOPE_GLOBAL,
+            },
+        )
+
+    @classmethod
+    def mcp_tools_result(cls, name: str, tools: list[dict]) -> "NormalizedEvent":
+        """某服务器的 MCP 工具清单（连接 / 重连后推送）。"""
+        return cls(
+            event_type=EventType.MCP_TOOLS_RESULT,
+            payload={"name": name, "tools": tools, EVENT_SCOPE_KEY: SCOPE_GLOBAL},
+        )
+
+    @classmethod
+    def mcp_test_result(cls, ok: bool, tools: list[dict] | None = None,
+                        error: str | None = None) -> "NormalizedEvent":
+        """连接测试结果（不持久化、不注册工具）。"""
+        return cls(
+            event_type=EventType.MCP_TEST_RESULT,
+            payload={
+                "ok": ok,
+                "tools": tools or [],
+                "error": error,
                 EVENT_SCOPE_KEY: SCOPE_GLOBAL,
             },
         )

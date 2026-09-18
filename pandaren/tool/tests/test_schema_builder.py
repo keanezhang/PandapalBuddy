@@ -8,6 +8,7 @@
   Risk-3（P1）：search_tools 带动态 enum，只含「延迟未发现」工具
   Risk-4（P1）：门链过滤生效（filtered_count / 不进入任何输出）
   Risk-5（P2）：GateChain.default() 为 4 道门
+  Risk-6（P0）：GateChain.persistent() 仅含 2 道持久门（run 稳定，护 Prefix Cache）
 """
 
 from __future__ import annotations
@@ -170,6 +171,13 @@ class TestGateChainDefault:
         chain = GateChain.default()
         names = [g.name for g in chain._gates]
         assert names == ["allow_list", "enabled", "agent_whitelist", "skill_whitelist"]
+
+    def test_persistent_has_two_stable_gates(self):
+        # Risk-6（P0）：system 前缀目录专用门链 = 仅「持久约束」门（run 稳定）。
+        # 若此处引入 enabled / skill_whitelist 动态门，前缀每轮字节不稳，击穿 Prefix Cache。
+        chain = GateChain.persistent()
+        names = [g.name for g in chain._gates]
+        assert names == ["allow_list", "agent_whitelist"]
 
     def test_allow_list_filters(self):
         # Risk-4：agent_allowed_tools 白名单过滤

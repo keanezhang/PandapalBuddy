@@ -84,6 +84,11 @@ class AppContext:
     # 双层 Prompt：{mode: 完整prompt} + 缺省模式，透传给 SessionAgentPool 做 delta-rebind。
     prompt_by_mode: dict[str, str] | None = None
     default_mode: str = ""
+    # MCP 能力（阶段 2）：共享 ToolRegistry（动态注册 MCP 工具，令 registry.version++）
+    #   + servers.toml 路径。由 app.py 注入；缺省 None/"" 时 _make_mcp_manager 抛错 →
+    #   子系统失败隔离 → mcp_manager 缺席（测试环境不炸全局）。
+    tool_registry: Any = None
+    mcp_config_path: str = ""
 
     def get(self, t: Type) -> Any:
         """按类型获取外部依赖（★ 容器内部使用）。

@@ -1,7 +1,7 @@
 """pandaren/tool/decorator.py — @tool.function 装饰器实现。
 
 tool 作为命名空间对象（非函数），当前子类型为 tool.function。
-预留 tool.mcp / tool.remote 等扩展。
+预留 tool.remote 等扩展；MCP 工具不走装饰器，见 pandaren/mcp/。
 """
 
 from __future__ import annotations
@@ -33,7 +33,9 @@ class _ToolNamespace:
           ...
 
     预留扩展：
-      @tool.mcp(server_url=..., ...)
+      @tool.mcp —— 未采用装饰器形态；MCP 工具由 ``pandaren/mcp/`` 以「配置驱动
+                  动态注册」实现（协议客户端 + 工具适配），应用层编排见
+                  ``pandapal/mcp/manager.py``。
       @tool.remote(endpoint=..., ...)
     """
 

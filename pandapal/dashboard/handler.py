@@ -11,7 +11,9 @@ O3 Never Throw —— 内部消化异常，返回 ERROR 事件交 Dispatcher 转
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +22,10 @@ from pandapal.dashboard import build_dashboard_source
 from pandapal.events.normalized import NormalizedEvent
 
 logger = logging.getLogger(__name__)
+
+# 看板全量扫描是重活（扫所有 session 的 markdown），run 结束时若高频触发会阻塞事件循环。
+# 节流窗口：同一窗口内的重复请求合并，只保留最后一次。
+_PUSH_THROTTLE_SECONDS = 2.0
 
 
 class DashboardHandler:
@@ -43,6 +49,10 @@ class DashboardHandler:
         self._broadcast = broadcast  # 仅豁免路径 push_if_active 使用
         # 前端至少打开过一次看板才自动重推（避免用户没看时白扫）。
         self._active = False
+        # 节流：run 连续结束时合并重推，避免每轮都全量扫盘阻塞事件循环。
+        self._last_push_monotonic = 0.0
+        self._push_pending = False
+        self._push_task: asyncio.Task | None = None
 
     async def handle_dashboard_request(
         self, data: dict[str, Any]
@@ -55,15 +65,40 @@ class DashboardHandler:
         """P2 实时刷新：run 结束时重推快照（豁免路径，自广播）。
 
         仅在看板被打开过后才推，O3 内部消化异常。
+        节流：合并 2s 窗口内的重复触发，只保留最后一次（避免 run 连续结束时
+        每轮都全量扫盘阻塞事件循环）；扫描本身丢到线程池执行，不阻塞事件循环。
         """
         if not self._active:
             return
-        event = self._build_event()
-        if event is not None:
-            try:
-                await self._broadcast.send(event)
-            except Exception:
-                logger.exception("[Dashboard] push_if_active broadcast failed")
+
+        now = time.monotonic()
+        self._push_pending = True
+
+        # 已有在跑/在等的节流任务 → 本轮仅置 pending，由既有任务收尾时再推一次。
+        if self._push_task is not None and not self._push_task.done():
+            return
+
+        self._push_task = asyncio.create_task(self._throttled_push())
+
+    async def _throttled_push(self) -> None:
+        """节流合并推送：等窗口过后一次性扫描并广播，pending 期间新请求不重复扫。"""
+        try:
+            while True:
+                # 等够节流窗口（期间新请求只会置 _push_pending，不会重复起任务）。
+                await asyncio.sleep(_PUSH_THROTTLE_SECONDS)
+                if not self._push_pending:
+                    break
+                self._push_pending = False
+
+                # 全量扫盘是 CPU/IO 密集的同步操作，丢线程池执行，避免阻塞事件循环。
+                event = await asyncio.to_thread(self._build_event)
+                if event is not None:
+                    try:
+                        await self._broadcast.send(event)
+                    except Exception:
+                        logger.exception("[Dashboard] push_if_active broadcast failed")
+        finally:
+            self._push_task = None
 
     def _build_event(self) -> NormalizedEvent | None:
         """构建看板快照事件；失败时构建 ERROR 事件。永不抛异常（O3）。"""

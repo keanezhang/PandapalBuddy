@@ -30,6 +30,7 @@ from pandapal.broadcast.broadcaster import MessageBroadcast
 from pandapal.broadcast.channel_registry import ChannelDispatchPolicy, ChannelRegistry
 from pandapal.desktop_ipc.ipc_transport import IpcStdoutTransport
 from pandapal.hitl.bridge import HITLBridge
+from pandapal.mcp.manager import McpManager
 from pandapal.router.router import MessageRouter
 from pandapal.scheduler.agent_pool import SessionAgentPool
 from pandapal.scheduler.hitl_manager import HITLManager
@@ -409,6 +410,35 @@ def _make_task_scheduler(
     )
 
 
+def _make_mcp_manager(broadcast: MessageBroadcast, context: AppContext) -> McpManager:
+    """McpManager（MCP 生命周期编排 + 动态工具注册）。
+
+    依赖：容器内 ``MessageBroadcast``（事件发射）+ ``AppContext`` 的
+    ``tool_registry`` / ``mcp_config_path``（由 app.py 注入）。
+    缺一即抛 ``RuntimeError`` → 容器失败隔离 → ``mcp_manager`` 缺席
+    （测试环境不炸全局，app.py 相应跳过 handler 注册并 log.warning）。
+
+    ★ 类型注解契约：容器用 ``factory.__annotations__`` 解析 needs/context_needs，
+      故 ``broadcast``/``context`` 参数必须带真实类型注解，返回类型亦须可解析
+      （``McpManager`` 已在模块顶部 import）。
+    """
+    from pathlib import Path
+
+    from pandapal.mcp.config_store import McpConfigStore
+    from pandaren.mcp.manager import McpClientManager
+
+    if context.tool_registry is None:
+        raise RuntimeError("McpManager requires tool_registry in AppContext")
+    if not context.mcp_config_path:
+        raise RuntimeError("McpManager requires mcp_config_path in AppContext")
+    return McpManager(
+        config_store=McpConfigStore(Path(context.mcp_config_path)),
+        client_manager=McpClientManager(),
+        tool_registry=context.tool_registry,
+        broadcast=broadcast,
+    )
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # 入口
 # ══════════════════════════════════════════════════════════════════════════════
@@ -598,6 +628,15 @@ def register_pandapal_subsystems(container: SubsystemContainer) -> None:
         factory=_make_progress_tools,
         needs=(MessageBroadcast,),
         start=False,
+    ))
+
+    # 12. McpManager（MCP 服务器生命周期编排 + 动态工具注册，start=True 令启动即连）
+    container.register(SubsystemSpec(
+        name="mcp_manager",
+        factory=_make_mcp_manager,
+        needs=(MessageBroadcast,),
+        context_needs=(AppContext,),
+        start=True,
     ))
 
     logger.info("PandaPal subsystems registered: %d specs", len(container._specs))

@@ -313,6 +313,10 @@ class PandaPalApp:
             user_id=self._config.get("user_id", ""),
             prompt_by_mode=self._prompt_by_mode,
             default_mode=self._default_mode,
+            # MCP（阶段 2）：共享 ToolRegistry（动态注册令 registry.version++）
+            #   + servers.toml 路径。缺省时 _make_mcp_manager 抛错 → 子系统失败隔离。
+            tool_registry=getattr(self._blueprint, "tool_registry", None),
+            mcp_config_path=self._config.get("mcp_config_path", ""),
         )
         self._container = SubsystemContainer(context=context)
         register_pandapal_subsystems(self._container)
@@ -579,6 +583,114 @@ class PandaPalApp:
         dispatcher.register(IpcMessageType.SKILL_IMPORT, _on_skill_import, channels=IPC_ONLY)
         dispatcher.register(IpcMessageType.SKILL_EXPORT, _on_skill_export, channels=IPC_ONLY)
         logger.info("SkillManager injected (resources/skills/{system,user})")
+
+        # ★ 注入 MCP 服务器管理 handler（阶段 2）。
+        #   事件发射权归 McpManager 独占（含应答类 MCP_LIST_RESULT 与推送类
+        #   MCP_STATUS_CHANGED）：handler 只「解析 payload → 调 manager 方法」并
+        #   return None（Dispatcher 对 None 不重复广播）→ 无 handler/manager 双写、无漏发。
+        #   mcp_manager 缺席（测试环境缺 tool_registry / mcp_config_path）→ log.warning
+        #   + 跳过注册，不炸全局（子系统失败隔离的配套）。
+        mcp = (
+            self._container.get("mcp_manager")
+            if self._container.has("mcp_manager")
+            else None
+        )
+        if mcp is None:
+            logger.warning(
+                "mcp_manager 子系统缺席（缺 tool_registry / mcp_config_path），"
+                "跳过 MCP IPC handler 注册"
+            )
+        else:
+            from pandaren.mcp.config import McpConfigError, McpServerConfig
+
+            from pandapal.mcp.manager import McpDegradeEvent
+
+            broadcast = self._container.get("broadcast")
+
+            async def _mcp_guard(op: str, call):
+                """执行一次 manager 调用；意外异常 → 留痕 + 全局 ERROR，绝不外抛（O3）。"""
+                try:
+                    await call()
+                except McpConfigError as exc:
+                    # 配置非法（ID/门禁类字段缺失）→ 全局 ERROR，绝不静默回落。
+                    report_degradation(
+                        McpDegradeEvent.CONFIG_INVALID,
+                        category="id", source=f"app.mcp.{op}",
+                        expected="valid config", fallback="rejected", exc_info=True,
+                    )
+                    await broadcast.send(
+                        NormalizedEvent.global_error("mcp_config_invalid", str(exc))
+                    )
+                except Exception as exc:  # noqa: BLE001 - handler 兜底，绝不外抛（O3）
+                    report_degradation(
+                        McpDegradeEvent.HANDLER_ERROR,
+                        category="id", source=f"app.mcp.{op}",
+                        expected="handled", fallback="error", exc_info=True,
+                    )
+                    await broadcast.send(
+                        NormalizedEvent.global_error("mcp_handler_error", str(exc))
+                    )
+
+            def _mcp_cfg_from(d: dict) -> McpServerConfig:
+                raw = d.get("config")
+                return McpServerConfig.from_mapping(raw if isinstance(raw, dict) else {})
+
+            def _mcp_name_from(d: dict) -> str:
+                name = d.get("name")
+                return name if isinstance(name, str) else ""
+
+            dispatcher.register(
+                IpcMessageType.MCP_LIST,
+                lambda _t, _d, _c: _mcp_guard("list", mcp.emit_list),
+                channels=IPC_ONLY,
+            )
+            dispatcher.register(
+                IpcMessageType.MCP_GET,
+                lambda _t, d, _c: _mcp_guard(
+                    "get", lambda: mcp.emit_get(_mcp_name_from(d))),
+                channels=IPC_ONLY,
+            )
+            dispatcher.register(
+                IpcMessageType.MCP_SAVE,
+                lambda _t, d, _c: _mcp_guard(
+                    "save", lambda: mcp.save_server(_mcp_cfg_from(d))),
+                channels=IPC_ONLY,
+            )
+            dispatcher.register(
+                IpcMessageType.MCP_DELETE,
+                lambda _t, d, _c: _mcp_guard(
+                    "delete", lambda: mcp.delete_server(_mcp_name_from(d))),
+                channels=IPC_ONLY,
+            )
+            dispatcher.register(
+                IpcMessageType.MCP_CONNECT,
+                lambda _t, d, _c: _mcp_guard(
+                    "connect", lambda: mcp.connect_server(_mcp_name_from(d))),
+                channels=IPC_ONLY,
+            )
+            dispatcher.register(
+                IpcMessageType.MCP_DISCONNECT,
+                lambda _t, d, _c: _mcp_guard(
+                    "disconnect", lambda: mcp.disconnect_server(_mcp_name_from(d))),
+                channels=IPC_ONLY,
+            )
+            dispatcher.register(
+                IpcMessageType.MCP_TEST,
+                lambda _t, d, _c: _mcp_guard(
+                    "test", lambda: mcp.test_server(_mcp_cfg_from(d))),
+                channels=IPC_ONLY,
+            )
+            dispatcher.register(
+                IpcMessageType.MCP_SET_ENABLED,
+                lambda _t, d, _c: _mcp_guard(
+                    "set_enabled",
+                    lambda: mcp.set_enabled(
+                        _mcp_name_from(d), bool(d.get("enabled", False))
+                    ),
+                ),
+                channels=IPC_ONLY,
+            )
+            logger.info("MCP server handlers injected (8 direct handlers, IPC_ONLY)")
 
         # ★ 注入模型选择 handler：前端 MODEL_LIST_REQUEST → 回推 MODEL_LIST（可选清单 + default）。
         #   请求-响应（拉取）模式：handler 只构建事件返回，Dispatcher 统一转发；

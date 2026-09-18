@@ -188,3 +188,24 @@ class GateChain:
             AgentWhitelistGate(),
             SkillWhitelistGate(),
         ])
+
+    @classmethod
+    def persistent(cls) -> "GateChain":
+        """创建「持久约束」门链（仅 2 道 run 稳定的门）。
+
+        只含由注册 / 配置决定、**对 run 稳定**的门：
+          - AllowListGate      （Agent 级白名单）
+          - AgentWhitelistGate （工具级反向白名单）
+
+        刻意排除两道动态门（EnabledGate / SkillWhitelistGate）：它们逐轮变化，
+        而本门链专供 system 前缀 ``<available_tools>`` 目录使用——该目录被
+        ``AgentLoop`` 序列化进随 run 稳定的静态前缀（PC6）。若引入动态门，
+        前缀将每轮字节不稳，直接击穿 LLM Prefix Cache。
+
+        用途：保证「通道 A（system 前缀目录）」与「通道 B（tools 参数 /
+        search_tools enum）」在持久约束上口径一致。
+        """
+        return cls(gates=[
+            AllowListGate(),
+            AgentWhitelistGate(),
+        ])

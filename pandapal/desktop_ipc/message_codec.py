@@ -155,6 +155,25 @@ class IpcMessageType:
     AUTH_TOKEN_REFRESHED  = "AUTH_TOKEN_REFRESHED"   # 出站：token 刷新成功（带新 token，前端回写 store）
     AUTH_EXPIRED          = "AUTH_EXPIRED"           # 出站：登录态彻底失效（前端登出并跳登录页）
 
+    # ── MCP 服务器管理（BYO-MCP：全局级，scope=global）───────
+    # 入站（前端 → Python）
+    MCP_LIST              = "MCP_LIST"              # 入站：请求服务器摘要列表
+    MCP_GET               = "MCP_GET"               # 入站：请求单服务器详情
+    MCP_SAVE              = "MCP_SAVE"              # 入站：保存/更新配置（热生效）
+    MCP_DELETE            = "MCP_DELETE"            # 入站：删除配置
+    MCP_CONNECT           = "MCP_CONNECT"           # 入站：手动连接
+    MCP_DISCONNECT        = "MCP_DISCONNECT"        # 入站：手动断开
+    MCP_TEST              = "MCP_TEST"              # 入站：连接测试（不落盘）
+    MCP_SET_ENABLED       = "MCP_SET_ENABLED"       # 入站：启用/禁用（保留配置）
+    # 出站（Python → 前端）
+    MCP_LIST_RESULT       = "MCP_LIST_RESULT"       # 出站：服务器摘要列表
+    MCP_GET_RESULT        = "MCP_GET_RESULT"        # 出站：单服务器详情
+    MCP_SAVED             = "MCP_SAVED"             # 出站：保存成功确认
+    MCP_DELETED           = "MCP_DELETED"           # 出站：删除成功确认
+    MCP_STATUS_CHANGED    = "MCP_STATUS_CHANGED"    # 出站：连接状态变化
+    MCP_TOOLS_RESULT      = "MCP_TOOLS_RESULT"      # 出站：工具清单
+    MCP_TEST_RESULT       = "MCP_TEST_RESULT"       # 出站：连接测试结果
+
     # ── 未识别事件兜底 ──────────────────────────────────────
     UNKNOWN               = "UNKNOWN"                # 出站：未知事件类型兜底
 

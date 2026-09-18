@@ -427,7 +427,9 @@ class BaseDashboardAggregator:
                 )
             )
         if join_miss:
-            logger.warning(
+            # D2/R5 是已知口径问题（老数据 run_id 与 llm_call span 数量不一致），
+            # 每次全量扫描都会命中，属正常噪声而非运行时错误——降为 debug 避免刷屏。
+            logger.debug(
                 "[aggregator] raw_log↔traces join miss: %d assistant turn(s) in %s "
                 "had a run_id but no unclaimed llm_call span in that run "
                 "(assistant turns outnumber llm_call spans); those turns show no token/cost "

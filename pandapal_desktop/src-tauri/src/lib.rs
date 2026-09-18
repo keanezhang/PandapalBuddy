@@ -993,6 +993,125 @@ fn export_skill(
     sidecar::write_to_sidecar(&app, &payload.to_string())
 }
 
+// ── MCP 服务器管理 Commands（全局级，scope=global，不带 session_id）──────────
+
+/// 请求 MCP 服务器摘要列表
+#[tauri::command]
+fn request_mcp_list(app: AppHandle, msg_id: String) -> Result<(), String> {
+    let uid = require_user_id(&app)?;
+    let payload = serde_json::json!({
+        "type": "MCP_LIST",
+        "msg_id": msg_id,
+        "user_id": uid,
+    });
+    sidecar::write_to_sidecar(&app, &payload.to_string())
+}
+
+/// 请求单个 MCP 服务器详情
+#[tauri::command]
+fn request_mcp_detail(app: AppHandle, msg_id: String, name: String) -> Result<(), String> {
+    let uid = require_user_id(&app)?;
+    let payload = serde_json::json!({
+        "type": "MCP_GET",
+        "msg_id": msg_id,
+        "user_id": uid,
+        "name": name,
+    });
+    sidecar::write_to_sidecar(&app, &payload.to_string())
+}
+
+/// 保存/更新 MCP 服务器配置（后端热生效）
+#[tauri::command]
+fn save_mcp_server(
+    app: AppHandle,
+    msg_id: String,
+    config: serde_json::Value,
+) -> Result<(), String> {
+    let uid = require_user_id(&app)?;
+    let payload = serde_json::json!({
+        "type": "MCP_SAVE",
+        "msg_id": msg_id,
+        "user_id": uid,
+        "config": config,
+    });
+    sidecar::write_to_sidecar(&app, &payload.to_string())
+}
+
+/// 删除 MCP 服务器配置
+#[tauri::command]
+fn delete_mcp_server(app: AppHandle, msg_id: String, name: String) -> Result<(), String> {
+    let uid = require_user_id(&app)?;
+    let payload = serde_json::json!({
+        "type": "MCP_DELETE",
+        "msg_id": msg_id,
+        "user_id": uid,
+        "name": name,
+    });
+    sidecar::write_to_sidecar(&app, &payload.to_string())
+}
+
+/// 连接 MCP 服务器
+#[tauri::command]
+fn connect_mcp_server(app: AppHandle, msg_id: String, name: String) -> Result<(), String> {
+    let uid = require_user_id(&app)?;
+    let payload = serde_json::json!({
+        "type": "MCP_CONNECT",
+        "msg_id": msg_id,
+        "user_id": uid,
+        "name": name,
+    });
+    sidecar::write_to_sidecar(&app, &payload.to_string())
+}
+
+/// 断开 MCP 服务器
+#[tauri::command]
+fn disconnect_mcp_server(app: AppHandle, msg_id: String, name: String) -> Result<(), String> {
+    let uid = require_user_id(&app)?;
+    let payload = serde_json::json!({
+        "type": "MCP_DISCONNECT",
+        "msg_id": msg_id,
+        "user_id": uid,
+        "name": name,
+    });
+    sidecar::write_to_sidecar(&app, &payload.to_string())
+}
+
+/// 连接测试（临时会话，不持久化、不注册工具）
+#[tauri::command]
+fn test_mcp_server(
+    app: AppHandle,
+    msg_id: String,
+    config: serde_json::Value,
+) -> Result<(), String> {
+    let uid = require_user_id(&app)?;
+    let payload = serde_json::json!({
+        "type": "MCP_TEST",
+        "msg_id": msg_id,
+        "user_id": uid,
+        "config": config,
+    });
+    sidecar::write_to_sidecar(&app, &payload.to_string())
+}
+
+/// 启用/禁用 MCP 服务器（保留配置，仅切换工具加载）
+#[tauri::command]
+fn set_mcp_enabled(
+    app: AppHandle,
+    msg_id: String,
+    name: String,
+    enabled: bool,
+) -> Result<(), String> {
+    let uid = require_user_id(&app)?;
+    let payload = serde_json::json!({
+        "type": "MCP_SET_ENABLED",
+        "msg_id": msg_id,
+        "user_id": uid,
+        "name": name,
+        "enabled": enabled,
+    });
+    sidecar::write_to_sidecar(&app, &payload.to_string())
+}
+
 /// 停止指定 session 正在执行的 Agent 生成（用户点击停止按钮）
 #[tauri::command]
 fn stop_generation(
@@ -1094,6 +1213,14 @@ pub fn run() {
             delete_skill,
             import_skill,
             export_skill,
+            request_mcp_list,
+            request_mcp_detail,
+            save_mcp_server,
+            delete_mcp_server,
+            connect_mcp_server,
+            disconnect_mcp_server,
+            test_mcp_server,
+            set_mcp_enabled,
             stop_generation,
             quit_app,
             set_current_session_id,

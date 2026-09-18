@@ -21,6 +21,11 @@ dependencies = [
     "PyJWT>=2.8.0",
     "bcrypt>=4.0.0",
     "croniter>=2.0.0",
+    # MCP 能力（pandaren/mcp）：官方 Python SDK。
+    # 2.x 自带 httpx2 / anyio / pydantic / mcp-types / sse-starlette / pywin32 等。
+    # 实装并锁定 2.2.0（设计 §6.2）：2.x 内部仍有 API 变动（如 FastMCP 已更名
+    # MCPServer），故上界收紧到 <3，避免拉到未验证的 3.x 后静默行为漂移。
+    "mcp>=2.2.0,<3",
 ]
 
 [project.optional-dependencies]

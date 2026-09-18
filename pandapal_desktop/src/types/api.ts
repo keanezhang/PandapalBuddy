@@ -108,6 +108,15 @@ export const ApiMessageType = {
   SKILL_IMPORT:             "SKILL_IMPORT",
   SKILL_EXPORT:             "SKILL_EXPORT",
   SEARCH:                    "SEARCH",
+  // MCP 服务器管理入站（全局级，scope=global）
+  MCP_LIST:                  "MCP_LIST",
+  MCP_GET:                   "MCP_GET",
+  MCP_SAVE:                  "MCP_SAVE",
+  MCP_DELETE:                "MCP_DELETE",
+  MCP_CONNECT:               "MCP_CONNECT",
+  MCP_DISCONNECT:            "MCP_DISCONNECT",
+  MCP_TEST:                  "MCP_TEST",
+  MCP_SET_ENABLED:           "MCP_SET_ENABLED",
   // 会话列表入站
   SESSION_LIST_REQUEST:      "SESSION_LIST_REQUEST",
   SESSION_CREATE:            "SESSION_CREATE",
@@ -153,6 +162,14 @@ export const ApiMessageType = {
   SKILL_CLEARED:         "SKILL_CLEARED",
   SKILL_IMPORTED:        "SKILL_IMPORTED",
   SKILL_EXPORTED:        "SKILL_EXPORTED",
+  // MCP 服务器管理出站（全局级，scope=global）
+  MCP_LIST_RESULT:        "MCP_LIST_RESULT",
+  MCP_GET_RESULT:         "MCP_GET_RESULT",
+  MCP_SAVED:              "MCP_SAVED",
+  MCP_DELETED:            "MCP_DELETED",
+  MCP_STATUS_CHANGED:     "MCP_STATUS_CHANGED",
+  MCP_TOOLS_RESULT:       "MCP_TOOLS_RESULT",
+  MCP_TEST_RESULT:        "MCP_TEST_RESULT",
   // 会话列表出站
   SESSION_LIST:          "SESSION_LIST",
   SESSION_SWITCHED:      "SESSION_SWITCHED",
@@ -319,6 +336,125 @@ export interface SkillExportPayload {
   format: "zip" | "folder";
 }
 
+// ── MCP 服务器管理（BYO-MCP，全局级）────────────────────────────
+
+/** MCP 传输方式（与后端 McpTransport 一致） */
+export type McpTransport = "stdio" | "http";
+
+/** 工具暴露层级（与后端 ToolTier 一致，小写枚举名） */
+export type McpTier = "always" | "deferred";
+
+/** MCP 服务器运行时状态（与后端 McpServerStatus 一致） */
+export type McpServerStatus = "disconnected" | "connecting" | "connected" | "error";
+
+/**
+ * MCP 服务器完整配置（wire format）。
+ * 真相源：pandaren/mcp/config.py McpServerConfig.to_dict()。
+ * 仅非空字段随 TOML/IPC 传输；前端提交时按 transport 二选一补必填字段。
+ */
+export interface McpServerConfig {
+  name: string;
+  transport: McpTransport;
+  enabled: boolean;
+  tier: McpTier;
+  // stdio
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  cwd?: string;
+  // http
+  url?: string;
+  headers?: Record<string, string>;
+  // 通用
+  connect_timeout?: number;
+  call_timeout?: number;
+  high_risk_tools?: string[];
+  safe_tools?: string[];
+}
+
+/** MCP 服务器摘要（列表用）。真相源：pandapal/mcp/manager.py _summary() */
+export interface McpServerSummary {
+  name: string;
+  transport: McpTransport;
+  enabled: boolean;
+  tier: McpTier;
+  status: McpServerStatus;
+  tool_count: number;
+  error?: string | null;
+}
+
+/** 单个 MCP 工具（wire format）。真相源：pandapal/mcp/manager.py _tool_dict() */
+export interface McpToolItem {
+  /** 完整工具名（mcp_{slug}__{tool}） */
+  name: string;
+  description: string;
+  when_to_use: string;
+  /** "low" | "medium" | "high" | "critical" */
+  sensitivity: string;
+}
+
+/** MCP 服务器详情（摘要 + 完整 config + 工具清单）。真相源：get_server_detail() */
+export interface McpServerDetail extends McpServerSummary {
+  config: McpServerConfig;
+  tools: McpToolItem[];
+}
+
+/** MCP 服务器管理 - 拉取列表 */
+export interface McpListPayload {
+  type: "MCP_LIST";
+  msg_id: string;
+}
+
+/** MCP 服务器管理 - 拉取单服务器详情 */
+export interface McpGetPayload {
+  type: "MCP_GET";
+  msg_id: string;
+  name: string;
+}
+
+/** MCP 服务器管理 - 保存/更新配置（热生效） */
+export interface McpSavePayload {
+  type: "MCP_SAVE";
+  msg_id: string;
+  config: McpServerConfig;
+}
+
+/** MCP 服务器管理 - 删除 */
+export interface McpDeletePayload {
+  type: "MCP_DELETE";
+  msg_id: string;
+  name: string;
+}
+
+/** MCP 服务器管理 - 连接 */
+export interface McpConnectPayload {
+  type: "MCP_CONNECT";
+  msg_id: string;
+  name: string;
+}
+
+/** MCP 服务器管理 - 断开 */
+export interface McpDisconnectPayload {
+  type: "MCP_DISCONNECT";
+  msg_id: string;
+  name: string;
+}
+
+/** MCP 服务器管理 - 连接测试（不持久化、不注册） */
+export interface McpTestPayload {
+  type: "MCP_TEST";
+  msg_id: string;
+  config: McpServerConfig;
+}
+
+/** MCP 服务器管理 - 启用/禁用（保留配置，仅切换工具加载） */
+export interface McpSetEnabledPayload {
+  type: "MCP_SET_ENABLED";
+  msg_id: string;
+  name: string;
+  enabled: boolean;
+}
+
 // ── LLM 凭据管理 入站 payload ──────────────────────────────────
 
 /** 加载已有凭据（设置页回填 / 向导已有配置回显） */
@@ -360,6 +496,14 @@ export type InboundApiMessage =
   | SkillDeletePayload
   | SkillImportPayload
   | SkillExportPayload
+  | McpListPayload
+  | McpGetPayload
+  | McpSavePayload
+  | McpDeletePayload
+  | McpConnectPayload
+  | McpDisconnectPayload
+  | McpTestPayload
+  | McpSetEnabledPayload
   | PingPayload
   | StopGenerationPayload
   | SessionListRequestPayload
@@ -793,6 +937,55 @@ export interface SkillExportedMsg extends IpcMessageBase {
   format: "zip" | "folder";
 }
 
+// ── MCP 服务器管理 出站消息（全局级，scope=global）────────────────────────
+
+/** MCP 服务器摘要列表响应 */
+export interface McpListResultMsg extends IpcMessageBase {
+  type: "MCP_LIST_RESULT";
+  servers: McpServerSummary[];
+}
+
+/** 单个 MCP 服务器详情响应 */
+export interface McpGetResultMsg extends IpcMessageBase {
+  type: "MCP_GET_RESULT";
+  server: McpServerDetail;
+}
+
+/** 配置保存成功确认 */
+export interface McpSavedMsg extends IpcMessageBase {
+  type: "MCP_SAVED";
+  name: string;
+}
+
+/** 配置删除成功确认 */
+export interface McpDeletedMsg extends IpcMessageBase {
+  type: "MCP_DELETED";
+  name: string;
+}
+
+/** 连接状态变化推送 */
+export interface McpStatusChangedMsg extends IpcMessageBase {
+  type: "MCP_STATUS_CHANGED";
+  name: string;
+  status: McpServerStatus;
+  error?: string | null;
+}
+
+/** 某服务器工具清单推送 */
+export interface McpToolsResultMsg extends IpcMessageBase {
+  type: "MCP_TOOLS_RESULT";
+  name: string;
+  tools: McpToolItem[];
+}
+
+/** 连接测试结果 */
+export interface McpTestResultMsg extends IpcMessageBase {
+  type: "MCP_TEST_RESULT";
+  ok: boolean;
+  tools: McpToolItem[];
+  error?: string | null;
+}
+
 // ── 全局搜索（命令面板 ⌘K）── 与后端 NormalizedEvent.search_result 一致
 
 /** 会话标题命中项 */
@@ -846,6 +1039,13 @@ export type OutboundApiMessage =
   | SkillClearedMsg
   | SkillImportedMsg
   | SkillExportedMsg
+  | McpListResultMsg
+  | McpGetResultMsg
+  | McpSavedMsg
+  | McpDeletedMsg
+  | McpStatusChangedMsg
+  | McpToolsResultMsg
+  | McpTestResultMsg
   | PermissionDeniedMsg
   | ReplyEndMsg
   | AgentHaltedMsg

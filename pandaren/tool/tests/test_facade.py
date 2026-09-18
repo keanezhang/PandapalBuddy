@@ -183,6 +183,77 @@ class TestGuards:
         assert "信任等级不足" in result.error
 
 
+class TestDeferredCatalogFiltering:
+    """通道 A（<available_tools> 目录）与通道 B（tools 参数通道）口径一致性。
+
+    Risk-CAT-1（P0）：agent_whitelist 限定的 DEFERRED 工具，对无权 Agent 不得出现
+        在 get_deferred_tool_catalog()——否则 LLM 会反复尝试加载一个永远无法调用的工具。
+    Risk-CAT-2（P1）：agent_allowed_tools 白名单外的工具不得出现在目录。
+    Risk-CAT-3（P1）：ALWAYS 工具永不进目录（目录语义 = 延迟工具）。
+    Risk-CAT-4（P0）：同口径下，目录（通道 A）集合 == search_tools enum（通道 B）。
+    """
+
+    def test_agent_whitelist_excludes_from_catalog(self):
+        # Risk-CAT-1
+        reg = ToolRegistry()
+        reg.register_tool(
+            make_tool("secret", agent_whitelist=frozenset({"allowed-agent"}))
+        )
+        names = [
+            d["name"] for d in reg.get_deferred_tool_catalog(agent_id="other-agent")
+        ]
+        assert "secret" not in names
+
+    def test_agent_whitelist_includes_for_allowed_agent(self):
+        # Risk-CAT-1：正例（防误杀，限定的 Agent 必须仍能看到）
+        reg = ToolRegistry()
+        reg.register_tool(
+            make_tool("secret", agent_whitelist=frozenset({"allowed-agent"}))
+        )
+        names = [
+            d["name"] for d in reg.get_deferred_tool_catalog(agent_id="allowed-agent")
+        ]
+        assert "secret" in names
+
+    def test_allow_list_filters_catalog(self):
+        # Risk-CAT-2
+        reg = ToolRegistry()
+        reg.register_tool(make_tool("a"))
+        reg.register_tool(make_tool("b"))
+        names = [
+            d["name"] for d in reg.get_deferred_tool_catalog(agent_allowed_tools={"a"})
+        ]
+        assert names == ["a"]
+
+    def test_always_tool_not_in_catalog(self):
+        # Risk-CAT-3
+        reg = ToolRegistry()
+        reg.register_tool(make_tool("always1", tier=ToolTier.ALWAYS))
+        reg.register_tool(make_tool("deferred1"))
+        names = [d["name"] for d in reg.get_deferred_tool_catalog()]
+        assert names == ["deferred1"]
+
+    def test_no_context_returns_full_catalog(self):
+        # 向后兼容：无 ctx → 门链透明 → 全量（与改造前行为一致）
+        reg = ToolRegistry()
+        reg.register_tool(make_tool("x"))
+        assert [d["name"] for d in reg.get_deferred_tool_catalog()] == ["x"]
+
+    def test_catalog_and_search_enum_agree_under_agent_whitelist(self):
+        # Risk-CAT-4（PC5 双通道一致性）
+        reg = ToolRegistry()
+        reg.register_tool(
+            make_tool("secret", agent_whitelist=frozenset({"allowed-agent"}))
+        )
+        reg.register_tool(make_tool("public"))
+
+        reg.build_tool_schemas(agent_id="other-agent")
+        channel_b = {d["name"] for d in reg.get_deferred_summaries()}
+        channel_a = {d["name"] for d in reg.get_deferred_tool_catalog(agent_id="other-agent")}
+
+        assert channel_a == channel_b == {"public"}
+
+
 class TestEndToEnd:
     async def test_register_build_execute_roundtrip_non_ascii(self):
         # 端到端：注册非 ASCII 工具 → schema 构建 → 用 safe_name 回传执行

@@ -35,7 +35,7 @@ _ALLOWED_TYPES: frozenset[str] = frozenset({
     IpcMessageType.INTERACTION_RESPONSE,
     IpcMessageType.PLAN_APPROVAL_DECISION,
     IpcMessageType.STOP_GENERATION,
-    # 直通（24 种，identity：IPC 直通字符串即规范词汇）
+    # 直通（31 种，identity：IPC 直通字符串即规范词汇）
     IpcMessageType.MODEL_LIST_REQUEST,
     IpcMessageType.REQUEST_SCHEDULED_TASKS,
     IpcMessageType.DELETE_SCHEDULED_TASK,
@@ -60,6 +60,15 @@ _ALLOWED_TYPES: frozenset[str] = frozenset({
     IpcMessageType.SAVE_LLM_CREDENTIALS,
     IpcMessageType.VERIFY_CREDENTIALS,
     IpcMessageType.GET_CREDENTIALS_STATUS,
+    # MCP 服务器管理（8 种）
+    IpcMessageType.MCP_LIST,
+    IpcMessageType.MCP_GET,
+    IpcMessageType.MCP_SAVE,
+    IpcMessageType.MCP_DELETE,
+    IpcMessageType.MCP_CONNECT,
+    IpcMessageType.MCP_DISCONNECT,
+    IpcMessageType.MCP_TEST,
+    IpcMessageType.MCP_SET_ENABLED,
 })
 
 

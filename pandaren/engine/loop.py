@@ -190,7 +190,9 @@ class AgentLoop(RunCoreMixin):
             if new_version == cached:
                 return self._static_context_str  # 未变化，LLM Prefix Cache 可命中
 
-        deferred_tool_catalog = self._tool_registry.get_deferred_tool_catalog()
+        deferred_tool_catalog = self._tool_registry.get_deferred_tool_catalog(
+            agent_id=self._identity.agent_id,
+        )
 
         skill_summaries_static = None
         if self._skill_registry is not None:

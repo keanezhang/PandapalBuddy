@@ -58,6 +58,10 @@ class ToolRegistry:
         )
         self._budget = budget or ToolBudget()
         self._gate_chain = GateChain.default()
+        # 「持久约束」门链（AllowList + AgentWhitelist，run 稳定）：
+        # 专供 system 前缀 <available_tools> 目录使用，保证通道 A/B 口径一致，
+        # 且不引入动态门以保护 Prefix Cache（详见 get_deferred_tool_catalog）。
+        self._catalog_gate_chain = GateChain.persistent()
         self._schema_builder = SchemaBuilder(
             store=self._store,
             discovery=self._discovery,
@@ -197,16 +201,41 @@ class ToolRegistry:
         """获取 DEFERRED 未发现工具的摘要列表。"""
         return list(self._deferred_summaries)
 
-    def get_deferred_tool_catalog(self) -> list[dict]:
+    def get_deferred_tool_catalog(
+        self,
+        *,
+        agent_id: str | None = None,
+        agent_allowed_tools: set[str] | None = None,
+    ) -> list[dict]:
         """获取全量 DEFERRED 工具目录（对 discovered 免疫）。
 
         返回的名称使用 safe_name，确保 system prompt 中的
         <available_tools> 与 search_tools enum 一致。
+
+        PC5 双通道一致性：本目录供 system 前缀 ``<available_tools>``（通道 A）
+        使用，与 ``build_tool_schemas`` 的 tools 参数通道（通道 B）共用同一套
+        **持久约束**门（AllowList / AgentWhitelist），确保不会向 LLM 广告一个
+        它永远不会被允许调用的工具。
+
+        刻意 **不** 应用动态门（EnabledGate / SkillWhitelistGate）：二者逐轮
+        变化，而本目录被 ``AgentLoop`` 序列化进随 run 稳定的 system 前缀（PC6），
+        引入动态门会让前缀每轮字节不稳、击穿 LLM Prefix Cache。
+
+        Args:
+            agent_id: 当前 Agent ID，用于 AgentWhitelistGate 匹配。
+            agent_allowed_tools: Agent 级工具白名单，用于 AllowListGate。
+                两者均为 None 时门链透明 → 返回全量目录（向后兼容）。
         """
         from .safe_name import to_safe_name_parts
 
+        ctx = ExposureContext(
+            agent_id=agent_id,
+            agent_allowed_tools=agent_allowed_tools,
+        )
+        passed = self._catalog_gate_chain.filter(self._store.items(), ctx)
+
         catalog: list[dict] = []
-        for full_name, tool in self._store.items():
+        for _full_name, tool in passed:
             if tool.tier != ToolTier.ALWAYS:
                 catalog.append({
                     "name": to_safe_name_parts(tool.namespace, tool.name),

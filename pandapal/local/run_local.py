@@ -896,6 +896,7 @@ async def run_local() -> None:
         "db_path": str(USER_DATA_DIR / "data" / "pandapal.db"),
         "data_dir": str(USER_DATA_DIR),  # ★ 目录分层：用户数据根（AppData/users/{uid}）
         "user_resources_dir": str(USER_RESOURCES_DIR),  # ★ user skills/agents 根 (WORK_DIR/.pandapal)
+        "mcp_config_path": str(USER_DATA_DIR / "mcp" / "servers.toml"),  # ★ MCP server 配置
     }
     # 双层 Prompt：为每个模式预生成完整 prompt，供 SessionAgentPool 按 mode delta-rebind。
     # 环境块所有模式共用；PANDAPAL.md 项目指引仅 coding 注入（office 不注入）。

@@ -22,6 +22,8 @@ import { ModelConfigWizard } from "./pages/ModelConfigWizard";
 import { ChatPage } from "./pages/ChatPage";
 import { SkillsPage } from "./pages/SkillsPage";
 import { SkillEditorPage } from "./pages/SkillEditorPage";
+import { McpPage } from "./pages/McpPage";
+import { McpEditorPage } from "./pages/McpEditorPage";
 import { TasksPage } from "./pages/TasksPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { SessionGroupPage } from "./pages/SessionGroupPage";
@@ -71,6 +73,7 @@ export default function App() {
         <Route index element={<ChatPage />} />
         <Route path="skills" element={<SkillsPage />} />
         <Route path="skills/:skillName" element={<SkillsPage />} />
+        <Route path="mcp" element={<McpPage />} />
         <Route path="tasks" element={<TasksPage />} />
         <Route path="dashboard" element={<DashboardPage />} />
         <Route path="groups/:groupId" element={<SessionGroupPage />} />
@@ -90,6 +93,24 @@ export default function App() {
         element={
           <AuthGuard>
             <SkillEditorPage />
+          </AuthGuard>
+        }
+      />
+
+      {/* MCP 服务器配置编辑（独立页面，不走 ChatLayout） */}
+      <Route
+        path="/mcp/new"
+        element={
+          <AuthGuard>
+            <McpEditorPage />
+          </AuthGuard>
+        }
+      />
+      <Route
+        path="/mcp/:name/edit"
+        element={
+          <AuthGuard>
+            <McpEditorPage />
           </AuthGuard>
         }
       />

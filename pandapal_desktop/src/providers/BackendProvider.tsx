@@ -35,6 +35,7 @@ import { useChatStore, categorizeTool } from "../store/chatStore";
 import { useTaskSchedulerStore } from "../store/taskSchedulerStore";
 import { useAgentTaskStore } from "../store/agentTaskStore";
 import { useSkillStore } from "../store/skillStore";
+import { useMcpStore } from "../store/mcpStore";
 import { toast } from "../components/ui";
 import { useSearchStore } from "../store/searchStore";
 import { useSessionConcurrencyStore } from "../store/sessionConcurrencyStore";
@@ -71,6 +72,14 @@ import type {
   SkillClearedMsg,
   SkillImportedMsg,
   SkillExportedMsg,
+  McpListResultMsg,
+  McpGetResultMsg,
+  McpSavedMsg,
+  McpDeletedMsg,
+  McpStatusChangedMsg,
+  McpToolsResultMsg,
+  McpTestResultMsg,
+  McpServerConfig,
   SessionConcurrencyMsg,
   SessionListMsg,
   SessionSwitchedMsg,
@@ -138,6 +147,17 @@ interface BackendContextValue {
   deleteSkill: (skillName: string) => void;
   importSkill: (format: "zip" | "folder", overwrite?: boolean, sourcePath?: string) => void;
   exportSkill: (skillName: string, format: "zip" | "folder", targetPath?: string) => void;
+  // ── MCP 服务器管理 ──────────────────────
+  requestMcpList: () => void;
+  requestMcpDetail: (name: string) => void;
+  saveMcpServer: (config: McpServerConfig) => void;
+  deleteMcpServer: (name: string) => void;
+  connectMcpServer: (name: string) => void;
+  disconnectMcpServer: (name: string) => void;
+  /** 连接测试：优先用详情缓存里的 config；无则先拉详情再测 */
+  testMcpServer: (name: string) => void;
+  /** 启用/禁用服务器（保留配置，仅切换工具加载） */
+  setMcpEnabled: (name: string, enabled: boolean) => void;
   pendingTaskNotification: TaskNotificationMsg | null;
   clearTaskNotification: () => void;
   // ── 会话列表（v003）──────────────────────
@@ -177,6 +197,9 @@ export function BackendProvider({ children }: { children: React.ReactNode }) {
   // P4 取消中间态超时保护：sessionId → setTimeout handle。收到后端 REPLY_END(halted)
   // 正常收尾即清；若 STOP_GUARD_MS 内后端仍无收尾，则本地强制收尾兜底（记 warning）。
   const stopGuardRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  // MCP 连接测试：列表页点「测试」时若无详情缓存 config，先拉详情，MCP_GET_RESULT
+  // 到达后再补发 MCP_TEST。此 ref 记录等待测试的 server name。
+  const pendingMcpTestRef = useRef<string | null>(null);
 
   const { setStatus, setError } = useConnectionStore();
 
@@ -786,6 +809,71 @@ export function BackendProvider({ children }: { children: React.ReactNode }) {
         break;
       }
 
+      // ── MCP 服务器管理 ──
+      case "MCP_LIST_RESULT": {
+        const listMsg = msg as McpListResultMsg;
+        useMcpStore.getState().replaceAll(listMsg.servers ?? []);
+        break;
+      }
+
+      case "MCP_GET_RESULT": {
+        const getMsg = msg as McpGetResultMsg;
+        useMcpStore.getState().setDetailServer(getMsg.server);
+        // 列表页「测试」先拉详情 → 详情到达后补发 MCP_TEST。
+        // 注意不清 pending：MCP_TEST_RESULT 事件 payload 不含 name，需用 pending 归位。
+        if (pendingMcpTestRef.current === getMsg.server.name) {
+          invoke("test_mcp_server", {
+            msgId: crypto.randomUUID(),
+            config: getMsg.server.config,
+          }).catch((e) => console.error("[ipc] test_mcp_server failed:", e));
+        }
+        break;
+      }
+
+      case "MCP_SAVED": {
+        const savedMsg = msg as McpSavedMsg;
+        invoke("request_mcp_list", { msgId: crypto.randomUUID() })
+          .catch((e) => console.error("[ipc] auto-refresh mcp list failed:", e));
+        toast.success(t("mcp.saved"), savedMsg.name);
+        break;
+      }
+
+      case "MCP_DELETED": {
+        const deletedMsg = msg as McpDeletedMsg;
+        useMcpStore.getState().removeServer(deletedMsg.name);
+        invoke("request_mcp_list", { msgId: crypto.randomUUID() })
+          .catch((e) => console.error("[ipc] auto-refresh mcp list failed:", e));
+        toast.success(t("mcp.deleted"), deletedMsg.name);
+        break;
+      }
+
+      case "MCP_STATUS_CHANGED": {
+        const statusMsg = msg as McpStatusChangedMsg;
+        useMcpStore.getState().setStatus(statusMsg.name, statusMsg.status);
+        break;
+      }
+
+      case "MCP_TOOLS_RESULT": {
+        const toolsMsg = msg as McpToolsResultMsg;
+        useMcpStore.getState().setTools(toolsMsg.name, toolsMsg.tools ?? []);
+        break;
+      }
+
+      case "MCP_TEST_RESULT": {
+        const testMsg = msg as McpTestResultMsg;
+        const msgText = testMsg.ok
+          ? t("mcp.testOk", { count: (testMsg.tools ?? []).length })
+          : t("mcp.testFailed", { error: testMsg.error ?? t("mcp.unknownError") });
+        // MCP_TEST_RESULT payload 不含 name（后端只回 ok/tools/error），
+        // 必须用 pending ref 归位到发起测试的 server。无 pending 时降级到详情缓存 name。
+        const name = pendingMcpTestRef.current ?? useMcpStore.getState().detailServer?.name ?? "";
+        pendingMcpTestRef.current = null;
+        if (name) {
+          useMcpStore.getState().setTestResult(name, { ok: testMsg.ok, msg: msgText });
+        }
+        break;
+      }
+
       case "SESSION_CONCURRENCY": {
         const cMsg = msg as SessionConcurrencyMsg;
         useSessionConcurrencyStore.getState().update(cMsg.session_id, {
@@ -1360,6 +1448,115 @@ export function BackendProvider({ children }: { children: React.ReactNode }) {
     }).catch((e) => console.error("[ipc] skill_export failed:", e));
   }, []);
 
+  // ── MCP 服务器管理 ──────────────────────────────────────────
+
+  const requestMcpList = useCallback(() => {
+    const fire = () =>
+      invoke("request_mcp_list", { msgId: crypto.randomUUID() })
+        .catch((e) => console.error("[ipc] request_mcp_list failed:", e));
+    useMcpStore.getState().setLoading(true);
+    if (!readyRef.current) {
+      pendingCallbacksRef.current.push(fire);
+      return;
+    }
+    fire();
+  }, []);
+
+  const requestMcpDetail = useCallback((name: string) => {
+    const fire = () => {
+      useMcpStore.getState().setDetailLoading(true);
+      invoke("request_mcp_detail", {
+        msgId: crypto.randomUUID(),
+        name,
+      }).catch((e) => {
+        console.error("[ipc] request_mcp_detail failed:", e);
+        useMcpStore.getState().setDetailLoading(false);
+      });
+    };
+    if (!readyRef.current) {
+      pendingCallbacksRef.current.push(fire);
+      return;
+    }
+    fire();
+  }, []);
+
+  const saveMcpServer = useCallback((config: McpServerConfig) => {
+    if (!readyRef.current) {
+      console.warn("[ipc] not ready, cannot save mcp server");
+      return;
+    }
+    invoke("save_mcp_server", {
+      msgId: crypto.randomUUID(),
+      config,
+    }).catch((e) => console.error("[ipc] save_mcp_server failed:", e));
+  }, []);
+
+  const deleteMcpServer = useCallback((name: string) => {
+    if (!readyRef.current) {
+      console.warn("[ipc] not ready, cannot delete mcp server");
+      return;
+    }
+    invoke("delete_mcp_server", {
+      msgId: crypto.randomUUID(),
+      name,
+    }).catch((e) => console.error("[ipc] delete_mcp_server failed:", e));
+  }, []);
+
+  const connectMcpServer = useCallback((name: string) => {
+    if (!readyRef.current) {
+      console.warn("[ipc] not ready, cannot connect mcp server");
+      return;
+    }
+    invoke("connect_mcp_server", {
+      msgId: crypto.randomUUID(),
+      name,
+    }).catch((e) => console.error("[ipc] connect_mcp_server failed:", e));
+  }, []);
+
+  const disconnectMcpServer = useCallback((name: string) => {
+    if (!readyRef.current) {
+      console.warn("[ipc] not ready, cannot disconnect mcp server");
+      return;
+    }
+    invoke("disconnect_mcp_server", {
+      msgId: crypto.randomUUID(),
+      name,
+    }).catch((e) => console.error("[ipc] disconnect_mcp_server failed:", e));
+  }, []);
+
+  const testMcpServer = useCallback((name: string) => {
+    if (!readyRef.current) {
+      console.warn("[ipc] not ready, cannot test mcp server");
+      return;
+    }
+    // 记录待测 server + 乐观置「测试中」，MCP_TEST_RESULT 到达时按 pending 归位。
+    pendingMcpTestRef.current = name;
+    useMcpStore.getState().setTestResult(name, { ok: true, msg: t("mcp.testing") });
+
+    // 优先用详情缓存里的 config（编辑页/刚看过详情），否则先拉详情再测。
+    const detail = useMcpStore.getState().detailServer;
+    if (detail && detail.name === name) {
+      invoke("test_mcp_server", {
+        msgId: crypto.randomUUID(),
+        config: detail.config,
+      }).catch((e) => console.error("[ipc] test_mcp_server failed:", e));
+      return;
+    }
+    requestMcpDetail(name);
+  }, [requestMcpDetail, t]);
+
+  const setMcpEnabled = useCallback((name: string, enabled: boolean) => {
+    if (!readyRef.current) {
+      console.warn("[ipc] not ready, cannot set mcp enabled");
+      return;
+    }
+    invoke("set_mcp_enabled", {
+      msgId: crypto.randomUUID(),
+      name,
+      enabled,
+    }).catch((e) => console.error("[ipc] set_mcp_enabled failed:", e));
+  }, []);
+
   const clearTaskNotification = useCallback(() => setPendingTaskNotification(null), []);
 
   // ── 会话列表（v003）─────────────────────────────────────────
@@ -1521,6 +1718,14 @@ export function BackendProvider({ children }: { children: React.ReactNode }) {
         deleteSkill,
         importSkill,
         exportSkill,
+        requestMcpList,
+        requestMcpDetail,
+        saveMcpServer,
+        deleteMcpServer,
+        connectMcpServer,
+        disconnectMcpServer,
+        testMcpServer,
+        setMcpEnabled,
         pendingTaskNotification,
         clearTaskNotification,
         requestSessionList,

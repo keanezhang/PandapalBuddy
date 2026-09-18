@@ -52,7 +52,7 @@ _ROUTER_TYPES: frozenset[str] = frozenset({
     RouterMessageType.STOP_GENERATION,
 })
 
-# 已知直通词汇全集（24 种）。⚠️ 与 IpcMessageType（desktop_ipc/message_codec.py）
+# 已知直通词汇全集（31 种）。⚠️ 与 IpcMessageType（desktop_ipc/message_codec.py）
 # 的直通常量保持同值同步——dispatch 核心包不反向 import 渠道包（依赖方向 §1.8），
 # 故此处以字面量声明；改动 IpcMessageType 直通常量时必须同步本集合（B5）。
 _KNOWN_DIRECT_TYPES: frozenset[str] = frozenset({
@@ -87,6 +87,15 @@ _KNOWN_DIRECT_TYPES: frozenset[str] = frozenset({
     "BUDGET_QUERY",
     # 全局搜索
     "SEARCH",
+    # MCP 服务器管理
+    "MCP_LIST",
+    "MCP_GET",
+    "MCP_SAVE",
+    "MCP_DELETE",
+    "MCP_CONNECT",
+    "MCP_DISCONNECT",
+    "MCP_TEST",
+    "MCP_SET_ENABLED",
 })
 
 
