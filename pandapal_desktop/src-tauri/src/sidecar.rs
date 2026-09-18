@@ -95,15 +95,19 @@ pub fn write_to_sidecar<R: Runtime>(app: &AppHandle<R>, message: &str) -> Result
 /// 获取 sidecar 可执行文件路径（跨平台 + 开发/生产模式自动适配）
 ///
 /// 开发模式 (debug_assertions)：优先从 CARGO_MANIFEST_DIR/bin/ 加载，始终是最新构建
-/// 生产模式：从 Tauri resource_dir 加载（app bundle 内嵌）
+/// 生产模式 (release)：仅从 Tauri resource_dir 加载（app bundle 内嵌），
+/// 刻意不回落源码路径，避免掩盖「sidecar 未打进 bundle」的打包错误
 fn get_sidecar_exe_path<R: Runtime>(app: &AppHandle<R>) -> Result<std::path::PathBuf, String> {
     let triple = current_target_triple();
 
     let exe_name = get_exe_name(&triple);
     let sidecar_dir_name = format!("pandapal-sidecar-{}", triple);
 
-    // 开发模式：直接从 build_sidecar 输出目录加载，不依赖 resource_dir 的 stale 缓存
-    if cfg!(debug_assertions) {
+    // 开发模式：直接从 build_sidecar 输出目录加载，不依赖 resource_dir 的 stale 缓存。
+    // 用 `#[cfg]` 而非 `cfg!()`：release 构建不应回落到源码路径，否则开发机上运行
+    // 打包产物时会静默读到源码里的 sidecar，掩盖「sidecar 未打进 bundle」的问题。
+    #[cfg(debug_assertions)]
+    {
         let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         let dev_exe = manifest_dir
             .join("bin")
@@ -114,7 +118,9 @@ fn get_sidecar_exe_path<R: Runtime>(app: &AppHandle<R>) -> Result<std::path::Pat
         }
     }
 
-    // 生产模式 / 开发兜底：从 Tauri resource_dir 加载
+    // 生产模式：从 Tauri resource_dir 加载（bundle 内的唯一真相源）。
+    // 这里不再回落源码路径——开发态已在上方 `#[cfg(debug_assertions)]` 分支处理，
+    // 若打包态在此处再回落，等于让打包缺 sidecar 的错误在开发机上永远测不出来。
     if let Ok(resource_dir) = app.path().resource_dir() {
         let path1 = resource_dir.join("bin").join(&sidecar_dir_name).join(&exe_name);
         if path1.exists() {
@@ -123,18 +129,6 @@ fn get_sidecar_exe_path<R: Runtime>(app: &AppHandle<R>) -> Result<std::path::Pat
         let path2 = resource_dir.join(&sidecar_dir_name).join(&exe_name);
         if path2.exists() {
             return Ok(path2);
-        }
-    }
-
-    // 生产模式兜底：尝试编译时 manifest_dir/bin （跨机器构建时 resource_dir 可能不包含 sidecar）
-    {
-        let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-        let fallback_exe = manifest_dir
-            .join("bin")
-            .join(&sidecar_dir_name)
-            .join(&exe_name);
-        if fallback_exe.exists() {
-            return Ok(fallback_exe);
         }
     }
 

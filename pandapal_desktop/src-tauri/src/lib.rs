@@ -215,9 +215,10 @@ static MODEL_PRICES: std::sync::OnceLock<Option<ModelPricesFile>> = std::sync::O
 
 /// 定位随包发布的系统配置 toml。
 ///
-/// 打包态：Tauri resource 目录 `config/{name}`；
-/// 开发态：回落到工作区源码路径 `<crate>/../../pandapal/config/llm/{name}`，
-/// 与 Python 端 `Path(__file__).parent / name` 指向**同一个文件**。
+/// 打包态：Tauri resource 目录 `config/{name}`（release / debug 均适用）；
+/// 开发态（仅 debug）：额外回落工作区源码路径
+/// `<crate>/../../pandapal/config/llm/{name}`，与 Python 端
+/// `Path(__file__).parent / name` 指向**同一个文件**。
 fn system_config_path(app: &AppHandle, name: &str) -> Option<std::path::PathBuf> {
     if let Ok(p) = app.path().resolve(
         format!("config/{}", name),
@@ -227,12 +228,27 @@ fn system_config_path(app: &AppHandle, name: &str) -> Option<std::path::PathBuf>
             return Some(p);
         }
     }
-    let dev = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../pandapal/config/llm")
-        .join(name);
-    if dev.exists() {
-        return Some(dev);
+    // 仅开发态回落到源码路径。
+    //
+    // release 构建刻意**不**回落：`CARGO_MANIFEST_DIR` 是编译期绝对路径，
+    // 在开发机上它恰好存在，打包产物缺资源时会静默改读源码副本，
+    // 从而把「资源没打进 bundle」这类打包错误完全掩盖（provider_catalog.toml
+    // 缺失曾因此无法在开发机上暴露）。用 `#[cfg]` 而非 `cfg!()`，可顺带
+    // 让 release 二进制不包含开发机的绝对路径。
+    #[cfg(debug_assertions)]
+    {
+        let dev = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../pandapal/config/llm")
+            .join(name);
+        if dev.exists() {
+            return Some(dev);
+        }
     }
+
+    eprintln!(
+        "[config] 未找到系统配置 {}：resource_dir/config 下不存在，且非开发态无源码回落",
+        name
+    );
     None
 }
 
