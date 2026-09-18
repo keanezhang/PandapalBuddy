@@ -62,16 +62,7 @@ CLAUDE.md
 # AI 生成调试图
 **/generated-images/
 
-# 历史开发文档（已出仓，保留在本地工作区，不入仓）
-# docs/
+# 内部开发文档（保留在本地工作区，不入仓）
+docs/
 pandapal_desktop/docs/
-
-# 版权来源待确认的素材（PRD 文档与 demo 保留）
-docs/prd/pets/*.webp
-
-#忽略docs
-第三组Harness 工程实践之Agent 能力栈工程/
-
-skillhub/
-简历/
 
