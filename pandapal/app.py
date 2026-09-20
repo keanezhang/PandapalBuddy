@@ -110,6 +110,7 @@ class PandaPalApp:
         config_manager: Any = None,
         prompt_by_mode: dict[str, str] | None = None,
         default_mode: str = "",
+        prompt_assembler: Any = None,
         available_models: list[Any] | None = None,
         default_model_id: str = "",
     ) -> None:
@@ -125,8 +126,10 @@ class PandaPalApp:
         self._available_models = available_models or []
         self._default_model_id = default_model_id
         # 双层 Prompt：{mode: 完整prompt} + 缺省模式，供 SessionAgentPool 做 delta-rebind。
+        # prompt_assembler（生产）：支持工作区片段文件热重载；prompt_by_mode（兼容 / 测试）。
         self._prompt_by_mode = prompt_by_mode or {}
         self._default_mode = default_mode
+        self._prompt_assembler = prompt_assembler
 
         # Reply ID manager（轻量，无依赖）
         self._reply_id_mgr = ReplyIdManager()
@@ -313,6 +316,7 @@ class PandaPalApp:
             user_id=self._config.get("user_id", ""),
             prompt_by_mode=self._prompt_by_mode,
             default_mode=self._default_mode,
+            prompt_assembler=self._prompt_assembler,
             # MCP（阶段 2）：共享 ToolRegistry（动态注册令 registry.version++）
             #   + servers.toml 路径。缺省时 _make_mcp_manager 抛错 → 子系统失败隔离。
             tool_registry=getattr(self._blueprint, "tool_registry", None),

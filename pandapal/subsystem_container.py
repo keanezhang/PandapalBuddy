@@ -84,6 +84,8 @@ class AppContext:
     # 双层 Prompt：{mode: 完整prompt} + 缺省模式，透传给 SessionAgentPool 做 delta-rebind。
     prompt_by_mode: dict[str, str] | None = None
     default_mode: str = ""
+    # 工作区片段文件的动态组装器（生产路径，支持每次 run 热重载）；None = 回退静态 prompt_by_mode。
+    prompt_assembler: Any = None
     # MCP 能力（阶段 2）：共享 ToolRegistry（动态注册 MCP 工具，令 registry.version++）
     #   + servers.toml 路径。由 app.py 注入；缺省 None/"" 时 _make_mcp_manager 抛错 →
     #   子系统失败隔离 → mcp_manager 缺席（测试环境不炸全局）。

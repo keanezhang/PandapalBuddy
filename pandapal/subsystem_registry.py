@@ -281,6 +281,7 @@ def _make_session_pool(
         idle_ttl_seconds=idle_ttl,
         prompt_by_mode=context.prompt_by_mode,
         default_mode=context.default_mode,
+        prompt_assembler=context.prompt_assembler,
     )
 
 

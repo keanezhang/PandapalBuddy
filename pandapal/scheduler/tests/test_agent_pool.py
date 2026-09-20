@@ -44,6 +44,9 @@ class FakeBlueprint:
 
     def __init__(self) -> None:
         self._counter = 0
+        # 真实 AgentBlueprint 必填字段：materialize 出的 Agent Memory「已烤入」的
+        # system prompt。Pool 以其为初始 bound_prompt 判据（本组用例不涉及模式/片段）。
+        self.system_prompt = ""
 
     def materialize(self) -> FakeAgent:
         self._counter += 1

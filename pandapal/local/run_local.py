@@ -190,26 +190,10 @@ def _build_environment_block(work_dir: Path) -> str:
 
 
 
-def _load_pandapal_md(work_dir: Path) -> str:
-    """加载 PANDAPAL.md 项目指引文件（仅 coding 模式注入），失败时降级返回空字符串。
-
-    ★ 目录分层改造后：PANDAPAL.md 从用户工作区（--workdir）加载。
-    """
-    pandapal_path = work_dir / "PANDAPAL.md"
-    if pandapal_path.exists():
-        logger.info("PANDAPAL.md loaded from %s (%d chars)", pandapal_path, pandapal_path.stat().st_size)
-        return "\n\n" + pandapal_path.read_text(encoding="utf-8")
-    logger.warning(
-        "PANDAPAL.md not found at %s — Agent will run without project guide",
-        pandapal_path,
-    )
-    return ""
-
-
 # 运行环境块（模式无关，所有模式共用）：内嵌工作区根目录，由 main() 首次调用
 # _get_environment_block(WORK_DIR) 时计算并缓存，后续调用（含 _build_blueprint 内）
-# 直接命中缓存。PANDAPAL.md 项目指引不在此缓存内——它仅 coding 模式注入（见
-# _get_prompt_suffix / build_prompt_map 的 coding_extra 参数）。
+# 直接命中缓存。工作区 prompt 片段文件（PANDAPAL.md / soul.md / *_RULES.md）由
+# PromptAssembler 单独管理（支持每次 run 内容热重载），不在此缓存内。
 _ENV_BLOCK_CACHE: str | None = None
 
 
@@ -224,16 +208,6 @@ def _get_environment_block(work_dir: Path | None = None) -> str:
         _ENV_BLOCK_CACHE = _build_environment_block(work_dir)
     return _ENV_BLOCK_CACHE
 
-
-def _get_prompt_suffix(work_dir: Path, mode: str) -> str:
-    """按模式组装 prompt 尾部：运行环境块所有模式共用；PANDAPAL.md 项目指引仅 coding 注入。
-
-    供 prompts.compose 拼接；office 模式只拿环境块，不带项目指引。
-    """
-    suffix = _get_environment_block(work_dir)
-    if mode == "coding":
-        suffix += _load_pandapal_md(work_dir)
-    return suffix
 
 # ══════════════════════════════════════════════════════════════════════════════
 # §2  子系统构建工厂（5.2 重写：每个工厂聚焦于"只做一件事"）
@@ -388,6 +362,7 @@ def _build_blueprint(
     session_manager=None,
     storage_manager=None,
     storage_mode: str = "markdown",
+    prompt_assembler=None,
 ):
     """构造 pandaren AgentBlueprint。
 
@@ -503,11 +478,9 @@ def _build_blueprint(
     # DeepSeek 默认回填 usage 所以之前没配也正常，换 Qwen 后缺陷才暴露。
     agent_builder.llm_settings(include_usage=True)
     from pandapal.local import prompts
-    # 必须传入 work_dir：首次调用负责预热缓存（缓存为 None 时未传会触发 assert）。
-    # _build_blueprint 在 main() 的缓存预热调用之前执行，故此处显式传入。
-    agent_builder.system_prompt(
-        prompts.compose(prompts.DEFAULT_MODE, _get_prompt_suffix(work_dir, prompts.DEFAULT_MODE))
-    )
+    # 初始 system prompt = default_mode 的完整 prompt（含环境块 + 该模式的工作区片段）。
+    # 运行中 SessionAgentPool 会按请求 mode / 片段内容变更做 delta-rebind。
+    agent_builder.system_prompt(prompt_assembler.get(prompts.DEFAULT_MODE))
     # 费用停机由应用层全权负责（SDK 只提供通用 StepGuard 机制）：注入 CostBudgetGuard，
     # 它按实际净费用（含缓存折扣，价格数据在 pandapal.config.llm_pricing）累加并判断是否超预算，
     # 同时其 spent(run_id) 供会话末尾（REPLY_END）展示本 run 花费。
@@ -866,12 +839,26 @@ async def run_local() -> None:
         boot.kv("relay_url", sys_config.relay_url)
     boot.separator()
 
+    # ── 工作区 Prompt 片段组装器（每次 run 按内容 hash 热重载）──
+    # base = PROMPTS（coding 已含 TEST_RULE）；env 块所有模式共用；片段按模式注入：
+    #   coding → PANDAPAL.md / CODING_RULES.md；office → soul.md / OFFICE_RULES.md。
+    from pandapal.local import prompts
+    from pandapal.local.prompt_fragments import DEFAULT_FRAGMENTS, PromptAssembler
+
+    prompt_assembler = PromptAssembler(
+        base_prompts=prompts.PROMPTS,
+        env_block=_get_environment_block(WORK_DIR),
+        fragments=DEFAULT_FRAGMENTS,
+        work_dir=WORK_DIR,
+    )
+
     # ── Step 5 · Build Agent Blueprint（凭据已在 Step 1d 注入）──
     boot.step(5, "Build Agent Blueprint")
     blueprint, available_models = _build_blueprint(
         raw_credentials, default_model_id, default_provider,
         user_id, USER_DATA_DIR, USER_RESOURCES_DIR, WORK_DIR, session_manager, storage_manager,
         storage_mode=sys_config.storage_mode,
+        prompt_assembler=prompt_assembler,
     )
     boot.ok("agent blueprint built")
     boot.separator()
@@ -898,14 +885,6 @@ async def run_local() -> None:
         "user_resources_dir": str(USER_RESOURCES_DIR),  # ★ user skills/agents 根 (WORK_DIR/.pandapal)
         "mcp_config_path": str(USER_DATA_DIR / "mcp" / "servers.toml"),  # ★ MCP server 配置
     }
-    # 双层 Prompt：为每个模式预生成完整 prompt，供 SessionAgentPool 按 mode delta-rebind。
-    # 环境块所有模式共用；PANDAPAL.md 项目指引仅 coding 注入（office 不注入）。
-    from pandapal.local import prompts
-    prompt_by_mode = prompts.build_prompt_map(
-        _get_environment_block(WORK_DIR),
-        coding_extra=_load_pandapal_md(WORK_DIR),
-    )
-
     app = PandaPalApp(
         config=app_config,
         blueprint=blueprint,
@@ -913,7 +892,7 @@ async def run_local() -> None:
         storage_manager=storage_manager,
         wss_transport=wss_transport,
         config_manager=config_manager,  # ★ 根本解 2026-06-10：用于 TaskScheduler
-        prompt_by_mode=prompt_by_mode,
+        prompt_assembler=prompt_assembler,  # 工作区片段组装器（每次 run 按内容热重载）
         default_mode=prompts.DEFAULT_MODE,
         available_models=available_models,       # 模型选择：可选清单（MODEL_LIST 下发）
         default_model_id=default_model_id,  # 默认模型

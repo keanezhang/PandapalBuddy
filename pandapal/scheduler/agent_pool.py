@@ -25,7 +25,7 @@ import logging
 import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from typing import AsyncIterator
+from typing import Any, AsyncIterator
 
 from pandaren.agent.agent import Agent
 from pandaren.agent.blueprint import AgentBlueprint
@@ -34,6 +34,14 @@ from pandapal.broadcast.broadcaster import MessageBroadcast
 from pandapal.events.normalized import NormalizedEvent
 
 logger = logging.getLogger(__name__)
+
+#: prompt 模式 → 中文日志文案；新增模式在此登记，未登记的键原样输出。
+_MODE_LABELS: dict[str, str] = {"coding": "编码模式", "office": "办公助手模式"}
+
+
+def _fmt_mode(m: str | None) -> str:
+    """模式键 → 日志文案；None → 「无」，未登记的原样输出。"""
+    return _MODE_LABELS.get(m, m) if m else "无"
 
 
 @dataclass
@@ -52,8 +60,11 @@ class _SessionAgentEntry:
     last_used: float
     running_since: float | None = None
     acquire_count: int = 0
-    # 当前绑定到该 Agent Memory 的 prompt 模式；用于 delta-rebind（None = 尚未绑定）。
+    # 当前绑定到该 Agent Memory 的 prompt 模式（日志文案用）；None = 尚未绑定。
     bound_mode: str | None = None
+    # 当前绑定到该 Agent Memory 的**完整 prompt 文本**；delta-rebind 的判据
+    # （内容相等即跳过，保护 prompt cache）。None = 尚未绑定。
+    bound_prompt: str | None = None
 
 
 class SessionAgentPool:
@@ -89,6 +100,7 @@ class SessionAgentPool:
         idle_ttl_seconds: float = 1800.0,
         prompt_by_mode: dict[str, str] | None = None,
         default_mode: str = "",
+        prompt_assembler: Any = None,
     ) -> None:
         if blueprint is None:
             raise ValueError("SessionAgentPool requires blueprint")
@@ -103,7 +115,10 @@ class SessionAgentPool:
         self._broadcast = broadcast
         self._max_concurrent = max_concurrent
         self._idle_ttl_seconds = idle_ttl_seconds
-        # 双层 Prompt：{mode: 完整prompt} + 缺省模式，由 run_local 装配注入。
+        # 双层 Prompt 的两种来源：
+        #   - prompt_assembler：生产路径，支持工作区片段文件热重载（每次 get 刷新）；
+        #   - prompt_by_mode ：静态 {mode: 完整prompt}，测试 / 兼容路径（assembler 缺席时用）。
+        self._prompt_assembler = prompt_assembler
         self._prompt_by_mode = prompt_by_mode or {}
         self._default_mode = default_mode
 
@@ -489,14 +504,26 @@ class SessionAgentPool:
     async def _get_or_materialize(
         self, session_id: str, user_id: str, mode: str | None = None,
     ) -> Agent:
-        """复用现有 Agent 或用 blueprint 新造，并按 mode delta-rebind system prompt。
+        """复用现有 Agent 或用 blueprint 新造。
+
+        - 新造：按消息携带的 mode delta-rebind —— 即**会话首次发消息时锁定模式**。
+        - 复用：忽略消息携带的 mode，沿用 entry.bound_mode（仅按内容刷新，工作区片段仍热重载）。
+          即会话一旦创建，运行中不再随消息 mode 切换（会话级模式锁定）。
 
         blueprint.materialize 抛异常时不留半初始化 entry（异常向上传播）。
         """
         async with self._pool_lock:
             entry = self._agents.get(session_id)
             if entry is not None:
-                self._apply_mode(entry, mode)
+                # 会话模式已在首次 materialize 时锁定（见下方新造分支）：
+                # 已有会话不再随消息 mode 切换，传 None = 只用 bound_mode 刷新内容、不切模式。
+                self._apply_mode(entry, None)
+                logger.info(
+                    "[AgentPool] 当前模式【%s】· 复用会话 session=%s · 本次消息 mode=%s（复用不切模式）",
+                    _fmt_mode(entry.bound_mode),
+                    session_id,
+                    "未指定" if mode is None else _fmt_mode(mode),
+                )
                 return entry.agent
 
         # materialize 在锁外执行（可能耗时几十 ms 且分配 Memory）
@@ -517,15 +544,32 @@ class SessionAgentPool:
                     asyncio.create_task(agent.aclose())
                 except Exception:
                     pass
-                self._apply_mode(existing, mode)
+                # 竞态复用同理：模式已由先到者锁定，沿用 bound_mode，不随本消息 mode 切换。
+                self._apply_mode(existing, None)
+                logger.info(
+                    "[AgentPool] 当前模式【%s】· 复用会话(race) session=%s · 本次消息 mode=%s（复用不切模式）",
+                    _fmt_mode(existing.bound_mode),
+                    session_id,
+                    "未指定" if mode is None else _fmt_mode(mode),
+                )
                 return existing.agent
 
             entry = _SessionAgentEntry(
                 agent=agent,
                 user_id=user_id,
                 last_used=time.monotonic(),
-                # 新造 Agent 的 Memory 已烤入 default_mode 的 prompt（见 run_local 接线）。
                 bound_mode=self._default_mode or None,
+                # 初始绑定 = **Agent Memory 里已烤入的** prompt，即 blueprint.system_prompt。
+                # run_local 接线：agent_builder.system_prompt(prompt_assembler.get(DEFAULT_MODE))
+                # 在 blueprint 构建期把该 prompt 快照进 memory_factory（run_local:483 →
+                # builder.memory 的 memory_kwargs），故 materialize 出的每个 Agent 的 Memory
+                # system prompt 恒等于 blueprint.system_prompt，这是唯一真相源。
+                # ★ 必须取这份「已烤入」的值，**不能**用此刻 self._resolve_prompt() 重新解析：
+                #   若工作区片段文件在 blueprint 构建后、本 session materialize 前才出现/变更，
+                #   重新解析值 ≠ Agent 实际 prompt，却恰好等于新内容，会让下方 _apply_mode 的
+                #   「bound_prompt == prompt → 跳过」误判为无变化，从而漏掉该次 rebind，
+                #   Agent 永续沿用旧 prompt（片段永不注入）。取烤入值则能检测到差异并 rebind。
+                bound_prompt=self._blueprint.system_prompt,
             )
             self._agents[session_id] = entry
             total = len(self._agents)
@@ -537,35 +581,57 @@ class SessionAgentPool:
         )
         return agent
 
-    def _apply_mode(self, entry: _SessionAgentEntry, mode: str | None) -> None:
-        """按 mode 对该 session Agent 做 delta-rebind system prompt。
+    def _resolve_prompt(self, mode: str | None) -> str | None:
+        """返回该 mode 的完整 prompt；mode 非法 / None → None。
 
-        - mode 为 None / 非法 → **保持当前绑定**，不 rebind。
+        - 有 prompt_assembler（生产）→ 动态：内部按内容 hash 检测工作区片段变化，
+          变了才重建，天然支持热重载；
+        - 否则回退静态 prompt_by_mode（测试 / 兼容路径）。
+        """
+        if self._prompt_assembler is not None:
+            return self._prompt_assembler.get(mode)
+        if not mode:
+            return None
+        return self._prompt_by_mode.get(mode)
+
+    def _apply_mode(self, entry: _SessionAgentEntry, mode: str | None) -> None:
+        """按 mode（及工作区片段内容）对该 session Agent 做 delta-rebind system prompt。
+
+        - mode 为 None / 非法 → 沿用 entry.bound_mode **保持当前模式**，不切换模式。
           （关键：HITL / ask_user / Plan 的 resume 不带 mode，必须沿用本 session 已绑定的
           模式，绝不能因缺省回退把中途会话切回 default。新 session 的初始绑定已是
           default_mode，故非桌面渠道（企微 / 小智）不带 mode 时天然落 office。）
-        - mode 合法且与 entry.bound_mode 不同 → rebind + 更新 bound_mode（仅此一次失效缓存）。
-        - mode 合法但与当前相同 → 跳过（保护 prompt cache：前缀字节不变）。
+          注：即便沿用模式，仍按内容重解析——片段文件变更也能在 resume 时被检测到。
+        - 目标 prompt 与 entry.bound_prompt **内容相同** → 跳过（保护 prompt cache：
+          前缀字节不变）。这同时覆盖「模式切换」与「同模式但片段文件内容变更」两条路径。
+        - 内容不同 → rebind + 更新 bound_prompt / bound_mode（仅此一次失效缓存）。
 
         rebind 失败不影响本次执行（沿用旧 prompt），仅记录日志。
         """
-        if mode not in self._prompt_by_mode:  # None / 非法 → 保持当前绑定
+        # mode 缺省时沿用当前绑定的模式（仅刷新内容，不切模式）
+        target_mode = mode if mode is not None else entry.bound_mode
+        prompt = self._resolve_prompt(target_mode)
+        if prompt is None:  # None / 非法 mode → 保持当前绑定
             return
-        if entry.bound_mode == mode:
+        if entry.bound_prompt == prompt:  # 内容未变 → 跳过
             return
-        prev = entry.bound_mode
-        _label = {"coding": "编码模式", "office": "办公助手模式"}
 
-        def _fmt(m: str | None) -> str:
-            return _label.get(m, m) if m else "无"
+        prev_mode = entry.bound_mode
 
         try:
-            entry.agent.rebind_system_prompt(self._prompt_by_mode[mode])
-            entry.bound_mode = mode
-            logger.info(
-                "[AgentPool] 🔄 模式切换：%s → 当前模式【%s】",
-                _fmt(prev), _fmt(mode),
-            )
+            entry.agent.rebind_system_prompt(prompt)
+            entry.bound_prompt = prompt
+            entry.bound_mode = target_mode
+            if prev_mode != target_mode:
+                logger.info(
+                    "[AgentPool] 🔄 模式切换：%s → 当前模式【%s】",
+                    _fmt_mode(prev_mode), _fmt_mode(target_mode),
+                )
+            else:
+                logger.debug(
+                    "[AgentPool] ♻️ system prompt 内容更新（mode=%s，工作区片段变更）",
+                    _fmt_mode(target_mode),
+                )
         except Exception:
             logger.exception(
                 "[AgentPool] rebind system_prompt failed (mode=%s), keeping previous",
