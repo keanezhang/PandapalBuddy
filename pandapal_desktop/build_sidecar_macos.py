@@ -202,8 +202,14 @@ HIDDEN_IMPORTS = [
     "pandapal.quality.models",
     # pandapal.local.prompts — System Prompt 模块
     "pandapal.local.prompts",
+    # pandapal.local.prompt_fragments — PromptAssembler（run_local 内延迟 import）
+    "pandapal.local.prompt_fragments",
     # pandapal.degradation — 统一降级可观测通道
     "pandapal.degradation",
+    # pandapal.mcp — MCP 子系统（subsystem_registry 内 importlib 动态加载）
+    "pandapal.mcp",
+    "pandapal.mcp.manager",
+    "pandapal.mcp.config_store",
 
     # ── pandaren SDK 核心 ──
     "pandaren",
@@ -277,6 +283,7 @@ HIDDEN_IMPORTS = [
     # pandaren.memory — 含 backends/compaction/reinject 子包
     "pandaren.memory",
     "pandaren.memory.constants",
+    "pandaren.memory.estimators",
     "pandaren.memory.flush_policy",
     "pandaren.memory.long_term",
     "pandaren.memory.models",
@@ -338,6 +345,7 @@ HIDDEN_IMPORTS = [
     "pandaren.behavior.harness.idempotency",
     "pandaren.behavior.harness.output_guard",
     "pandaren.behavior.harness.rate_limiter",
+    "pandaren.behavior.harness.tool_feedback",
     # pandaren.tools — 内置工具集（注意：与 pandaren.tool 是不同的包）
     "pandaren.tools",
     "pandaren.tools.ask_user",
@@ -376,6 +384,13 @@ HIDDEN_IMPORTS = [
     "pandaren.utils.file_validators",
     "pandaren.utils.path_utils",
     "pandaren.utils.project_root",
+    # pandaren.mcp — MCP 客户端（client.py 在函数内 import httpx2 / mcp，
+    #   且 mcp 2.x 内部有 importlib 动态加载，静态分析易漏，必须显式声明）
+    "pandaren.mcp",
+    "pandaren.mcp.client",
+    "pandaren.mcp.config",
+    "pandaren.mcp.manager",
+    "pandaren.mcp.tool_adapter",
 
     # ── 第三方依赖（部分有动态导入/可选导入）──
     "httpx",
@@ -404,6 +419,37 @@ HIDDEN_IMPORTS = [
     "tiktoken",
     "tiktoken_ext",
     "tiktoken_ext.openai_public",
+    # MCP 官方 Python SDK（mcp>=2.2.0,<3）——pandaren/mcp 的底层传输依赖；
+    # 未声明时打出的 sidecar 会缺 mcp/httpx2，导致所有 MCP 服务器连接即失败
+    "mcp",
+    "mcp.client",
+    "mcp.client.stdio",
+    "mcp.client.sse",
+    "mcp.client.streamable_http",
+    "mcp.types",
+    "mcp_types",
+    "httpx2",
+    "httpcore2",
+    "sse_starlette",
+    "python_multipart",
+    # mcp SDK 运行期隐性依赖（不声明则打包后 ImportError）：
+    #   · opentelemetry-api —— mcp/shared/_otel.py 顶层静态 import；且 opentelemetry
+    #     是 PEP 420 命名空间包，PyInstaller 收集不稳，需逐个子模块声明。
+    #   · jsonschema —— mcp/client/session.py 的 validate_tool_result 内惰性 import。
+    "opentelemetry",
+    "opentelemetry.context",
+    "opentelemetry.propagate",
+    "opentelemetry.trace",
+    "opentelemetry.trace.span",
+    "opentelemetry.trace.propagation",
+    "opentelemetry.metrics",
+    "opentelemetry.attributes",
+    "opentelemetry.util.re",
+    "opentelemetry.version",
+    "jsonschema",
+    "jsonschema.protocols",
+    "jsonschema.exceptions",
+    "jsonschema.validators",
 ]
 
 # ─── 数据文件（SKILL.md 等资源文件）──────────────────────────
