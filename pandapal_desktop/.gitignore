@@ -29,3 +29,7 @@ public/monaco-editor/
 # IDE
 .vscode/
 .idea/
+
+# 内部分发产物（由 scripts/build_macos_internal.sh 生成，不提交）
+PandaPal_*_内部版*
+dist-internal/

@@ -162,6 +162,25 @@ xcrun notarytool submit src-tauri/target/release/bundle/dmg/PandaPal_*_aarch64.d
 xcrun stapler staple src-tauri/target/release/bundle/dmg/PandaPal_*_aarch64.dmg
 ```
 
+### 内部测试分发（免签名 / 免公证）
+
+无 Apple Developer 账号时，用一键脚本打包出「内部版」，让同事绕过 Gatekeeper 安装：
+
+```bash
+bash scripts/build_macos_internal.sh
+```
+
+产物：`pandapal_desktop/PandaPal_<version>_<arch>_内部版.zip`。
+
+发给内部同事后，对方解压并按 zip 内「安装说明.txt」操作即可：
+- **方式 A（推荐）**：双击「安装.command」，被拦则右键 → 打开 → 再点「打开」；
+- **方式 B**：终端执行 `bash 安装.command`；
+- **方式 C**：只想临时跑，右键 `PandaPal.app` → 打开。
+
+原理：打包机对 `.app` 补全 adhoc 签名（`codesign --deep --sign -`），接收方脚本再执行
+`xattr -cr` 去掉 `com.apple.quarantine` 隔离属性。此方式仅适合内部测试，正式对外分发仍需
+签名 + 公证。
+
 ### 发布检查清单
 
 - [ ] 版本号三处同步：`package.json`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml`
