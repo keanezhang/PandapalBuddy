@@ -96,6 +96,14 @@ pnpm tauri:dev    # 自动构建 sidecar 并启动完整桌面应用
 
 ## 打包发布
 
+> 打包前需先在 **Python 环境**（运行 build 脚本的同一个 venv）装好后端依赖，尤其是 RAG 知识库的重量依赖（numpy / chromadb / langchain / rank-bm25 等）——它们在 `pyproject.toml` 里是**可选依赖**，基础安装不会带入；缺了会导致 sidecar 建库时报 `ModuleNotFoundError: No module named 'numpy'`。
+>
+> ```bash
+> pip install -e ".[rag]"     # 仅 RAG 知识库依赖
+> # 或一键全功能（PDF / 图片 / tokenizer / RAG 等）
+> pip install -e ".[all]"
+> ```
+
 ### Windows
 
 ```powershell

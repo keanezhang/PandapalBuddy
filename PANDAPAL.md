@@ -71,7 +71,7 @@ Layer 1: identity/       Identity、Permission、TrustLevel（不可变地基）
 | hook | `pandaren/hook/hooks.py` | `AgentHooks`, `DefaultAgentHooks`, `CompositeAgentHooks` | 21 个生命周期扩展点 |
 | observability | `pandaren/observability/` | `AuditLog`, `Tracer`, `Metrics`, `Logger` | 四大观测支柱；`backend/` 含 console/in_memory/markdown/sqlite 四套后端 |
 | cancellation | `pandaren/cancellation.py` | `CancelToken`, `CancelledSignal` | 外部取消信号 |
-| constants | `pandaren/constants.py` | `CHARS_PER_TOKEN`, `DEFAULT_CONTEXT_WINDOW` 等 | 全局魔法数字收编 |
+| constants | `pandaren/constants.py` | （已清空） | 原全局魔法数字已按分层迁出：`CHARS_PER_TOKEN` → `memory/protocols.py`；窗口比例 / 槽位熔断线 → 应用层 `pandapal/config/llm/context_budget.py`；预算字段 → `behavior/context_window_budget.py`。分层依据见 `memory/COMPACT_BUDGET_LAYERING_SPEC.md` |
 | builder | `pandaren/builder.py` | `AgentBuilder` | Fluent API 构建入口 |
 | utils | `pandaren/utils/` | `path_utils` / `file_validators` / `project_root` | 路径处理、文件校验、项目根定位 |
 
@@ -100,7 +100,7 @@ agent = (
     .system_prompt("你是一个助手...")
     .hooks(MyAgentHooks())
     .behavior(max_steps=30, step_timeout=30.0, total_timeout=300.0, ...)
-    .context_budget(context_window=128000, ...)
+    .context_budget(budget)               # 传 ContextWindowBudget 实例（应用层构造，见 config/llm/context_budget.py）
     .memory(persist=True, session_mode="multi_turn", ...)
     .observability(audit=None, tracer=None, ...)
     .build()                             # 或 .build_blueprint() → AgentBlueprint
@@ -141,7 +141,7 @@ result = await agent.run("用户输入", session_id="session-001")
 | 8 | `.observability(log=...)` | `LoggerBackend` | 自定义日志平台 |
 | 9 | `.observability(sanitizer=...)` | `Sanitizer` | 敏感数据脱敏 |
 | 10 | `.hooks(...)` | `AgentHooks` | 21个生命周期hook |
-| 11 | `.context_budget(token_estimator=...)` | `TokenEstimator` | Token精确计数 |
+| 11 | `.memory(token_estimator=...)` | `TokenEstimator` | Token精确计数（与压缩判据同一把尺子） |
 
 ### 1.8 8-Phase ReAct 循环
 
@@ -222,6 +222,14 @@ pandapal/
 ├── task_scheduler/            # 定时任务调度 (cron/event/manual)
 ├── budget/                    # 预算额度（按 provider 分账，handler.py）
 ├── dashboard/                 # 看板聚合（aggregator + sqlite_aggregator + handler）
+├── knowledge_base/            # 知识库子系统（CRUD + 建库 + 检索 + 对话工具）
+│   ├── manager.py             #   KnowledgeBaseManager（生命周期编排 + KB_* 事件发射）
+│   ├── config_store.py        #   kbs.toml 配置持久化（KBConfig）
+│   ├── builder.py             #   建库长任务编排（切分→向量→BM25；重量依赖延迟导入）
+│   ├── tool.py                #   对话检索工具 build_search_tool（注入 Agent）
+│   ├── rag_llm_provider.py    #   RAGLLMProvider 适配（复用 pandaren LLM client）
+│   ├── models.py              #   KBConfig / KBStatus / collection_name_for
+│   └── rag/                   #   NexusRAG SDK（内嵌，chromadb/numpy 延迟导入）
 ├── quality/                   # 编码质量门控（checker/gate，渲染零漂移回归）
 ├── hooks/                     # 应用层 hook 装配（skill_hooks.py）
 ├── resources/                 # 内置资源（agents/ + skills/ + tokenizer/ + skill_manager.py）
@@ -248,7 +256,7 @@ pandapal/
 - **依赖注入**：每个子系统通过 factory 函数声明所需依赖（类型依赖 + `context_needs`）
 - **失败隔离**：单个子系统启动失败不阻塞其他
 
-**16 个注册子系统**（`register_pandapal_subsystems()`）：
+**19 个注册子系统**（`register_pandapal_subsystems()`）：
 
 | # | 名称 | 产物 | start |
 |---|------|------|-------|
@@ -261,13 +269,16 @@ pandapal/
 | 7 | `hitl_manager` | HITLManager | – |
 | 8 | `plan_manager` | PlanModeManager | – |
 | 9 | `session_pool` | SessionAgentPool | ✓ (evict 循环) |
-| 10 | `session_list_manager` | SessionListManager | – |
-| 11 | `agent_scheduler` | AgentScheduler | – |
-| 12 | `task_scheduler` | TaskScheduler | ✓ |
-| 13 | `scheduler_tools` | SchedulerTools | – |
-| 14 | `agent_task_tools` | AgentTaskTools | – |
-| 15 | `app_data_tools` | AppDataTools | – |
-| 16 | `progress_tools` | ProgressTools | – |
+| 10 | `session_group_manager` | SessionGroupManager | – |
+| 11 | `session_list_manager` | SessionListManager | – |
+| 12 | `agent_scheduler` | AgentScheduler | – |
+| 13 | `task_scheduler` | TaskScheduler | ✓ |
+| 14 | `scheduler_tools` | SchedulerTools | – |
+| 15 | `agent_task_tools` | AgentTaskTools | – |
+| 16 | `app_data_tools` | AppDataTools | – |
+| 17 | `progress_tools` | ProgressTools | – |
+| 18 | `mcp_manager` | McpManager | ✓ (启动即连 MCP 服务器) |
+| 19 | `knowledge_base_manager` | KnowledgeBaseManager | ✓ (缺 knowledge_bases_dir 即 RuntimeError) |
 
 渠道分发策略：每渠道独立 env 键 `PANDAPAL_CHANNEL_{DESKTOP_IPC|WECOM|XIAOZHI}_POLICY`（`shared|source_only|target_only`），默认 desktop_ipc/wecom=SOURCE_ONLY，xiaozhi=TARGET_ONLY。
 
@@ -314,16 +325,38 @@ IpcStdoutTransport  WeComTransport  WSSGateway
 | `SessionAgentPool` | 多会话并发池（queued/started/released 三态反馈） |
 | `MessageBroadcast` | 出站广播器 |
 | `HITLBridge` | 审批桥接（唯一状态Owner） |
-| `NormalizedEvent` | 跨渠道统一事件（46种EventType） |
+| `NormalizedEvent` | 跨渠道统一事件（62种EventType） |
 | `StorageManager` | 统一持久化入口（SQLite + Markdown 双后端） |
 | `session_id_mod` (`pandapal/session_id.py`) | session_id 创建/校验/断言唯一入口（`require`/`assert_consistent`） |
 | `pandapal.degradation` | 降级统一通道（`event_code` 主键 + Metrics counter） |
 
-**EventType 分组（46 种）**：流式生命周期 4（REPLY_START/END、RUN_START/END）、LLM 输出 2、工具 2、暂停/恢复 4（HITL_REQUEST/INTERACTION_REQUEST/PERMISSION_DENIED/AGENT_HALTED）、终端 2（ERROR/APPROVAL_RESULT）、系统 4（USER_INPUT_ECHO/TASK_NOTIFICATION/AGENT_TASK_EVENT/AGENT_REPLY）、Plan Mode 1、Quick App 1（QUICK_APP_DATA，前端静默消费）、技能 9（PROGRESS/LIST/GET/SAVED/DELETED/IMPORTED/EXPORTED/ACTIVATED/CLEARED）、定时任务 2、并发池 1、会话列表 6、搜索 1、模型 1、凭据 4、看板 1、预算 1。出站会话级事件必带 `payload["session_id"]`；全局级事件显式 `scope=global`（`EVENT_SCOPE_KEY`）。
+**EventType 分组（62 种）**：流式生命周期 4（REPLY_START/END、RUN_START/END）、LLM 输出 2、工具 2、暂停/恢复 4（HITL_REQUEST/INTERACTION_REQUEST/PERMISSION_DENIED/AGENT_HALTED）、终端 2（ERROR/APPROVAL_RESULT）、系统 4（USER_INPUT_ECHO/TASK_NOTIFICATION/AGENT_TASK_EVENT/AGENT_REPLY）、Plan Mode 1、Quick App 1（QUICK_APP_DATA，前端静默消费）、技能 9（PROGRESS/LIST/GET/SAVED/DELETED/IMPORTED/EXPORTED/ACTIVATED/CLEARED）、知识库 9（LIST_RESULT/GET_RESULT/SAVED/DELETED/BUILD_PROGRESS/BUILD_DONE/BUILD_FAILED/SEARCH_RESULT/DOCUMENTS_CHANGED）、定时任务 2、并发池 1、会话列表 6、搜索 1、模型 1、凭据 4、看板 1、预算 1。出站会话级事件必带 `payload["session_id"]`；全局级事件显式 `scope=global`（`EVENT_SCOPE_KEY`）。
 
 ### 2.5 对 pandaren 的依赖
 
 pandapal **依赖 pandaren**，主要体现在 scheduler/executor.py 调用 `agent.run_stream()`，以及 tools 中的工具实现基于 pandaren 的 Tool 基类。pandapal 是 pandaren 的消费者。
+
+### 2.6 知识库子系统（knowledge_base）
+
+**定位**：本地知识库（RAG）能力——多库并存、独立配置、建库长任务、检索工具注入对话。NexusRAG SDK 内嵌为子包 `knowledge_base/rag/`（含 `builder/` `query/` `store/` `embedding/` `evaluation/` `utils/`）；chromadb / numpy 等重量依赖**全部延迟导入**，未安装时仅知识库功能不可用，不影响其余子系统。
+
+| 对象 | 路径 | 职责 |
+|------|------|------|
+| `KnowledgeBaseManager` | `knowledge_base/manager.py` | 生命周期编排：多库 CRUD、文档上传/删除、建库任务、检索、独占 `KB_*` 出站事件发射、`get_tools()` 暴露对话检索工具 |
+| `KnowledgeBaseConfigStore` | `knowledge_base/config_store.py` | `kbs.toml` 持久化（单文件存全部 KB 配置） |
+| `KBConfig` / `KBStatus` | `knowledge_base/models.py` | 配置模型（含独立 Embedding / 抽取 LLM 凭据）+ 索引状态机 `empty → pending → building → ready / failed` |
+| `run_build` | `knowledge_base/builder.py` | 建库长任务编排（切分 → 向量 → BM25） |
+| `build_search_tool` | `knowledge_base/tool.py` | 对话检索工具（经 `manager.get_tools()` 供 `app.py` 自动发现注册） |
+| `build_provider` | `knowledge_base/rag_llm_provider.py` | 把 pandaren LLM client 适配给 NexusRAG 做实体/关键词抽取 |
+
+**关键约定**：
+
+- **凭据独立**：知识库的 Embedding API Key 与抽取 LLM 凭据**不复用对话 LLM 凭据**（`KBConfig.embedding_*` / `llm_*` 独立字段）。
+- **配置 fail-fast**：`KBConfig.validate()` 对名称、文档目录、API Key、模型名、向量维度、`top_k` 逐项校验，非法即抛 `ValueError`（对齐 §九「ID 类字段缺失即失败」）。
+- **collection 名 ASCII 化**：`collection_name_for(name)` 由名称的 SHA256 派生 `kb_<hex16>`，中文库名可用、跨重启稳定。
+- **子系统 fail-fast**：`knowledge_base_manager` 缺 `AppContext.knowledge_bases_dir` 时 factory 抛 `RuntimeError` → 容器失败隔离，不炸全局启动（`subsystem_registry.py:459`）。
+- **前端契约（改类型须与 desktop 同步）**：入站 10 种 `KB_LIST` `KB_GET` `KB_CREATE` `KB_SAVE` `KB_DELETE` `KB_BUILD` `KB_BUILD_CANCEL` `KB_SEARCH` `KB_DOCUMENT_UPLOAD` `KB_DOCUMENT_DELETE`；出站 9 种 `KB_LIST_RESULT` `KB_GET_RESULT` `KB_SAVED` `KB_DELETED` `KB_BUILD_PROGRESS` `KB_BUILD_DONE` `KB_BUILD_FAILED` `KB_SEARCH_RESULT` `KB_DOCUMENTS_CHANGED`。
+- **事件 scope**：`KB_LIST_RESULT` / `KB_GET_RESULT` 在 `events/normalized.py` 中显式声明 `scope=global`。
 
 ---
 
@@ -446,18 +479,20 @@ pandapal_desktop/
 
 ### 3.6 IPC 消息类型（真相源：`pandapal/desktop_ipc/message_codec.py` ⇄ `src/types/api.ts`）
 
-**入站**（前端 → Python，约 30 种）：
+**入站**（前端 → Python，约 40 种）：
 - 核心：`SEND_MESSAGE`, `HITL_DECISION`, `INTERACTION_RESPONSE`, `PLAN_APPROVAL_DECISION`, `STOP_GENERATION`, `PING`
 - 会话管理：`SESSION_LIST_REQUEST`, `SESSION_CREATE`, `SESSION_SWITCH`, `SESSION_DELETE`, `SESSION_FAVORITE_TOGGLE`, `SESSION_GROUP_MUTATE`, `SESSION_HISTORY_REQUEST`
 - 技能：`SKILL_LIST`, `SKILL_GET`, `SKILL_SAVE`, `SKILL_DELETE`, `SKILL_IMPORT`, `SKILL_EXPORT`
 - 凭据：`LOAD_CREDENTIALS`, `SAVE_LLM_CREDENTIALS`, `VERIFY_CREDENTIALS`, `GET_CREDENTIALS_STATUS`
+- 知识库：`KB_LIST`, `KB_GET`, `KB_CREATE`, `KB_SAVE`, `KB_DELETE`, `KB_BUILD`, `KB_BUILD_CANCEL`, `KB_SEARCH`, `KB_DOCUMENT_UPLOAD`, `KB_DOCUMENT_DELETE`
 - 其他：`MODEL_LIST_REQUEST`, `REQUEST_SCHEDULED_TASKS`, `DELETE_SCHEDULED_TASK`, `SEARCH`, `DASHBOARD_REQUEST`, `SET_BUDGET`, `BUDGET_QUERY`
 
-**出站**（Python → 前端，约 48 种）：
+**出站**（Python → 前端，约 57 种）：
 - 流式：`REPLY_START`, `TOKEN`, `REASONING_TOKEN`, `REPLY_END`, `TOOL_START`, `TOOL_END`
 - 暂停/恢复：`HITL_REQUEST`, `INTERACTION_REQUEST`, `PLAN_APPROVAL_REQUEST`, `PERMISSION_DENIED`, `AGENT_HALTED`
 - 终端/系统：`APPROVAL_RESULT`, `ERROR`, `PONG`, `USER_INPUT_ECHO`, `AGENT_REPLY`, `TASK_NOTIFICATION`, `AGENT_TASK_EVENT`, `QUICK_APP_DATA`(静默消费), `SKILL_PROGRESS`
 - 数据响应：`SESSION_LIST`, `SESSION_SWITCHED`, `SESSION_UPDATED`, `SESSION_DELETED`, `SESSION_GROUP_LIST`, `SESSION_HISTORY_LIST`, `SESSION_CONCURRENCY`, `SEARCH_RESULT`, `MODEL_LIST`, `CREDENTIALS_LIST`, `CREDENTIALS_SAVED`, `CREDENTIALS_VERIFIED`, `CREDENTIALS_STATUS`, `DASHBOARD_DATA`, `BUDGET_STATUS`, `SCHEDULED_TASK_LIST`, `SCHEDULED_TASK_CHANGED`, `SKILL_LIST_RESULT`, `SKILL_GET_RESULT`, `SKILL_SAVED`, `SKILL_DELETED`, `SKILL_IMPORTED`, `SKILL_EXPORTED`, `SKILL_ACTIVATED`, `SKILL_CLEARED`
+- 知识库：`KB_LIST_RESULT`, `KB_GET_RESULT`, `KB_SAVED`, `KB_DELETED`, `KB_BUILD_PROGRESS`, `KB_BUILD_DONE`, `KB_BUILD_FAILED`, `KB_SEARCH_RESULT`, `KB_DOCUMENTS_CHANGED`
 - 认证（JWT 自动续期）：`AUTH_TOKEN_REFRESHED`（带新 token，前端回写 store）、`AUTH_EXPIRED`（登录态失效，前端登出）
 - 兜底：`UNKNOWN`（未知事件类型兜底）
 
@@ -590,6 +625,7 @@ Relay **不依赖完整的 pandapal 包**。通过本地副本（`message_types.
 | 修改调度逻辑 | `pandapal/scheduler/`（pool/executor/manager 分层） |
 | 修改 HITL 流程 | `pandapal/hitl/bridge.py` + `scheduler/hitl_manager.py` |
 | 新增存储域 | `pandapal/storage/repositories/`（sqlite_* + markdown_* 双实现） |
+| 知识库（RAG）开发 | `pandapal/knowledge_base/`（`manager.py` 编排 / `config_store.py` 持久化 / `builder.py` 建库 / `tool.py` 检索工具）；RAG SDK 内嵌 `knowledge_base/rag/`；改 KB IPC 类型须同步 `pandapal/desktop_ipc/message_codec.py` ⇄ `pandapal_desktop/src/types/api.ts` |
 | 代码改动收尾测试闭环 | `pandapal/local/TEST_RULE.md`（注入 coding system prompt；由 test-designer/test-coder 子 Agent 执行） |
 | **pandapal_desktop 桌面端开发** | |
 | 新增页面 | `pandapal_desktop/src/pages/` + `App.tsx` 添加路由 |

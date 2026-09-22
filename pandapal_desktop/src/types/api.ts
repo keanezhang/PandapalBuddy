@@ -117,6 +117,25 @@ export const ApiMessageType = {
   MCP_DISCONNECT:            "MCP_DISCONNECT",
   MCP_TEST:                  "MCP_TEST",
   MCP_SET_ENABLED:           "MCP_SET_ENABLED",
+  // 知识库管理入站（全局级，scope=global）
+  KB_LIST:                  "KB_LIST",
+  KB_GET:                   "KB_GET",
+  KB_CREATE:                "KB_CREATE",
+  KB_SAVE:                  "KB_SAVE",
+  KB_DELETE:                "KB_DELETE",
+  KB_BUILD:                 "KB_BUILD",
+  KB_BUILD_CANCEL:          "KB_BUILD_CANCEL",
+  KB_SEARCH:                "KB_SEARCH",
+  KB_DOCUMENT_UPLOAD:       "KB_DOCUMENT_UPLOAD",
+  KB_DOCUMENT_DELETE:       "KB_DOCUMENT_DELETE",
+  KB_SAVE_TEXT:             "KB_SAVE_TEXT",
+  // 知识库文档结构操作入站（全局级，scope=global）
+  KB_TREE_REQUEST:          "KB_TREE_REQUEST",
+  KB_FOLDER_CREATE:         "KB_FOLDER_CREATE",
+  KB_FOLDER_RENAME:         "KB_FOLDER_RENAME",
+  KB_FOLDER_DELETE:         "KB_FOLDER_DELETE",
+  KB_DOCUMENT_RENAME:       "KB_DOCUMENT_RENAME",
+  KB_DOCUMENT_MOVE:         "KB_DOCUMENT_MOVE",
   // 会话列表入站
   SESSION_LIST_REQUEST:      "SESSION_LIST_REQUEST",
   SESSION_CREATE:            "SESSION_CREATE",
@@ -170,6 +189,17 @@ export const ApiMessageType = {
   MCP_STATUS_CHANGED:     "MCP_STATUS_CHANGED",
   MCP_TOOLS_RESULT:       "MCP_TOOLS_RESULT",
   MCP_TEST_RESULT:        "MCP_TEST_RESULT",
+  // 知识库管理出站（全局级，scope=global）
+  KB_LIST_RESULT:        "KB_LIST_RESULT",
+  KB_GET_RESULT:         "KB_GET_RESULT",
+  KB_SAVED:              "KB_SAVED",
+  KB_DELETED:            "KB_DELETED",
+  KB_BUILD_PROGRESS:     "KB_BUILD_PROGRESS",
+  KB_BUILD_DONE:         "KB_BUILD_DONE",
+  KB_BUILD_FAILED:       "KB_BUILD_FAILED",
+  KB_SEARCH_RESULT:      "KB_SEARCH_RESULT",
+  KB_DOCUMENTS_CHANGED:  "KB_DOCUMENTS_CHANGED",
+  KB_TREE_RESULT:        "KB_TREE_RESULT",
   // 会话列表出站
   SESSION_LIST:          "SESSION_LIST",
   SESSION_SWITCHED:      "SESSION_SWITCHED",
@@ -504,6 +534,23 @@ export type InboundApiMessage =
   | McpDisconnectPayload
   | McpTestPayload
   | McpSetEnabledPayload
+  | KbListPayload
+  | KbGetPayload
+  | KbCreatePayload
+  | KbSavePayload
+  | KbDeletePayload
+  | KbBuildPayload
+  | KbBuildCancelPayload
+  | KbSearchPayload
+  | KbDocumentUploadPayload
+  | KbDocumentDeletePayload
+  | KbSaveTextPayload
+  | KbTreeRequestPayload
+  | KbFolderCreatePayload
+  | KbFolderRenamePayload
+  | KbFolderDeletePayload
+  | KbDocumentRenamePayload
+  | KbDocumentMovePayload
   | PingPayload
   | StopGenerationPayload
   | SessionListRequestPayload
@@ -615,11 +662,11 @@ export interface ReplyUsage {
   reasoning_tokens: number; // 推理
   hit_rate: number;       // 命中率 0~1
   duration_ms: number;    // 本轮耗时（executor 墙钟）
-  // ── 上下文进度条（0 = 后端未注入配置，前端不画）──
+  // ── 上下文进度条（null = 后端未注入，前端不画；与"真实 0"区分）──
   last_input_tokens: number;  // 最后一次调用的单次输入 = 当前上下文占用（进度条分子）
   step_count: number;         // 本 run 的 LLM 调用步数（累计量的解释项）
-  context_window: number;     // 分母：模型上下文上限
-  compact_threshold: number;  // 标记线：自动压缩触发阈值
+  context_window: number | null;     // 分母：输入预算 CW（= M × 0.80），不是模型上限 M
+  compact_threshold: number | null;  // 标记线：自动压缩触发阈值（来自同一个预算对象）
   /** 当前上下文被谁占了（四段之和 == last_input_tokens）。
    *  仅 system/tools/attachments 为估算值（与压缩判据同一把尺子），history 为残差。 */
   context_breakdown?: { system: number; tools: number; attachments: number; history: number } | null;
@@ -1056,6 +1103,16 @@ export type OutboundApiMessage =
   | McpStatusChangedMsg
   | McpToolsResultMsg
   | McpTestResultMsg
+  | KbListResultMsg
+  | KbGetResultMsg
+  | KbSavedMsg
+  | KbDeletedMsg
+  | KbBuildProgressMsg
+  | KbBuildDoneMsg
+  | KbBuildFailedMsg
+  | KbSearchResultMsg
+  | KbDocumentsChangedMsg
+  | KbTreeResultMsg
   | PermissionDeniedMsg
   | ReplyEndMsg
   | AgentHaltedMsg
@@ -1451,3 +1508,207 @@ export interface SessionHistoryListMsg extends IpcMessageBase {
 }
 
 
+// ─────────────────────────────────────────────────────────────
+// 知识库管理（KB_*，全局级 scope=global）
+//   真相源：pandapal/knowledge_base/models.py KBConfig +
+//           pandapal/knowledge_base/manager.py _summary()
+// ─────────────────────────────────────────────────────────────
+
+/** 知识库索引状态（与后端 KBStatus 一致） */
+export type KBStatus = "empty" | "pending" | "building" | "ready" | "failed";
+
+/** 知识库摘要（列表用）。真相源：manager._summary() */
+export interface KBSummary {
+  name: string;
+  description: string;
+  status: KBStatus;
+  document_count: number;
+  enabled_in_chat: boolean;
+  auto_rebuild: boolean;
+  top_k: number;
+  enable_bm25: boolean;
+}
+
+/** 知识库完整配置。真相源：KBConfig.to_dict() */
+export interface KBConfig {
+  name: string;
+  description: string;
+  documents_dir: string;
+  embedding_api_key: string;
+  embedding_model: string;
+  embedding_api_type: "text" | "multimodal";
+  embedding_api_url: string;
+  embedding_dimension: number;
+  // 抽取 LLM（建库实体/关键词抽取 + 检索分词；独立配置，不复用对话 LLM）
+  llm_provider: string;
+  llm_api_key: string;
+  llm_model: string;
+  llm_api_url: string;
+  enable_bm25: boolean;
+  enabled_in_chat: boolean;
+  auto_rebuild: boolean;
+  top_k: number;
+}
+
+/** 库内文档。真相源：manager._list_documents() */
+export interface KBDocument {
+  name: string;
+  /** 相对 documents_dir 的 POSIX 路径（唯一身份，与 DocNode.path 同口径；可直接回传删除/重命名/移动） */
+  path: string;
+  suffix: string;
+  size: number;
+}
+
+/** 知识库详情（摘要 + config + documents） */
+export interface KBDetail extends KBSummary {
+  config: KBConfig;
+  documents: KBDocument[];
+}
+
+/** 检索结果中的匹配片段 */
+export interface KBSearchMatch {
+  content: string;
+  distance?: number | null;
+  retrieval_sources?: string[] | null;
+}
+
+/** 检索结果项（父文档 + 匹配子片段） */
+export interface KBSearchResultItem {
+  parent_id: string;
+  title?: string | null;
+  source?: string | null;
+  chapter_title?: string | null;
+  scene_title?: string | null;
+  content: string;
+  matched_children: KBSearchMatch[];
+}
+
+// ── 入站 payload ──────────────────────────────────────────
+
+export interface KbListPayload { type: "KB_LIST"; msg_id: string; }
+export interface KbGetPayload { type: "KB_GET"; msg_id: string; name: string; }
+export interface KbCreatePayload { type: "KB_CREATE"; msg_id: string; config: KBConfig; }
+export interface KbSavePayload { type: "KB_SAVE"; msg_id: string; config: KBConfig; }
+export interface KbDeletePayload { type: "KB_DELETE"; msg_id: string; name: string; }
+export interface KbBuildPayload { type: "KB_BUILD"; msg_id: string; name: string; rebuild?: boolean; }
+export interface KbBuildCancelPayload { type: "KB_BUILD_CANCEL"; msg_id: string; name: string; }
+export interface KbSearchPayload { type: "KB_SEARCH"; msg_id: string; name: string; query: string; k?: number; }
+export interface KbDocumentUploadPayload { type: "KB_DOCUMENT_UPLOAD"; msg_id: string; name: string; source_paths: string[]; target_dir?: string; }
+export interface KbDocumentDeletePayload { type: "KB_DOCUMENT_DELETE"; msg_id: string; name: string; path: string; }
+export interface KbSaveTextPayload { type: "KB_SAVE_TEXT"; msg_id: string; name: string; filename: string; content: string; auto_build?: boolean; }
+
+// ── 出站 msg ──────────────────────────────────────────────
+
+export interface KbListResultMsg extends IpcMessageBase {
+  type: "KB_LIST_RESULT";
+  knowledge_bases: KBSummary[];
+}
+export interface KbGetResultMsg extends IpcMessageBase {
+  type: "KB_GET_RESULT";
+  knowledge_base: KBDetail;
+}
+export interface KbSavedMsg extends IpcMessageBase { type: "KB_SAVED"; name: string; }
+export interface KbDeletedMsg extends IpcMessageBase { type: "KB_DELETED"; name: string; }
+export interface KbBuildProgressMsg extends IpcMessageBase {
+  type: "KB_BUILD_PROGRESS";
+  name: string;
+  stage: string;
+  percent: number;
+  message: string;
+  /** 增量更新（auto_rebuild 触发）；真源：normalized.kb_build_progress 的 incremental 字段 */
+  incremental?: boolean;
+}
+export interface KbBuildDoneMsg extends IpcMessageBase { type: "KB_BUILD_DONE"; name: string; }
+export interface KbBuildFailedMsg extends IpcMessageBase { type: "KB_BUILD_FAILED"; name: string; error: string; }
+export interface KbSearchResultMsg extends IpcMessageBase {
+  type: "KB_SEARCH_RESULT";
+  knowledge_base: string;
+  query: string;
+  count: number;
+  results: KBSearchResultItem[];
+}
+export interface KbDocumentsChangedMsg extends IpcMessageBase {
+  type: "KB_DOCUMENTS_CHANGED";
+  name: string;
+  uploaded: { name: string; suffix: string }[];
+  rejected: { name: string; reason: string }[];
+}
+
+// ─────────────────────────────────────────────────────────────
+// 文档树组织（KB_TREE_*，全局级 scope=global）
+//   真相源：pandapal/knowledge_base/models.py DocNode.to_dict()
+//           + pandapal/knowledge_base/manager.py（FS 即真相源）
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * 文档树节点线格式（与后端 `DocNode.to_dict()` 逐字段对齐）。
+ *
+ * `path` 为相对 `documents_dir` 的 POSIX 路径（`/` 分隔），是库内唯一身份，
+ * 前端据此派生视图态 id/kind。`children` 仅目录有（目录优先 + 名称升序）。
+ */
+export interface KBDocNode {
+  path: string;
+  name: string;
+  is_dir: boolean;
+  /** 文件字节数；目录恒为 0 */
+  size: number;
+  /** 小写含点（如 ".pdf"）；目录为 "" */
+  suffix: string;
+  /** 最后修改时间戳（秒） */
+  mtime: number;
+  /** 目录的子节点；文件为 null */
+  children: KBDocNode[] | null;
+}
+
+// ── 入站 payload ──────────────────────────────────────────
+//   字段名真相源：pandapal/app.py 各 handler 的 d.get(...) 键名
+
+export interface KbTreeRequestPayload { type: "KB_TREE_REQUEST"; msg_id: string; name: string; }
+export interface KbFolderCreatePayload {
+  type: "KB_FOLDER_CREATE";
+  msg_id: string;
+  name: string;
+  /** 父目录相对路径（"" = 根） */
+  parent_path: string;
+  folder_name: string;
+}
+export interface KbFolderRenamePayload {
+  type: "KB_FOLDER_RENAME";
+  msg_id: string;
+  name: string;
+  /** 待重命名文件夹相对路径（"" 表示根，后端拒绝） */
+  path: string;
+  new_name: string;
+}
+export interface KbFolderDeletePayload { type: "KB_FOLDER_DELETE"; msg_id: string; name: string; path: string; }
+export interface KbDocumentRenamePayload {
+  type: "KB_DOCUMENT_RENAME";
+  msg_id: string;
+  name: string;
+  /** 待重命名文件相对路径 */
+  path: string;
+  new_name: string;
+}
+export interface KbDocumentMovePayload {
+  type: "KB_DOCUMENT_MOVE";
+  msg_id: string;
+  name: string;
+  /** 被移动项（文件或文件夹）相对路径 */
+  source_path: string;
+  /** 目标目录相对路径（"" = 根） */
+  target_dir: string;
+}
+
+// ── 出站 msg ──────────────────────────────────────────────
+
+/**
+ * 全量文档树响应。
+ *
+ * 触发时机：`KB_TREE_REQUEST` 应答，**以及**任一结构操作（上传 / 删除 / 新建文件夹 /
+ * 重命名 / 移动）后由后端主动推送 —— 即前端无需为每次操作单独拉树。
+ */
+export interface KbTreeResultMsg extends IpcMessageBase {
+  type: "KB_TREE_RESULT";
+  name: string;
+  tree: KBDocNode[];
+}

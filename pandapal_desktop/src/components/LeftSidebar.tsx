@@ -584,7 +584,7 @@ export function LeftSidebar() {
 //     showScheduled / 当前是否在 /skills 路由，才显示 active。
 // 这样任一时刻侧边栏「紫色选中」只有一处（对话列表的当前会话是唯一真相）。
 
-type NavId = "chat" | "search" | "scheduled" | "plugins" | "dashboard" | "mcp";
+type NavId = "chat" | "search" | "scheduled" | "plugins" | "dashboard" | "mcp" | "kb";
 
 function MainNav() {
   const { t } = useTranslation();
@@ -597,6 +597,7 @@ function MainNav() {
   const onTasksRoute = location.pathname.startsWith("/tasks");
   const onDashboardRoute = location.pathname.startsWith("/dashboard");
   const onMcpRoute = location.pathname.startsWith("/mcp");
+  const onKbRoute = location.pathname.startsWith("/knowledge");
 
   const items: { id: NavId; icon: string; label: string; active: boolean; run: () => void }[] = [
     { id: "chat",      icon: "🍀", label: t("leftsidebar.nav.chat"),       active: false,             run: () => { createSession(); navigate("/"); } },
@@ -605,6 +606,7 @@ function MainNav() {
     { id: "scheduled", icon: "📋", label: t("leftsidebar.nav.tasks"),      active: onTasksRoute,       run: () => navigate("/tasks") },
     { id: "plugins",   icon: "📙", label: "Skills",                        active: onSkillsRoute,      run: () => navigate("/skills") },
     { id: "mcp",       icon: "🔌", label: "MCP",                           active: onMcpRoute,         run: () => navigate("/mcp") },
+    { id: "kb",        icon: "📚", label: "知识库",                        active: onKbRoute,          run: () => navigate("/knowledge") },
   ];
 
   return (

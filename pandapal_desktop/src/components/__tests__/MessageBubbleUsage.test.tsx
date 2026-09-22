@@ -99,8 +99,8 @@ describe("footer 上下文进度条", () => {
       <MessageBubble
         message={makeMessage({
           ...USAGE,
-          context_window: 0,
-          compact_threshold: 0,
+          context_window: null,
+          compact_threshold: null,
           context_breakdown: null,
           context_quotas: null,
         })}

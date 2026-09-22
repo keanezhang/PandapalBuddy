@@ -36,6 +36,7 @@ import { useTaskSchedulerStore } from "../store/taskSchedulerStore";
 import { useAgentTaskStore } from "../store/agentTaskStore";
 import { useSkillStore } from "../store/skillStore";
 import { useMcpStore } from "../store/mcpStore";
+import { useKbStore } from "../store/kbStore";
 import { toast } from "../components/ui";
 import { useSearchStore } from "../store/searchStore";
 import { useSessionConcurrencyStore } from "../store/sessionConcurrencyStore";
@@ -80,6 +81,17 @@ import type {
   McpToolsResultMsg,
   McpTestResultMsg,
   McpServerConfig,
+  KbListResultMsg,
+  KbGetResultMsg,
+  KbSavedMsg,
+  KbDeletedMsg,
+  KbBuildProgressMsg,
+  KbBuildDoneMsg,
+  KbBuildFailedMsg,
+  KbSearchResultMsg,
+  KbDocumentsChangedMsg,
+  KbTreeResultMsg,
+  KBConfig,
   SessionConcurrencyMsg,
   SessionListMsg,
   SessionSwitchedMsg,
@@ -122,6 +134,19 @@ const HALT_KIND_ICON: Record<string, string> = {
   cancelled:             "✋",
 };
 
+// ── 知识库结构操作错误码 → 用户可读提示（设计「错误码 → 前端表现映射」）──
+//   真相源：pandapal/knowledge_base/manager.py KnowledgeBaseError(code)
+export const KB_ERROR_MESSAGES: Record<string, string> = {
+  kb_not_found: "知识库不存在",
+  kb_busy: "索引构建中，请稍后",
+  invalid_path: "非法路径",
+  path_not_found: "目标不存在，已刷新",
+  invalid_name: "名称不合法",
+  name_conflict: "同级已存在同名项",
+  invalid_target: "不能移动到自身子目录",
+  io_error: "文件操作失败",
+};
+
 // ── Context ────────────────────────────────────────────────────────────────
 
 export interface SendMessageOptions {
@@ -158,6 +183,25 @@ interface BackendContextValue {
   testMcpServer: (name: string) => void;
   /** 启用/禁用服务器（保留配置，仅切换工具加载） */
   setMcpEnabled: (name: string, enabled: boolean) => void;
+  // ── 知识库管理 ──────────────────────────
+  requestKbList: () => void;
+  requestKbDetail: (name: string) => void;
+  createKb: (config: KBConfig) => void;
+  saveKb: (config: KBConfig) => void;
+  deleteKb: (name: string) => void;
+  buildKb: (name: string, rebuild?: boolean) => void;
+  cancelBuild: (name: string) => void;
+  searchKb: (name: string, query: string, k?: number) => void;
+  uploadKbDocument: (name: string, sourcePaths: string[], targetDir?: string) => void;
+  deleteKbDocument: (name: string, path: string) => void;
+  saveTextToKb: (name: string, filename: string, content: string, autoBuild?: boolean) => void;
+  // ── 知识库文档结构操作（文档树 / 文件夹 / 重命名 / 移动）──
+  requestKbTree: (name: string) => void;
+  createKbFolder: (name: string, parentPath: string, folderName: string) => void;
+  renameKbFolder: (name: string, path: string, newName: string) => void;
+  deleteKbFolder: (name: string, path: string) => void;
+  renameKbDocument: (name: string, path: string, newName: string) => void;
+  moveKbDocument: (name: string, sourcePath: string, targetDir: string) => void;
   pendingTaskNotification: TaskNotificationMsg | null;
   clearTaskNotification: () => void;
   // ── 会话列表（v003）──────────────────────
@@ -581,7 +625,10 @@ export function BackendProvider({ children }: { children: React.ReactNode }) {
       }
 
       case "ERROR":
-        if (msg.error_message) {
+        if (msg.error_code && KB_ERROR_MESSAGES[msg.error_code]) {
+          // 知识库结构操作错误（全局级）→ toast 提示
+          toast.error(KB_ERROR_MESSAGES[msg.error_code]);
+        } else if (msg.error_message) {
           chat.addSystemMessage(sidOf(msg), `⚠️ ${msg.error_message}`);
         }
         // 宠物出错反应（failed 动作）
@@ -870,6 +917,90 @@ export function BackendProvider({ children }: { children: React.ReactNode }) {
         pendingMcpTestRef.current = null;
         if (name) {
           useMcpStore.getState().setTestResult(name, { ok: testMsg.ok, msg: msgText });
+        }
+        break;
+      }
+
+      // ── 知识库管理 ──
+      case "KB_LIST_RESULT": {
+        const listMsg = msg as KbListResultMsg;
+        useKbStore.getState().replaceAll(listMsg.knowledge_bases ?? []);
+        break;
+      }
+
+      case "KB_GET_RESULT": {
+        const getMsg = msg as KbGetResultMsg;
+        useKbStore.getState().setDetail(getMsg.knowledge_base);
+        break;
+      }
+
+      case "KB_SAVED": {
+        invoke("send_session_ipc", {
+          payload: { type: "KB_LIST", msg_id: crypto.randomUUID() },
+        }).catch((e) => console.error("[ipc] auto-refresh kb list failed:", e));
+        break;
+      }
+
+      case "KB_DELETED": {
+        const deletedMsg = msg as KbDeletedMsg;
+        useKbStore.getState().remove(deletedMsg.name);
+        break;
+      }
+
+      case "KB_BUILD_PROGRESS": {
+        const pMsg = msg as KbBuildProgressMsg;
+        useKbStore.getState().setBuild(pMsg.name, {
+          stage: pMsg.stage,
+          percent: pMsg.percent,
+          message: pMsg.message,
+          incremental: pMsg.incremental ?? false,
+        });
+        break;
+      }
+
+      case "KB_BUILD_DONE":
+      case "KB_BUILD_FAILED": {
+        const kbName = (msg as KbBuildDoneMsg | KbBuildFailedMsg).name;
+        useKbStore.getState().clearBuild(kbName);
+        // 状态由后端权威推导 → 拉取全量列表
+        invoke("send_session_ipc", {
+          payload: { type: "KB_LIST", msg_id: crypto.randomUUID() },
+        }).catch((e) => console.error("[ipc] auto-refresh kb list failed:", e));
+        // 若正在编辑该库，同步刷新详情
+        if (useKbStore.getState().detail?.name === kbName) {
+          invoke("send_session_ipc", {
+            payload: { type: "KB_GET", msg_id: crypto.randomUUID(), name: kbName },
+          }).catch((e) => console.error("[ipc] auto-refresh kb detail failed:", e));
+        }
+        break;
+      }
+
+      case "KB_SEARCH_RESULT": {
+        const searchMsg = msg as KbSearchResultMsg;
+        useKbStore.getState().setSearchResults(searchMsg.results ?? [], searchMsg.query ?? "");
+        break;
+      }
+
+      case "KB_TREE_RESULT": {
+        const treeMsg = msg as KbTreeResultMsg;
+        useKbStore.getState().setTree(treeMsg.name, treeMsg.tree ?? []);
+        useKbStore.getState().setTreeLoading(false);
+        break;
+      }
+
+      case "KB_DOCUMENTS_CHANGED": {
+        const docMsg = msg as KbDocumentsChangedMsg;
+        // 上传反馈：记录被接收 / 被拒文件，供编辑页 toast 展示
+        useKbStore.getState().setUploadFeedback(docMsg.name, {
+          uploaded: docMsg.uploaded ?? [],
+          rejected: docMsg.rejected ?? [],
+        });
+        // 文档变更 → 刷新详情（若当前正在编辑该库）
+        const cur = useKbStore.getState().detail;
+        if (cur && cur.name === docMsg.name) {
+          invoke("send_session_ipc", {
+            payload: { type: "KB_GET", msg_id: crypto.randomUUID(), name: docMsg.name },
+          }).catch((e) => console.error("[ipc] auto-refresh kb detail failed:", e));
         }
         break;
       }
@@ -1700,6 +1831,81 @@ export function BackendProvider({ children }: { children: React.ReactNode }) {
     sendSessionIpc(payload);
   }, [sendSessionIpc]);
 
+  // ── 知识库管理 · 复用通用 send_session_ipc 透传，无需新 Rust 命令 ──
+  const requestKbList = useCallback(() => {
+    useKbStore.getState().setLoading(true);
+    sendSessionIpc({ type: "KB_LIST", msg_id: crypto.randomUUID() });
+  }, [sendSessionIpc]);
+
+  const requestKbDetail = useCallback((name: string) => {
+    useKbStore.getState().setDetailLoading(true);
+    sendSessionIpc({ type: "KB_GET", msg_id: crypto.randomUUID(), name });
+  }, [sendSessionIpc]);
+
+  const createKb = useCallback((config: KBConfig) => {
+    sendSessionIpc({ type: "KB_CREATE", msg_id: crypto.randomUUID(), config });
+  }, [sendSessionIpc]);
+
+  const saveKb = useCallback((config: KBConfig) => {
+    sendSessionIpc({ type: "KB_SAVE", msg_id: crypto.randomUUID(), config });
+  }, [sendSessionIpc]);
+
+  const deleteKb = useCallback((name: string) => {
+    sendSessionIpc({ type: "KB_DELETE", msg_id: crypto.randomUUID(), name });
+  }, [sendSessionIpc]);
+
+  const buildKb = useCallback((name: string, rebuild: boolean = false) => {
+    sendSessionIpc({ type: "KB_BUILD", msg_id: crypto.randomUUID(), name, rebuild });
+  }, [sendSessionIpc]);
+
+  const cancelBuild = useCallback((name: string) => {
+    sendSessionIpc({ type: "KB_BUILD_CANCEL", msg_id: crypto.randomUUID(), name });
+  }, [sendSessionIpc]);
+
+  const searchKb = useCallback((name: string, query: string, k: number = 5) => {
+    sendSessionIpc({ type: "KB_SEARCH", msg_id: crypto.randomUUID(), name, query, k });
+  }, [sendSessionIpc]);
+
+  const uploadKbDocument = useCallback((name: string, sourcePaths: string[], targetDir: string = "") => {
+    sendSessionIpc({ type: "KB_DOCUMENT_UPLOAD", msg_id: crypto.randomUUID(), name, source_paths: sourcePaths, target_dir: targetDir });
+  }, [sendSessionIpc]);
+
+  const deleteKbDocument = useCallback((name: string, path: string) => {
+    // 键名必须为 path（后端 app.py 读 d.get("path")）；值为相对 documents_dir 的 POSIX 路径
+    sendSessionIpc({ type: "KB_DOCUMENT_DELETE", msg_id: crypto.randomUUID(), name, path });
+  }, [sendSessionIpc]);
+
+  const saveTextToKb = useCallback((name: string, filename: string, content: string, autoBuild: boolean = false) => {
+    sendSessionIpc({ type: "KB_SAVE_TEXT", msg_id: crypto.randomUUID(), name, filename, content, auto_build: autoBuild });
+  }, [sendSessionIpc]);
+
+  // ── 知识库文档树 / 结构操作（复用 send_session_ipc 透传）──
+  const requestKbTree = useCallback((name: string) => {
+    useKbStore.getState().setTreeLoading(true);
+    sendSessionIpc({ type: "KB_TREE_REQUEST", msg_id: crypto.randomUUID(), name });
+  }, [sendSessionIpc]);
+
+  const createKbFolder = useCallback((name: string, parentPath: string, folderName: string) => {
+    // 字段名真相源：pandapal/app.py 读 parent_path / folder_name
+    sendSessionIpc({ type: "KB_FOLDER_CREATE", msg_id: crypto.randomUUID(), name, parent_path: parentPath, folder_name: folderName });
+  }, [sendSessionIpc]);
+
+  const renameKbFolder = useCallback((name: string, path: string, newName: string) => {
+    sendSessionIpc({ type: "KB_FOLDER_RENAME", msg_id: crypto.randomUUID(), name, path, new_name: newName });
+  }, [sendSessionIpc]);
+
+  const deleteKbFolder = useCallback((name: string, path: string) => {
+    sendSessionIpc({ type: "KB_FOLDER_DELETE", msg_id: crypto.randomUUID(), name, path });
+  }, [sendSessionIpc]);
+
+  const renameKbDocument = useCallback((name: string, path: string, newName: string) => {
+    sendSessionIpc({ type: "KB_DOCUMENT_RENAME", msg_id: crypto.randomUUID(), name, path, new_name: newName });
+  }, [sendSessionIpc]);
+
+  const moveKbDocument = useCallback((name: string, sourcePath: string, targetDir: string) => {
+    sendSessionIpc({ type: "KB_DOCUMENT_MOVE", msg_id: crypto.randomUUID(), name, source_path: sourcePath, target_dir: targetDir });
+  }, [sendSessionIpc]);
+
   return (
     <BackendContext.Provider
       value={{
@@ -1726,6 +1932,23 @@ export function BackendProvider({ children }: { children: React.ReactNode }) {
         disconnectMcpServer,
         testMcpServer,
         setMcpEnabled,
+        requestKbList,
+        requestKbDetail,
+        createKb,
+        saveKb,
+        deleteKb,
+        buildKb,
+        cancelBuild,
+        searchKb,
+        uploadKbDocument,
+        deleteKbDocument,
+        saveTextToKb,
+        requestKbTree,
+        createKbFolder,
+        renameKbFolder,
+        deleteKbFolder,
+        renameKbDocument,
+        moveKbDocument,
         pendingTaskNotification,
         clearTaskNotification,
         requestSessionList,

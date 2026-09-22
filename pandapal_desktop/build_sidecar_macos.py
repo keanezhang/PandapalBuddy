@@ -43,6 +43,23 @@ except ImportError:
     print("⚠️  PyInstaller 未安装，正在安装...")
     subprocess.check_call([sys.executable, "-m", "pip", "install", "pyinstaller"])
 
+# ─── 打包前置：RAG 依赖必须已安装（fail-fast，不在打包时临时装）────────────
+# rag 在 pyproject.toml 里是 optional-dependencies（[rag]，重量依赖，未安装时知识库降级）。
+# 依赖应在环境初始化阶段装好（pip install -e ".[rag]"），而非打包时补装——否则
+# HIDDEN_IMPORTS 声明的 numpy/chromadb 找不到，会静默打出缺依赖的 bundle。
+try:
+    import numpy  # noqa: F401
+    import chromadb  # noqa: F401
+except ImportError as exc:
+    print(
+        "\n❌ 打包环境缺少 RAG 依赖（numpy / chromadb），已中止。\n"
+        "   请先在项目根目录执行：\n"
+        '       pip install -e ".[rag]"\n'
+        "   （或一键全功能：pip install -e \".[all]\"）\n"
+        f"   错误详情：{exc}\n"
+    )
+    sys.exit(1)
+
 # ─── Hidden imports（动态导入无法被自动发现的模块）──────────────
 HIDDEN_IMPORTS = [
     # ── pandapal 核心模块 ──
@@ -70,6 +87,10 @@ HIDDEN_IMPORTS = [
     # 静态分析虽能捕获函数内 import，但本仓惯例是显式声明，避免打包后解析器缺失
     # → 预算回落默认档位，大窗口模型被静默低估。
     "pandapal.config.llm.context_window_resolver",
+    # context_budget — 上下文预算唯一事实来源（CW 比例、system/tool 熔断线、
+    # 输出预留三层来源 + 厂商上限夹取、I1/I6 校验）。run_local 在函数内 import 它
+    # 做装配；漏声明 → 打包后该模块缺失，预算对象构造失败 → sidecar 直接起不来。
+    "pandapal.config.llm.context_budget",
     # config.budget — 计费 / 预算（价格表、停机守卫、账本、持久化）
     "pandapal.config.budget",
     "pandapal.config.budget.pricing",
@@ -454,6 +475,52 @@ HIDDEN_IMPORTS = [
     "jsonschema.protocols",
     "jsonschema.exceptions",
     "jsonschema.validators",
+
+    # ── NexusRAG（pandapal.knowledge_base.rag 包，仓库内包，经 --paths 自动包含）。
+    #    延迟导入（__getattr__ / 方法内 import），PyInstaller 静态分析看不到，必须显式声明。
+    "pandapal.knowledge_base.rag",
+    "pandapal.knowledge_base.rag.rag_engine",
+    "pandapal.knowledge_base.rag.rag_config",
+    "pandapal.knowledge_base.rag.rag_instance",
+    "pandapal.knowledge_base.rag.engine_manager",
+    "pandapal.knowledge_base.rag.schema",
+    "pandapal.knowledge_base.rag.builder",
+    "pandapal.knowledge_base.rag.builder.data",
+    "pandapal.knowledge_base.rag.builder.data.build_rag_data",
+    "pandapal.knowledge_base.rag.builder.data.loader",
+    "pandapal.knowledge_base.rag.builder.data.splitter",
+    "pandapal.knowledge_base.rag.builder.data.data_preparer",
+    "pandapal.knowledge_base.rag.builder.vector",
+    "pandapal.knowledge_base.rag.builder.vector.build_vector_pipeline",
+    "pandapal.knowledge_base.rag.builder.bm25",
+    "pandapal.knowledge_base.rag.builder.bm25.build_bm25_pipeline",
+    "pandapal.knowledge_base.rag.embedding",
+    "pandapal.knowledge_base.rag.embedding.embedding",
+    "pandapal.knowledge_base.rag.store",
+    "pandapal.knowledge_base.rag.store.vector",
+    "pandapal.knowledge_base.rag.store.vector.vector_store",
+    "pandapal.knowledge_base.rag.store.bm25",
+    "pandapal.knowledge_base.rag.store.bm25.bm25_store",
+    "pandapal.knowledge_base.rag.query",
+    "pandapal.knowledge_base.rag.query.retrieval",
+    "pandapal.knowledge_base.rag.query.retrieval.retriever",
+    "pandapal.knowledge_base.rag.query.understand",
+    "pandapal.knowledge_base.rag.query.understand.query_intent_classifier",
+    "pandapal.knowledge_base.rag.query.understand.query_segmenter",
+    "pandapal.knowledge_base.rag.query.enrich",
+    "pandapal.knowledge_base.rag.query.enrich.query_enricher",
+    "pandapal.knowledge_base.rag.utils",
+    # NexusRAG 第三方依赖（chromadb / langchain 含动态 import，静态分析易漏）
+    "chromadb",
+    "chromadb.config",
+    "chromadb.api",
+    "chromadb.utils.embedding_functions",
+    "langchain_community",
+    "langchain_community.document_loaders",
+    "langchain_core.documents",
+    "langchain_text_splitters",
+    "rank_bm25",
+    "numpy",
 ]
 
 # ─── 数据文件（SKILL.md 等资源文件）──────────────────────────
@@ -490,6 +557,10 @@ DATA_FILES = [
     #   模块导入期 read，缺失 fail-fast）；不打进包 → import pandapal.local.prompts
     #   直接 FileNotFoundError，sidecar 起不来。
     (os.path.join(PROJECT_ROOT, "pandapal", "local", "TEST_RULE.md"), "pandapal/local"),
+    # ★ pandapal/knowledge_base/rag/instructions — RAG 建库抽取/检索分词的 .md 指令模板
+    #   （instruction_loader 按 importlib.resources 定位）；不打进包则建库抽取与检索分词缺失指令。
+    (os.path.join(PROJECT_ROOT, "pandapal", "knowledge_base", "rag", "instructions"),
+     "pandapal/knowledge_base/rag/instructions"),
 ]
 
 # ─── 清理旧的输出 ──────────────────────────────────────────
@@ -517,6 +588,19 @@ cmd = [
 # 添加 hidden imports
 for mod in HIDDEN_IMPORTS:
     cmd.extend(["--hidden-import", mod])
+
+# chromadb / langchain 内部用 importlib.import_module 动态加载组件，且 chromadb
+# 的 Rust 绑定（chromadb_rust_bindings.pyd）是编译二进制。用 --collect-all 按包
+# 整体收集（submodules + binaries + datas），既避免逐个 --hidden-import 撑爆
+# Windows 命令行长度，又能确保动态模块与 .pyd 全部进包。
+for pkg in (
+    "chromadb",
+    "chromadb_rust_bindings",
+    "langchain_community",
+    "langchain_core",
+    "langchain_text_splitters",
+):
+    cmd.extend(["--collect-all", pkg])
 
 # 添加数据文件
 for src, dest in DATA_FILES:

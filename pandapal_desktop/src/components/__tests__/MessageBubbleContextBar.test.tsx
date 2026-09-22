@@ -1,7 +1,7 @@
 /**
  * MessageBubbleContextBar.test.tsx — 上下文进度条降级/判定契约（设计文档 6.12）。
  *
- * 覆盖用例：FE-1（context_window=0 不渲染）、FE-2（overLine 红色判定）、
+ * 覆盖用例：FE-1（context_window=null 不渲染）、FE-2（overLine 红色判定）、
  * FE-3（未超线不红）、FE-4（ctxPct/markPct 上限 100）、FE-5（parts 全零退化单段）、
  * FE-6（多段渲染 + v>0 过滤 + 配额显示）、FE-7（context_breakdown 缺省单段）、
  * FE-8（标记线绘制条件 0 < markPct < 100）。
@@ -37,8 +37,8 @@ function makeUsage(overrides: Partial<ReplyUsage> = {}): ReplyUsage {
     duration_ms: 0,
     last_input_tokens: 0,
     step_count: 0,
-    context_window: 0,
-    compact_threshold: 0,
+    context_window: null,
+    compact_threshold: null,
     ...overrides,
   };
 }
@@ -95,12 +95,12 @@ beforeEach(async () => {
 });
 
 describe("上下文进度条（inv-7 前端降级 / R9）", () => {
-  it("FE-1: context_window=0 不渲染进度条", () => {
+  it("FE-1: context_window=null 不渲染进度条", () => {
     const { container } = render(
       <MessageBubble
         message={makeMessage(
           makeUsage({
-            context_window: 0,
+            context_window: null,
             compact_threshold: 500,
             last_input_tokens: 300,
             context_breakdown: null,
@@ -220,7 +220,7 @@ describe("上下文进度条（inv-7 前端降级 / R9）", () => {
         message={makeMessage(
           makeUsage({
             context_window: 1_000_000,
-            compact_threshold: 0,
+            compact_threshold: null,
             last_input_tokens: 527_374,
             context_breakdown: { system: 24_000, tools: 3_374, attachments: 0, history: 500_000 },
             context_quotas: { system_prompt: 24_000, tool_schema: 8_000 },

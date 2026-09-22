@@ -4,7 +4,7 @@
  * 已完成消息气泡。
  * 用户消息：右侧气泡 | 系统消息：居中提示 | AI 消息：左侧头像 + 按 timeline 交错渲染
  */
-import React, { memo } from "react";
+import React, { memo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { CompletedMessage, PendingQuestionnaire } from "../../store/chatStore";
 import type { ReplyUsage } from "../../types/api";
@@ -12,6 +12,7 @@ import { useChatStore } from "../../store/chatStore";
 import { InteractionInline } from "../InteractionInline";
 import { Timeline } from "./Timeline";
 import { MessageContent } from "./MessageContent";
+import { SaveToKbModal } from "./SaveToKbModal";
 
 interface MessageBubbleProps { message: CompletedMessage }
 
@@ -26,6 +27,9 @@ export const MessageBubble = memo(function MessageBubble({ message }: MessageBub
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
   const isResume = message.replyScope === "hitl_resume";
+  // 「存为知识库」入口：hover 显示 + 弹窗开关（每气泡独立）
+  const [hover, setHover] = useState(false);
+  const [kbOpen, setKbOpen] = useState(false);
 
   if (isSystem) {
     return (
@@ -47,7 +51,10 @@ export const MessageBubble = memo(function MessageBubble({ message }: MessageBub
 
   if (isUser) {
     return (
-      <div style={{
+      <div
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
+        style={{
         display: "flex", justifyContent: "flex-end",
         marginBottom: "var(--space-3)", paddingLeft: "15%",
       }}>
@@ -62,7 +69,16 @@ export const MessageBubble = memo(function MessageBubble({ message }: MessageBub
           <div style={{ fontSize: "var(--text-md)", lineHeight: 1.7, color: "var(--text-primary)", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
             {message.text}
           </div>
-          <div style={{ marginTop: "var(--space-1)", fontSize: "var(--text-2xs)", color: "var(--text-muted)", textAlign: "right" }}>
+          <div style={{ marginTop: "var(--space-1)", fontSize: "var(--text-2xs)", color: "var(--text-muted)", textAlign: "right", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "var(--space-2)" }}>
+            {hover && message.text && (
+              <button
+                onClick={() => setKbOpen(true)}
+                title="把这条消息存为知识库文档"
+                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--accent-soft)", fontSize: "var(--text-2xs)", padding: 0 }}
+              >
+                存为知识库
+              </button>
+            )}
             {formatTime(message.timestamp)}
           </div>
         </div>
@@ -74,6 +90,7 @@ export const MessageBubble = memo(function MessageBubble({ message }: MessageBub
         }}>
           👤
         </div>
+        <SaveToKbModal open={kbOpen} content={message.text} onClose={() => setKbOpen(false)} />
       </div>
     );
   }
@@ -88,8 +105,8 @@ export const MessageBubble = memo(function MessageBubble({ message }: MessageBub
       marginBottom: "var(--space-1)",
       transition: "background var(--duration-fast)",
     }}
-      onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.02)"; }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = "transparent"; }}
+      onMouseEnter={(e) => { setHover(true); (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.02)"; }}
+      onMouseLeave={(e) => { setHover(false); (e.currentTarget as HTMLDivElement).style.background = "transparent"; }}
     >
       <div style={{
         width: 24, height: 24, borderRadius: "var(--radius-full)",
@@ -118,7 +135,16 @@ export const MessageBubble = memo(function MessageBubble({ message }: MessageBub
           </div>
         )}
 
-        <div style={{ marginTop: "var(--space-1)", fontSize: "var(--text-2xs)", color: "var(--text-muted)" }}>
+        <div style={{ marginTop: "var(--space-1)", fontSize: "var(--text-2xs)", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+          {hover && message.text && (
+            <button
+              onClick={() => setKbOpen(true)}
+              title="把这条回复存为知识库文档"
+              style={{ background: "none", border: "none", cursor: "pointer", color: "var(--accent-soft)", fontSize: "var(--text-2xs)", padding: 0 }}
+            >
+              存为知识库
+            </button>
+          )}
           {formatTime(message.timestamp)}
         </div>
         {/* 本轮对话消耗（后端 CostBudgetGuard.summary 精算，前端只展示不重算）；缺省则不显示 */}
@@ -131,12 +157,13 @@ export const MessageBubble = memo(function MessageBubble({ message }: MessageBub
 /* ── 本轮消耗页脚：净费用 · tokens 明细（命中/未命中/新写 · 回复/推理）· 命中率 · 耗时 · 上下文占用 ── */
 function UsageFooter({ usage: u, t }: { usage: ReplyUsage; t: (key: string, opts?: Record<string, unknown>) => string }) {
   /* 上下文进度条：分子是「最后一次调用的单次输入」（= 当前上下文占用），不是 ↑ 那个跨步累计值。
-     竖线 = 自动压缩阈值，与 Claude Code 的 auto-compact 线同义。context_window=0 → 后端未注入，整行不画。 */
-  const ctxPct = u.context_window > 0
-    ? Math.min(100, (u.last_input_tokens / u.context_window) * 100) : 0;
-  const markPct = u.context_window > 0 && u.compact_threshold > 0
-    ? Math.min(100, (u.compact_threshold / u.context_window) * 100) : 0;
-  const overLine = u.compact_threshold > 0 && u.last_input_tokens >= u.compact_threshold;
+     竖线 = 自动压缩阈值。context_window=null → 后端未注入，整行不画（与"真实 0"区分）。
+     分母是 CW（输入预算 = M × 0.80），不是模型上限 M。 */
+  const cw = u.context_window ?? 0;
+  const line = u.compact_threshold ?? 0;
+  const ctxPct = cw > 0 ? Math.min(100, (u.last_input_tokens / cw) * 100) : 0;
+  const markPct = cw > 0 && line > 0 ? Math.min(100, (line / cw) * 100) : 0;
+  const overLine = line > 0 && u.last_input_tokens >= line;
 
   /* 当前上下文被谁占了：后端按 run 收敛的最后一步组成，四段之和 == last_input_tokens。
      后端未采集（旧 sidecar / 无 guard）→ 退化为单色单段进度条。
@@ -157,7 +184,7 @@ function UsageFooter({ usage: u, t }: { usage: ReplyUsage; t: (key: string, opts
           : p.key === "tools" ? quota?.tool_schema : undefined,
       })).filter((p) => p.v > 0)
     : [];
-  const segW = (v: number) => (u.context_window > 0 ? (v / u.context_window) * 100 : 0);
+  const segW = (v: number) => (cw > 0 ? (v / cw) * 100 : 0);
 
   return (
     <div
@@ -192,13 +219,13 @@ function UsageFooter({ usage: u, t }: { usage: ReplyUsage; t: (key: string, opts
       </span>
       <span title={t("chat.usage.hitRateTitle")}>🎯 {(u.hit_rate * 100).toFixed(1)}%</span>
       <span title={t("chat.usage.durationTitle")}>⏱ {fmtDuration(u.duration_ms)}</span>
-      {u.context_window > 0 && (
+      {cw > 0 && (
         <span
           style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px 8px", width: "100%" }}
           title={t("chat.usage.contextTitle", {
             used: fmtTok(u.last_input_tokens),
-            total: fmtTok(u.context_window),
-            line: fmtTok(u.compact_threshold),
+            total: fmtTok(cw),
+            line: fmtTok(line),
           })}
         >
           <span style={{ color: "var(--text-muted)" }}>{t("chat.usage.contextLabel")}</span>
@@ -222,7 +249,7 @@ function UsageFooter({ usage: u, t }: { usage: ReplyUsage; t: (key: string, opts
             )}
           </span>
           <span style={{ color: overLine ? "var(--danger)" : "var(--text-tertiary)" }}>
-            {fmtTok(u.last_input_tokens)} / {fmtTok(u.context_window)} ({ctxPct.toFixed(0)}%)
+            {fmtTok(u.last_input_tokens)} / {fmtTok(cw)} ({ctxPct.toFixed(0)}%)
           </span>
           {parts.map((p) => (
             <span key={p.key} style={{ color: "var(--text-muted)" }}>
@@ -230,9 +257,9 @@ function UsageFooter({ usage: u, t }: { usage: ReplyUsage; t: (key: string, opts
               {p.q ? ` / ${fmtTok(p.q)}` : ""}
             </span>
           ))}
-          {u.compact_threshold > 0 && (
+          {line > 0 && (
             <span style={{ color: "var(--text-muted)" }}>
-              {t("chat.usage.compactLine", { v: fmtTok(u.compact_threshold) })}
+              {t("chat.usage.compactLine", { v: fmtTok(line) })}
             </span>
           )}
         </span>

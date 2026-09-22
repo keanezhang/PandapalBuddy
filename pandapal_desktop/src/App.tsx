@@ -24,6 +24,8 @@ import { SkillsPage } from "./pages/SkillsPage";
 import { SkillEditorPage } from "./pages/SkillEditorPage";
 import { McpPage } from "./pages/McpPage";
 import { McpEditorPage } from "./pages/McpEditorPage";
+import { KnowledgeBasePage } from "./pages/KnowledgeBasePage";
+import { KnowledgeBaseEditorPage } from "./pages/KnowledgeBaseEditorPage";
 import { TasksPage } from "./pages/TasksPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { SessionGroupPage } from "./pages/SessionGroupPage";
@@ -74,6 +76,7 @@ export default function App() {
         <Route path="skills" element={<SkillsPage />} />
         <Route path="skills/:skillName" element={<SkillsPage />} />
         <Route path="mcp" element={<McpPage />} />
+        <Route path="knowledge" element={<KnowledgeBasePage />} />
         <Route path="tasks" element={<TasksPage />} />
         <Route path="dashboard" element={<DashboardPage />} />
         <Route path="groups/:groupId" element={<SessionGroupPage />} />
@@ -111,6 +114,24 @@ export default function App() {
         element={
           <AuthGuard>
             <McpEditorPage />
+          </AuthGuard>
+        }
+      />
+
+      {/* 知识库编辑（独立页面，不走 ChatLayout） */}
+      <Route
+        path="/knowledge/new"
+        element={
+          <AuthGuard>
+            <KnowledgeBaseEditorPage />
+          </AuthGuard>
+        }
+      />
+      <Route
+        path="/knowledge/:name/edit"
+        element={
+          <AuthGuard>
+            <KnowledgeBaseEditorPage />
           </AuthGuard>
         }
       />
