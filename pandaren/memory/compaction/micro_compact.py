@@ -29,8 +29,7 @@ import logging
 from typing import Iterable
 
 from ..constants import (
-    DEFAULT_MICROCOMPACT_KEEP_RECENT,
-    DEFAULT_MICROCOMPACT_SINGLE_RESULT_MAX_TOKENS,
+    MICROCOMPACT_KEEP_RECENT,
     MICROCOMPACT_CLEARED_PLACEHOLDER,
     MICROCOMPACT_TRUNCATED_SUFFIX,
 )
@@ -65,15 +64,17 @@ class MicroCompactor:
     Args:
         compactable_tools: 哪些工具的 tool_result 可以被清空（应用层提供）
         keep_recent:       compact_if_needed 入口预清理时，最近 N 条工具结果不动
-        single_result_max_tokens: add_tool_result 入口单条结果上限
+        single_result_max_tokens: add_tool_result 单个工具返回的结果最大允许多大，防止一次cat太大内容，太大就在写入工具结果是切断，同时压缩的时候也会替换成占位符（必填；
+                           由 ``CompactionProfile.single_result_max_tokens(T)`` 派生）
         token_estimator:   Token 估算器
     """
 
     def __init__(
         self,
         compactable_tools: Iterable[str] | None = None,
-        keep_recent: int = DEFAULT_MICROCOMPACT_KEEP_RECENT,
-        single_result_max_tokens: int = DEFAULT_MICROCOMPACT_SINGLE_RESULT_MAX_TOKENS,
+        *,
+        single_result_max_tokens: int,
+        keep_recent: int = MICROCOMPACT_KEEP_RECENT,
         token_estimator: TokenEstimator | None = None,
     ) -> None:
         self._tools: frozenset[str] = frozenset(compactable_tools or ())

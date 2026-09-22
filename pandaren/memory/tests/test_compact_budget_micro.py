@@ -73,16 +73,16 @@ def test_chinese_long_result_converges_below_cap():
 # MIC-2：英文/代码不同密度均 ≤ cap（R10）
 # ─────────────────────────────────────────────────────────────
 
-@pytest.mark.parametrize("chars_per_token, text", [
-    (4.0, "a" * 400_000),                 # 英文 ≈ 4 chars/token
-    (2.5, "x = x + 1\n" * 40_000),        # 代码 ≈ 2.5 chars/token
+@pytest.mark.parametrize("chars_per_token, unit, repeat", [
+    (4.0, "a", 400_000),             # 英文 ≈ 4 chars/token
+    (2.5, "x = x + 1\n", 40_000),    # 代码 ≈ 2.5 chars/token
 ])
-def test_dense_text_truncates_within_cap(chars_per_token, text):
+def test_dense_text_truncates_within_cap(chars_per_token, unit, repeat):
     compactor = MicroCompactor(
         single_result_max_tokens=20_000,
         token_estimator=FakeMicroEstimator(chars_per_token=chars_per_token),
     )
-    result = compactor.truncate_single_result_if_needed(text)
+    result = compactor.truncate_single_result_if_needed(unit * repeat)
 
     assert isinstance(result, str)
     assert compactor._estimate_text(result) <= 20_000

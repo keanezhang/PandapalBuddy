@@ -3,16 +3,22 @@
 【背景】
 当对话历史被压缩后（这里说的压缩，其实就是删除），AI 可能会"忘记"之前正在处理的关键信息。
 "回注"机制就是在压缩后，把重要的上下文信息重新注入回去。
-每个 PostCompactSource 负责收集一类特定的重要信息。
 
-三个 SDK 内置的 PostCompactSource：
+【设计：只回注「指针」，不回注「正文」】
+压缩前 AI 真正丢失的是「**我知道有什么**」这类索引信息：
+它连"我读过哪些文件""当前 plan 在哪个文件"都不晓得，自然也无从重取。
+而正文本身，AI 本来就有工具（``read_file``）能按需重取；且正文进上下文会
+**直接挤占 ``kept``**（压缩后保留的对话历史），代价远高于指针。
 
-  - RecentFilesSource:   从 WorkingMemory 拿"最近 N 个 file read"
-                         → 压缩后 AI 仍能"看到"最近读过的文件内容
-  - ActiveSkillsSource:  从 SkillRegistry 拿当前激活技能内容
-                         → 压缩后 AI 仍能"记住"当前激活了哪些技能
-  - PlanStateSource:     从 session_meta 拿 plan_file_path 文件正文
-                         → 压缩后 AI 仍能"知道"当前正在执行的 plan
+所以本模块只产出**清单 / 路径**这类几十 token 的指针：
+
+  - RecentFilesSource:  最近读过的**文件清单**（路径 + 大小）
+                        → 压缩后 AI 知道"我读过什么"，需要时用 ``read_file`` 重读
+  - PlanStateSource:    当前 **plan 文件路径**
+                        → 压缩后 AI 知道"计划在哪个文件"，需要时读正文
+
+（技能正文**不回注**：AI 可用 ``search_skills`` 重新加载，且技能目录已在
+ ``static_context`` 里常驻、不参与压缩。）
 
 应用层可以单独启用/禁用任意 source，也可以实现自己的 PostCompactSource
 通过 ``builder.memory(post_compact_sources=[...])`` 注入。
@@ -20,7 +26,8 @@
 设计原则：
   - 每个 source 只读取**可枚举**的状态，不调 LLM（B3）
   - source 失败时返回空列表（E4），不抛异常
-  - 每个 source 自己控制单条 attachment 的截断；总预算由 PostCompactReinjector 统一控制
+  - **不读文件正文**（故无"字节上限"问题；清单自身大小由 ``_truncate_to_tokens`` 兜底）
+  - 截断用 **Memory 注入的同一把尺子**（``_estimator_of``，见 SPEC §2.5 P0）
   - SDK 不内置默认 sources（应用层不传 = 不启用 PostCompact 回注）
 """
 
@@ -30,112 +37,151 @@ import logging
 import os
 
 from ..constants import (
-    DEFAULT_POST_COMPACT_FILES_TOKEN_BUDGET,    # 文件回注的总 token 预算
-    DEFAULT_POST_COMPACT_MAX_FILES,              # 最多回注多少个文件
-    DEFAULT_POST_COMPACT_MAX_TOKENS_PER_FILE,    # 每个文件的 token 上限
-    DEFAULT_POST_COMPACT_MAX_TOKENS_PER_SKILL,   # 每个技能的 token 上限
-    DEFAULT_POST_COMPACT_PLAN_MAX_TOKENS,        # plan 文件的 token 上限
-    DEFAULT_POST_COMPACT_SKILLS_TOKEN_BUDGET,    # 技能回注的总 token 预算
-    DEFAULT_POST_COMPACT_MAX_BYTES_PER_FILE,     # 文件读取前的字节上限（1 MiB）
+    DEFAULT_POST_COMPACT_FILES_LIST_MAX_TOKENS,  # 文件清单自身的 token 上限
+    DEFAULT_POST_COMPACT_MAX_FILES,              # 清单里最多列几个文件
+    DEFAULT_POST_COMPACT_PLAN_MAX_TOKENS,        # plan 指针的 token 上限
     RECENT_FILE_READS_WM_KEY,                    # WorkingMemory 中记录最近读文件的 key
-    CHARS_PER_TOKEN,                             # 估算比例：每个 token ≈ 多少个字符
 )
 from ..models import PostCompactContext, ReinjectionAttachment
+from ..protocols import CharBasedTokenEstimator, TokenEstimator
 
 logger = logging.getLogger("pandaren.memory.reinject.sources")
 
 
-def _truncate_to_tokens(text: str, max_tokens: int) -> tuple[str, int]:
-    """按字符数粗略截断到 max_tokens 内，返回 (截断后文本, 估算 token 数)。
+#: 截断标记（旧实现把它内联在函数里，现在提出来以便计入 token 上限）
+_TRUNCATED_SUFFIX = "\n\n[...truncated by PostCompactSource]"
 
-    为什么用字符数而不是精确 token 数？
-    → 精确 token 化需要调 tokenizer，开销大且引入额外依赖。
-      这里用 CHARS_PER_TOKEN（经验值，如 4 字符/token）做粗略估算，
-      对于回注场景足够用了，不需要精确计算。
+
+def _estimator_of(ctx: PostCompactContext) -> TokenEstimator:
+    """取「**与 Memory 同一把尺子**」的 estimator。
+
+    `Memory` 构造 `PostCompactContext` 时会塞入自己的 `_token_estimator`；
+    source 被独立使用（测试 / 应用自建）时该字段为 None，回退到 chars/4 粗估。
+    """
+    return ctx.token_estimator or CharBasedTokenEstimator()
+
+
+def _estimate_text(estimator: TokenEstimator, text: str) -> int:
+    """用同一把尺子估算纯文本 token 数（按 tool 消息估算，与 Memory 口径一致）。"""
+    if not text:
+        return 0
+    return estimator.estimate([{"role": "tool", "content": text}])
+
+
+def _truncate_to_tokens(
+    text: str, max_tokens: int, estimator: TokenEstimator
+) -> tuple[str, int]:
+    """截断到 ``max_tokens`` 以内，返回 ``(截断后文本, 真实估算 token 数)``。
+
+    ⚠️ 与旧实现的三点区别（SPEC §2.5 P0）：
+
+    1. **用注入的 `estimator`**，不再用 `CHARS_PER_TOKEN` 粗估 ——
+       该系数是英文经验值（4 字符/token），中文会**低估约 2 倍**，
+       导致实际回注量超过预算 → 压缩后重新超阈值 → `CONTEXT_OVERFLOW` 终止 run。
+    2. **后缀计入上限**：旧实现把标记加在 `max_chars` **之外**，
+       截断后的文本反而超出 `max_tokens`。
+    3. **二分收敛找最长合法前缀**（token 数不线性于字符数），
+       与 ``MicroCompactor._converge_prefix_length`` 同一套做法。
 
     Args:
         text:       原始文本
-        max_tokens: 允许的最大 token 数
+        max_tokens: 允许的最大 token 数（**含**截断标记）
+        estimator:  Token 估算器（应由 `Memory` 注入，保证同尺）
 
     Returns:
-        (截断后的文本, 估算的 token 数)
+        (截断后的文本, 估算的 token 数) —— 两者都不超过 ``max_tokens``。
     """
-    max_chars = int(max_tokens * CHARS_PER_TOKEN)  # 把 token 上限换算成字符上限
-    if len(text) <= max_chars:
-        # 文本没有超限，直接返回，token 数按实际长度估算
-        return text, max(1, int(len(text) / CHARS_PER_TOKEN))
-    # 文本超限，截断并追加提示信息
-    truncated = text[:max_chars] + "\n\n[...truncated by PostCompactSource]"
-    return truncated, max_tokens
+    if not text:
+        return "", 0
+    total = _estimate_text(estimator, text)
+    if total <= max_tokens:
+        return text, max(1, total)
+
+    # 先扣掉标记自身占用，剩下的才是正文容量
+    suffix_tokens = _estimate_text(estimator, _TRUNCATED_SUFFIX)
+    if suffix_tokens >= max_tokens:
+        # 极端：上限比标记本身还小 → 丢掉标记，硬截到上限（保证"不超限"这条硬约束）
+        suffix, body_cap = "", max_tokens
+    else:
+        suffix, body_cap = _TRUNCATED_SUFFIX, max_tokens - suffix_tokens
+
+    lo, hi = 0, len(text)
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        if _estimate_text(estimator, text[:mid]) <= body_cap:
+            lo = mid
+        else:
+            hi = mid - 1
+
+    truncated = text[:lo] + suffix
+    return truncated, _estimate_text(estimator, truncated)
 
 
-def _read_file_with_size_limit(
-    path: str,
-    max_bytes: int,
-    source_name: str,
-) -> str | None:
-    """带字节上限的文件读取：**先 stat 后读**，超限跳过（避免超大文件整读进内存白耗 IO）。
+def _human_size(n: int) -> str:
+    """人类可读的文件大小（清单里显示用），如 ``12.3 KB``。"""
+    if n < 1024:
+        return f"{n} B"
+    if n < 1024 * 1024:
+        return f"{n / 1024:.1f} KB"
+    return f"{n / (1024 * 1024):.1f} MB"
 
-    Args:
-        path:        文件绝对路径
-        max_bytes:   允许读取的最大字节数；超过即跳过该文件
-        source_name: 日志归属（当前 source 的 SOURCE_NAME）
 
-    Returns:
-        文件文本；文件不存在 / 读取失败 / 超限时返回 None（调用方跳过该文件）。
+def _file_size_or_none(path: str, hint: object) -> int | None:
+    """取文件大小：优先用记录里的 ``size_hint``（零 I/O），否则本地 stat 一次。
+
+    返回 None = 文件不存在 / 不可访问 —— 调用方应跳过该项：
+    指针指向一个读不到的文件没有意义（AI 按它去 ``read_file`` 只会拿到错误）。
     """
+    if isinstance(hint, int) and hint > 0:
+        return hint
     try:
-        size = os.path.getsize(path)
-    except OSError as exc:
-        logger.info("%s: cannot stat %s, skipping: %s", source_name, path, exc)
-        return None
-    if size > max_bytes:
-        logger.warning(
-            "%s: skipping %s — size %d bytes exceeds limit %d",
-            source_name, path, size, max_bytes,
-        )
-        return None
-    try:
-        with open(path, "r", encoding="utf-8", errors="replace") as f:
-            return f.read()
-    except (OSError, IOError) as exc:
-        logger.info("%s: failed to read %s, skipping: %s", source_name, path, exc)
+        return os.path.getsize(path)
+    except OSError:
         return None
 
 
 # ─────────────────────────────────────────────
-# RecentFilesSource — 回注最近读过的文件
+# RecentFilesSource — 回注「最近读过哪些文件」的清单（指针）
 # ─────────────────────────────────────────────
+
+#: ⚠️ 指导语必须写在**头部**：`_truncate_to_tokens` 切的是**尾部**，
+#: 放尾部会在清单过长时第一个被切掉 —— 而那恰好是最不该丢的一句。
+#: 指针模式的关键是「**给了不等于要读**」：没有这句，模型看到清单很可能
+#: 挨个 read_file，反而把上下文重新吃满，违背回注初衷。
+_RECENT_FILES_HEADER = (
+    "最近读过的文件（**只是索引**，正文已不在上下文中）。"
+    "**仅在确实需要某个文件的内容时**才用 read_file 读取它；"
+    "不要因为文件出现在上面就逐个重读 —— 那只会白白消耗上下文："
+)
+
 
 class RecentFilesSource:
-    """回注最近读过的若干文件正文。
+    """回注「最近读过哪些文件」的**清单**（不注入正文）。
 
     【为什么需要这个？】
-    压缩对话历史时，AI 之前"读过"的文件内容可能被压缩掉了。
-    但这些文件内容对当前任务可能仍然很重要（比如正在编辑的代码文件）。
-    这个 source 把最近读过的文件内容重新注入，让 AI 不用重复"读文件"。
+    ``WorkingMemory[RECENT_FILE_READS_WM_KEY]`` **不会进入 prompt** ——
+    也就是说压缩前 AI 根本不知道"自己读过哪些文件"，因此也谈不上"自己重读"。
+    把这份清单（几十 token）还给它，就等于恢复了"我读过什么"这个索引；
+    正文则按需用 ``read_file`` 取。
 
     约定：应用层的"读文件"工具应在 ``WorkingMemory[RECENT_FILE_READS_WM_KEY]``
-    维护一个列表，每项形如：
+    维护一个列表，每项形如::
 
         {
             "path": "/abs/path/to/file.py",
-            "timestamp": 1700000000.0,    # epoch seconds，可选
-            "size_hint": 1234,             # 可选，文件大小提示
+            "timestamp": 1700000000.0,    # epoch seconds，可选（用于排序）
+            "size_hint": 1234,             # 可选；缺失时本地 stat 一次
         }
 
     WorkingMemory 是 session 级语义——跨 run 自然保留，所以"上一个 run 读过的
     文件"在下一个 run 触发压缩时仍可见，无需任何特殊豁免逻辑。
 
-    SDK **不强制**任何工具遵守这个约定；只有当应用层启用 RecentFilesSource
-    时才需要工具配合。如果约定 key 不存在或格式错误，本 source 返回空列表（不报错）。
+    SDK **不强制**任何工具遵守这个约定；key 不存在或格式错误时返回空列表（不报错）。
 
     工作流程：
-      1. 从 WorkingMemory 拿列表，按 timestamp 倒序、去重路径，取前 max_files
-      2. 实际读取文件内容（OS 文件系统）；读不到的跳过；
-         超过 max_bytes_per_file 的（先 stat 后读）也跳过——防超大文件白读 IO
-      3. 每个文件截断到 max_tokens_per_file
-      4. 累计超 total_token_budget 时不再添加更多文件
+      1. 从 WorkingMemory 取记录，按 timestamp 倒序、按 path 去重，取前 ``max_files``
+      2. 每项取一次大小（优先 ``size_hint``，否则 stat）；取不到（已删）则跳过
+      3. 拼成清单文本，超 ``max_tokens`` 时截断（用 Memory 的同一把尺子）
     """
 
     SOURCE_NAME = "recent_files"
@@ -143,24 +189,13 @@ class RecentFilesSource:
     def __init__(
         self,
         max_files: int = DEFAULT_POST_COMPACT_MAX_FILES,
-        max_tokens_per_file: int = DEFAULT_POST_COMPACT_MAX_TOKENS_PER_FILE,
-        total_token_budget: int = DEFAULT_POST_COMPACT_FILES_TOKEN_BUDGET,
-        max_bytes_per_file: int = DEFAULT_POST_COMPACT_MAX_BYTES_PER_FILE,
+        max_tokens: int = DEFAULT_POST_COMPACT_FILES_LIST_MAX_TOKENS,
     ) -> None:
-        self._max_files = max_files              # 最多回注几个文件
-        self._max_tokens_per_file = max_tokens_per_file  # 单个文件的 token 上限
-        self._total_token_budget = total_token_budget    # 所有文件合计的 token 上限
-        self._max_bytes_per_file = max_bytes_per_file    # 单个文件的字节上限（读取前检查）
+        self._max_files = max_files      # 清单里最多列几个文件
+        self._max_tokens = max_tokens    # 清单自身的 token 上限
 
     def collect(self, ctx: PostCompactContext) -> list[ReinjectionAttachment]:
-        """收集最近读过的文件内容，作为回注附件返回。
-
-        Args:
-            ctx: 压缩后的上下文，包含 working_memory 等信息
-
-        Returns:
-            回注附件列表，每个附件包含一个文件的内容
-        """
+        """收集「最近读过的文件」清单，作为**单个**回注附件返回。"""
         # 第一步：从 WorkingMemory 中获取"最近读文件"的记录列表
         try:
             records = ctx.working_memory.get(RECENT_FILE_READS_WM_KEY)
@@ -175,9 +210,7 @@ class RecentFilesSource:
         if not records or not isinstance(records, list):
             return []
 
-        # 第二步：去重 + 排序
-        # 去重逻辑：同一个路径可能出现多次（多次读取同一文件），
-        # 只保留 timestamp 最大的那条记录（即最近一次读取）
+        # 第二步：去重（同路径只留最近一次）+ 按时间倒序 + 取前 max_files
         path_to_record: dict[str, dict] = {}
         for r in records:
             if not isinstance(r, dict):
@@ -187,57 +220,52 @@ class RecentFilesSource:
                 continue
             ts = r.get("timestamp", 0)
             existing = path_to_record.get(path)
-            # 如果该路径还没有记录，或者新记录的 timestamp 更大，则更新
             if existing is None or (
                 isinstance(ts, (int, float))
                 and ts > float(existing.get("timestamp", 0) or 0)
             ):
                 path_to_record[path] = r
 
-        # 按 timestamp 倒序排列（最近读的在前面），取前 max_files 个，就是最近的几个
         sorted_records = sorted(
             path_to_record.values(),
             key=lambda r: float(r.get("timestamp", 0) or 0),
             reverse=True,
         )[: self._max_files]
 
-        # 第三步：逐个读取文件内容，构建附件
-        attachments: list[ReinjectionAttachment] = []
-        used_tokens = 0
+        # 第三步：拼清单（只取大小，**不读正文**）
+        lines: list[str] = []
         for r in sorted_records:
             path = r["path"]
-            # 带字节上限读取：先 stat 后读，超大文件跳过（不白读 IO）
-            raw = _read_file_with_size_limit(
-                path, self._max_bytes_per_file, self.SOURCE_NAME
-            )
-            if raw is None:
+            size = _file_size_or_none(path, r.get("size_hint"))
+            if size is None:
+                logger.info(
+                    "%s: cannot stat %s, skipping from listing",
+                    self.SOURCE_NAME, path,
+                )
                 continue
-
-            # 截断到单文件 token 上限
-            content, est_tokens = _truncate_to_tokens(raw, self._max_tokens_per_file)
-
-            # 检查累计 token 是否超出总预算
-            if used_tokens + est_tokens > self._total_token_budget and attachments:
-                break
-
-            # 构建附件对象
-            display_name = self._display_path(path)  # 显示相对路径，更可读
-            attachment: ReinjectionAttachment = {
-                "source_name": self.SOURCE_NAME,       # 标记来源
-                "title": f"Recently read file: {display_name}",  # 附件标题
-                "content": content,                     # 文件正文（可能已截断）
-                "estimated_tokens": est_tokens,         # 估算的 token 数
-            }
-            attachments.append(attachment)
-            used_tokens += est_tokens
-
-        if attachments:
-            logger.info(
-                "RecentFilesSource: reinjected %d file(s), ~%d tokens",
-                len(attachments),
-                used_tokens,
+            lines.append(
+                f"  {len(lines) + 1}. {self._display_path(path)}  ({_human_size(size)})"
             )
-        return attachments
+
+        if not lines:
+            return []
+
+        raw = _RECENT_FILES_HEADER + "\n" + "\n".join(lines)
+        content, est_tokens = _truncate_to_tokens(
+            raw, self._max_tokens, _estimator_of(ctx)
+        )
+        logger.info(
+            "%s: listed %d file(s) (~%d tokens)",
+            self.SOURCE_NAME, len(lines), est_tokens,
+        )
+        return [
+            {
+                "source_name": self.SOURCE_NAME,
+                "title": "Recently read files",
+                "content": content,
+                "estimated_tokens": est_tokens,
+            }
+        ]
 
     @staticmethod
     def _display_path(path: str) -> str:
@@ -253,191 +281,62 @@ class RecentFilesSource:
 
 
 # ─────────────────────────────────────────────
-# ActiveSkillsSource — 回注当前激活的技能
+# PlanStateSource — 回注当前 plan 文件的路径（指针）
 # ─────────────────────────────────────────────
 
-class ActiveSkillsSource:
-    """回注当前已激活技能的正文。
+#: 同 _RECENT_FILES_HEADER：指导语放**头部**（截断切尾部）；
+#: 且"给了路径 ≠ 要读"，避免无谓重读消耗上下文。
+_PLAN_HEADER = (
+    "当前 plan 文件（**只是路径**，正文已不在上下文中）。"
+    "**需要回顾计划细节时**才用 read_file 读取该文件；"
+    "若当前任务与计划无关，无需读取："
+)
 
-    【为什么需要这个？】
-    "技能"（Skill）是预定义的专业知识/指令集，激活后会影响 AI 的行为。
-    压缩后，AI 可能忘记自己激活了哪些技能，导致行为偏离。
-    这个 source 把激活技能的正文重新注入，确保 AI 仍然遵循技能的指引。
-
-    约定：``ctx.skill_registry`` 提供方法 ``get_invoked_skills() -> list[skill_obj]``，
-    每个 skill_obj 至少有：
-      - ``.name: str``
-      - ``.content: str``   （已渲染好的 skill 正文）
-      - ``.path: str``      （可选，文件路径用于显示）
-      - ``.invoked_at: float`` （可选，激活时间戳，用于排序）
-
-    若 ``ctx.skill_registry`` 为 None 或缺少 ``get_invoked_skills``，返回空列表。
-
-    截断规则：
-      - 每个 skill 截到 ``max_tokens_per_skill``
-      - 累计超 ``total_token_budget`` 时停止添加
-      - 按 invoked_at 倒序（最近激活的优先）
-    """
-
-    SOURCE_NAME = "active_skills"
-
-    def __init__(
-        self,
-        max_tokens_per_skill: int = DEFAULT_POST_COMPACT_MAX_TOKENS_PER_SKILL,
-        total_token_budget: int = DEFAULT_POST_COMPACT_SKILLS_TOKEN_BUDGET,
-    ) -> None:
-        self._max_tokens_per_skill = max_tokens_per_skill   # 单个技能的 token 上限
-        self._total_token_budget = total_token_budget       # 所有技能合计的 token 上限
-
-    def collect(self, ctx: PostCompactContext) -> list[ReinjectionAttachment]:
-        """收集当前激活技能的内容，作为回注附件返回。
-
-        Args:
-            ctx: 压缩后的上下文，包含 skill_registry 等信息
-
-        Returns:
-            回注附件列表，每个附件包含一个技能的内容
-        """
-        # 获取技能注册表
-        registry = ctx.skill_registry
-        if registry is None:
-            return []
-
-        # 安全地获取 get_invoked_skills 方法（防御性编程）
-        get_invoked = getattr(registry, "get_invoked_skills", None)
-        if not callable(get_invoked):
-            logger.debug(
-                "ActiveSkillsSource: skill_registry has no get_invoked_skills(); skipping"
-            )
-            return []
-
-        try:
-            skills = get_invoked()  # 调用方法获取已激活技能列表
-        except Exception as exc:
-            logger.warning("ActiveSkillsSource: get_invoked_skills() failed: %s", exc)
-            return []
-
-        if not skills:
-            return []
-
-        # 按 invoked_at 倒序排列（最近激活的技能优先回注）
-        try:
-            sorted_skills = sorted(
-                skills,
-                key=lambda s: float(getattr(s, "invoked_at", 0) or 0),
-                reverse=True,
-            )
-        except (ValueError, TypeError):
-            # 排序失败就用原始顺序（收窄到排序键 float() 可能抛的类型，不吞无关异常）
-            sorted_skills = list(skills)
-
-        # 逐个构建技能附件
-        attachments: list[ReinjectionAttachment] = []
-        used_tokens = 0
-        for skill in sorted_skills:
-            name = getattr(skill, "name", None)
-            content = getattr(skill, "content", None)
-            if not name or not content:
-                # 技能缺少必要字段，跳过
-                continue
-            content_str = str(content)
-            # 截断到单技能 token 上限
-            truncated, est_tokens = _truncate_to_tokens(
-                content_str, self._max_tokens_per_skill
-            )
-            # 检查累计 token 是否超出总预算
-            if used_tokens + est_tokens > self._total_token_budget and attachments:
-                break
-
-            # 构建附件标题（如果有路径信息就附上）
-            path = getattr(skill, "path", None)
-            title = (
-                f"Active skill: {name}" + (f" ({path})" if path else "")
-            )
-            attachments.append(
-                {
-                    "source_name": self.SOURCE_NAME,
-                    "title": title,
-                    "content": truncated,
-                    "estimated_tokens": est_tokens,
-                }
-            )
-            used_tokens += est_tokens
-
-        if attachments:
-            logger.info(
-                "ActiveSkillsSource: reinjected %d skill(s), ~%d tokens",
-                len(attachments),
-                used_tokens,
-            )
-        return attachments
-
-
-# ─────────────────────────────────────────────
-# PlanStateSource — 回注当前 plan 文件
-# ─────────────────────────────────────────────
 
 class PlanStateSource:
-    """回注当前 plan 文件的正文。
+    """回注「当前 plan 文件的**路径**」（不注入正文）。
 
-    【为什么需要这个？】
-    当 AI 进入"plan 模式"时，会创建一个 plan 文件来记录任务分解和执行步骤。
-    压缩后，AI 可能忘记当前的 plan 内容，导致后续执行偏离计划。
-    这个 source 把 plan 文件的正文重新注入，确保 AI 继续按计划执行。
+    约定：``ctx.session_meta`` 中存在 key ``plan_file_path``（由 ``run_core`` 在
+    ``enter_plan_mode`` 成功后写入；``exit_plan_mode`` 提交时同样写入）。
 
-    约定：``ctx.session_meta`` 中存在 key ``plan_file_path``，值为 plan 文件的绝对路径。
-    （由 run_core 在 ``enter_plan_mode`` 工具成功后通过 ``Memory.set_session_meta``
-    写入；``exit_plan_mode`` 提交审批时同样写入该 key。）
+    计划是任务主线，但往往很长；逐字注入会挤占 ``kept``。
+    给"路径 + 明确指引"更划算：AI 需要正文时用 ``read_file`` 读一次即可。
 
-    若 key 不存在或文件读不到，返回空列表。
+    路径缺失、或指向的文件已不存在时返回空列表（E4 降级，不报错）。
     """
 
     SOURCE_NAME = "plan_state"
     META_KEY = "plan_file_path"  # session_meta 中存放 plan 文件路径的 key
 
-    def __init__(
-        self,
-        max_tokens: int = DEFAULT_POST_COMPACT_PLAN_MAX_TOKENS,
-        max_bytes: int = DEFAULT_POST_COMPACT_MAX_BYTES_PER_FILE,
-    ) -> None:
-        self._max_tokens = max_tokens  # plan 文件的 token 上限
-        self._max_bytes = max_bytes    # plan 文件的字节上限（读取前检查，防超大文件白读 IO）
+    def __init__(self, max_tokens: int = DEFAULT_POST_COMPACT_PLAN_MAX_TOKENS) -> None:
+        self._max_tokens = max_tokens    # plan 指针的 token 上限
 
     def collect(self, ctx: PostCompactContext) -> list[ReinjectionAttachment]:
-        """收集当前 plan 文件的内容，作为回注附件返回。
-
-        与前两个 source 不同，这个 source 最多只返回一个附件（一个 plan 文件）。
-
-        Args:
-            ctx: 压缩后的上下文，包含 session_meta 等信息
-
-        Returns:
-            包含单个附件的列表（或空列表）
-        """
-        # 从 session_meta 中获取 plan 文件路径
+        """返回单个「plan 文件路径」附件（或空列表）。"""
         path = ctx.session_meta.get(self.META_KEY)
         if not isinstance(path, str) or not path:
-            # 没有 plan 文件路径，说明当前不在 plan 模式，返回空
+            # 没有 plan 文件路径 → 当前不在 plan 模式
             return []
 
-        # 读取 plan 文件内容（带字节上限，先 stat 后读）
-        raw = _read_file_with_size_limit(path, self._max_bytes, self.SOURCE_NAME)
-        if raw is None:
+        if not os.path.exists(path):
+            logger.info(
+                "%s: plan file %s not found, skipping", self.SOURCE_NAME, path
+            )
             return []
 
-        # plan 文件内容为空，不需要回注
-        if not raw.strip():
-            return []
-
-        # 截断到 token 上限
-        content, est_tokens = _truncate_to_tokens(raw, self._max_tokens)
-        attachment: ReinjectionAttachment = {
-            "source_name": self.SOURCE_NAME,
-            "title": f"Current plan: {os.path.basename(path)}",  # 只显示文件名
-            "content": content,
-            "estimated_tokens": est_tokens,
-        }
-        logger.info(
-            "PlanStateSource: reinjected plan file (~%d tokens)", est_tokens
+        content, est_tokens = _truncate_to_tokens(
+            _PLAN_HEADER + f"\n  {path}",
+            self._max_tokens,
+            _estimator_of(ctx),
         )
-        return [attachment]
+        logger.info(
+            "%s: reinjected plan pointer (~%d tokens)", self.SOURCE_NAME, est_tokens
+        )
+        return [
+            {
+                "source_name": self.SOURCE_NAME,
+                "title": f"Current plan: {os.path.basename(path)}",
+                "content": content,
+                "estimated_tokens": est_tokens,
+            }
+        ]

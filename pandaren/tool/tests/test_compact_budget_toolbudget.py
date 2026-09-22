@@ -2,7 +2,7 @@
 
 对应设计文档 compact-budget.design.md §6.8：
   - TB-1 注入 estimator 后走注入口径（非 bytes/4）
-  - TB-2 未注入回落 bytes/4
+  - TB-2 未注入回落 chars/4（CharBasedTokenEstimator，全仓库唯一系数）
   - TB-3 estimator 抛异常 → 回落 100 + WARNING（计费类留痕）
 """
 
@@ -46,17 +46,18 @@ def test_tb1_injected_estimator_uses_estimator_path():
     result = budget._estimate_tokens(schema)
 
     assert result == 777
-    bytes_path = max(1, len(_schema_text(schema).encode("utf-8")) // 4)
-    assert result != bytes_path  # 证明走的是注入口径，而非 bytes/4
+    fallback_path = max(1, len(_schema_text(schema)) // 4)
+    assert result != fallback_path  # 证明走的是注入口径，而非 chars/4
 
 
-def test_tb2_without_estimator_falls_back_to_bytes_div_4():
+def test_tb2_without_estimator_falls_back_to_chars_div_4():
+    """未注入 estimator 时统一回落 CharBasedTokenEstimator（chars/4）。"""
     schema = ToolSchema(
         name="工具",
         description="描述",
         parameters={"type": "object", "properties": {}},
     )
-    expected = max(1, len(_schema_text(schema).encode("utf-8")) // 4)
+    expected = max(1, len(_schema_text(schema)) // 4)
 
     assert ToolBudget()._estimate_tokens(schema) == expected
 

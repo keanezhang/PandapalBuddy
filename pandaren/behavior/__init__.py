@@ -19,13 +19,13 @@ from .execution_limits import ExecutionLimits
 from .step_guard import StepGuard, StepUsage, GuardDecision
 from .error_policy import ErrorPolicy
 from .exceptions import BehaviorConfigError
-from .context_window_budget import ContextWindowBudget, SlotSnapshot
+from .context_window_budget import ContextWindowBudget, SlotBudget, SDK_FALLBACK_BUDGET
 
 __all__ = [
     "PermissionGuard", "HITLController", "ExecutionLimits",
     "StepGuard", "StepUsage", "GuardDecision",
     "ErrorPolicy", "BehaviorConfigError",
-    "ContextWindowBudget", "SlotSnapshot",
+    "ContextWindowBudget", "SlotBudget", "SDK_FALLBACK_BUDGET",
     # 以下组件需要从子模块直接导入（避免循环依赖）
     # from pandaren.behavior.harness import RateLimiter, OutputGuard, ...
 ]

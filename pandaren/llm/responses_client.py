@@ -1461,6 +1461,11 @@ class ResponsesAPIClient:
         if status_code in (400, 404):
             return LLMRequestError(message, status_code=status_code)
 
+        if status_code == 402:
+            return LLMUsageError(f"LLM Token 余额不足，请充值{response_body[:200]}", 
+            status_code=status_code,
+            )
+            
         if status_code == 408:
             return LLMTimeoutError(message)
 

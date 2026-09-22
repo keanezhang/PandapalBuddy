@@ -1,112 +1,126 @@
-"""派生预算回归：阈值/保留窗口/工具结果上限必须跟着 context_window 走，而非写死绝对值。"""
+"""派生预算回归：阈值 / 保留窗口 / 工具结果上限必须由「同一个预算对象 + profile」派生，
+而非两处写死绝对值（见 COMPACT_BUDGET_LAYERING_SPEC §2.7）。
+"""
 
 from __future__ import annotations
 
 import pytest
 
+from pandaren.behavior.context_window_budget import (
+    SDK_FALLBACK_BUDGET,
+    ContextWindowBudget,
+    SlotBudget,
+)
 from pandaren.builder import AgentBuilder
 from pandaren.memory.constants import (
-    DEFAULT_COMPACT_BUFFER_TOKENS,
-    DEFAULT_MAX_KEEP_TOKENS,
-    DEFAULT_MICROCOMPACT_SINGLE_RESULT_MAX_TOKENS,
-    DEFAULT_MIN_KEEP_TOKENS,
-    DEFAULT_TOOL_RESULT_CAP_MAX,
-    DEFAULT_TOOL_RESULT_CAP_FLOOR,
-    derive_buffer_tokens,
-    derive_keep_window,
-    derive_single_result_max_tokens,
+    BALANCED,
+    TOOL_RESULT_CAP_FLOOR,
+    TOOL_RESULT_CAP_MAX,
 )
 
-# 1M 模型 · huge 档：CW=600,000，固定槽位 system=24,000 / tool=8,000
-CW_1M = 600_000
-SYS_1M = 24_000
-TOOL_1M = 8_000
-CONV_1M = CW_1M - SYS_1M - TOOL_1M  # 568,000
-THRESHOLD_1M = CONV_1M - DEFAULT_COMPACT_BUFFER_TOKENS  # 563,000
+# 1M 模型 · 固定比例 0.80：CW=800,000；熔断线 system=24,000 / tool=8,000；
+# 记账：sys 实占 19,203、tool 用熔断线 8,000 → conv=772,797 → T=772,297
+CW_1M = 800_000
+M_1M = 1_000_000
+SYS_CAP = SlotBudget(24_000, 0.26)
+TOOL_CAP = SlotBudget(8_000, 0.10)
+SYS_MEASURED = 19_203
+OUTPUT_RESERVE = 32_000
 
 
-def _mem(**budget_kwargs):
+def _budget(
+    cw: int = CW_1M,
+    m: int = M_1M,
+    sys_measured: int = SYS_MEASURED,
+    output_reserve: int = OUTPUT_RESERVE,
+) -> ContextWindowBudget:
+    return ContextWindowBudget(
+        context_window=cw,
+        sys_cap=SYS_CAP,
+        tool_cap=TOOL_CAP,
+        system_prompt_tokens=sys_measured,
+        output_tokens_reserve=output_reserve,
+        model_max_context=m,
+    )
+
+
+def _mem(budget: ContextWindowBudget | None = None, **memory_kwargs):
     builder = AgentBuilder()
-    builder.context_budget(**budget_kwargs)
+    if budget is not None:
+        builder.context_budget(budget)
+    if memory_kwargs:
+        builder.memory(**memory_kwargs)
     return builder._build_memory_factory()()
 
 
-# ── 派生函数本身 ──────────────────────────────────────────────────────────
+# ── profile 派生本身 ──────────────────────────────────────────────────────
 
 
-def test_buffer_never_exceeds_quarter_of_slot() -> None:
-    assert derive_buffer_tokens(1_000_000) == DEFAULT_COMPACT_BUFFER_TOKENS
-    # 小窗口不被压到 0 以下
-    assert derive_buffer_tokens(8_000) == 2_000
-    assert derive_buffer_tokens(1) == 0
-
-
-@pytest.mark.parametrize("threshold", [10_000, 65_400, 563_000])
-def test_keep_window_scales_with_threshold(threshold: int) -> None:
-    min_keep, max_keep = derive_keep_window(threshold)
+@pytest.mark.parametrize("T", [10_000, 74_697, 772_297])
+def test_keep_window_scales_with_threshold(T: int) -> None:
+    min_keep = BALANCED.min_keep_tokens(T)
+    max_keep = BALANCED.max_keep_tokens(T)
     assert 0 < min_keep <= max_keep
-    assert max_keep == int(threshold * 0.45)
-    assert min_keep == min(int(threshold * 0.12), max_keep)
+    assert max_keep == max(1, int(T * BALANCED.max_keep_ratio))
+    assert min_keep == max(1, min(int(T * BALANCED.min_keep_ratio), max_keep))
 
 
 def test_keep_window_monotonic_in_threshold() -> None:
-    small = derive_keep_window(65_400)
-    huge = derive_keep_window(563_000)
-    assert small[0] < huge[0] and small[1] < huge[1]
-
-
-def test_keep_window_beats_legacy_hardcoded_values() -> None:
-    """回归：旧的 8,000/40,000 绝对值必须被大窗口派生值取代。"""
-    min_keep, max_keep = derive_keep_window(THRESHOLD_1M)
-    assert min_keep > DEFAULT_MIN_KEEP_TOKENS
-    assert max_keep > DEFAULT_MAX_KEEP_TOKENS
+    assert BALANCED.min_keep_tokens(74_697) < BALANCED.min_keep_tokens(772_297)
+    assert BALANCED.max_keep_tokens(74_697) < BALANCED.max_keep_tokens(772_297)
 
 
 def test_single_result_cap_bounded() -> None:
-    assert derive_single_result_max_tokens(563_000) == DEFAULT_TOOL_RESULT_CAP_MAX
-    assert derive_single_result_max_tokens(65_400) == 9_810
-    assert derive_single_result_max_tokens(1_000) == DEFAULT_TOOL_RESULT_CAP_FLOOR
+    assert BALANCED.single_result_max_tokens(772_297) == TOOL_RESULT_CAP_MAX
+    assert BALANCED.single_result_max_tokens(74_697) == 11_204
+    assert BALANCED.single_result_max_tokens(1_000) == TOOL_RESULT_CAP_FLOOR
+
+
+def test_single_result_cap_beats_legacy_hardcoded_value() -> None:
+    """回归：旧代码写死 20,000；新口径必须按 T 派生（大窗口 = 30,000）。"""
+    assert BALANCED.single_result_max_tokens(772_297) == TOOL_RESULT_CAP_MAX
+
+
+def test_budget_derivations_match_spec() -> None:
+    budget = _budget()
+    assert budget.tool_cap_tokens == 8_000
+    assert budget.sys_cap_tokens == 24_000
+    assert budget.conversation_tokens == 800_000 - 19_203 - 8_000
+    assert budget.compact_threshold == 772_797 - 500
 
 
 # ── builder → Memory 的真实装配 ───────────────────────────────────────────
 
 
 def test_builder_derives_all_three_from_budget() -> None:
-    mem = _mem(
-        context_window=CW_1M,
-        system_prompt_tokens_abs=SYS_1M,
-        tool_schema_tokens_abs=TOOL_1M,
-        recall_ratio=0.0,
-    )
+    budget = _budget()
+    mem = _mem(budget)
     policy = mem._short_term._compaction_policy
-    min_keep, max_keep = derive_keep_window(THRESHOLD_1M)
+    T = budget.compact_threshold
 
-    assert mem._compact_threshold == THRESHOLD_1M
+    assert mem._compact_threshold == T
     assert type(policy).__name__ == "WindowedKeepPolicy"
-    assert policy._min_tokens == min_keep
-    assert policy._max_tokens == max_keep
+    assert policy._min_tokens == BALANCED.min_keep_tokens(T)
+    assert policy._max_tokens == BALANCED.max_keep_tokens(T)
+    assert policy._min_text_messages == BALANCED.min_keep_text_messages
     assert mem._micro_compactor._single_result_max_tokens == (
-        derive_single_result_max_tokens(THRESHOLD_1M)
+        BALANCED.single_result_max_tokens(T)
     )
 
 
 def test_threshold_scales_across_windows() -> None:
-    small = _mem(context_window=102_400, system_prompt_tokens_abs=22_000)
-    huge = _mem(context_window=CW_1M, system_prompt_tokens_abs=SYS_1M)
+    small = _mem(_budget(cw=102_400, m=128_000, sys_measured=19_203))
+    huge = _mem(_budget())
     assert small._compact_threshold < huge._compact_threshold
-    assert small._micro_compactor._single_result_max_tokens < (
-        huge._micro_compactor._single_result_max_tokens
+    assert (
+        small._micro_compactor._single_result_max_tokens
+        < huge._micro_compactor._single_result_max_tokens
     )
 
 
 def test_restore_budget_follows_threshold(monkeypatch) -> None:
-    """回归：restore 预算曾写死模块级 64,000，与配置脱钩。"""
-    mem = _mem(
-        context_window=CW_1M,
-        system_prompt_tokens_abs=SYS_1M,
-        tool_schema_tokens_abs=TOOL_1M,
-        recall_ratio=0.0,
-    )
+    """回归：restore 预算曾写死模块级常量，与配置脱钩。"""
+    mem = _mem(_budget())
     captured: dict[str, int] = {}
 
     def fake_load_for_restore(*, session_id: str, token_budget: int):
@@ -116,7 +130,6 @@ def test_restore_budget_follows_threshold(monkeypatch) -> None:
     monkeypatch.setattr(mem._long_term, "load_for_restore", fake_load_for_restore)
     mem.init_from_restore(task="t", session_id="sess-derive")
 
-    assert captured["token_budget"] == THRESHOLD_1M
     assert captured["token_budget"] == mem._compact_threshold
 
 
@@ -126,33 +139,30 @@ def test_restore_budget_follows_threshold(monkeypatch) -> None:
 def test_explicit_policy_wins() -> None:
     from pandaren.memory.compaction import WindowedKeepPolicy
 
-    custom = WindowedKeepPolicy(min_keep_tokens=1_234, max_keep_tokens=5_678)
-    builder = AgentBuilder()
-    builder.memory(compaction_policy=custom)
-    builder.context_budget(context_window=CW_1M)
-    mem = builder._build_memory_factory()()
+    custom = WindowedKeepPolicy(
+        min_keep_tokens=1_234, min_keep_text_messages=2, max_keep_tokens=5_678
+    )
+    budget = _budget()
+    mem = _mem(budget, compaction_policy=custom)
 
     assert mem._short_term._compaction_policy is custom
-    conv_slot = builder._context_window_budget.get_slot_tokens("conversation")
-    assert mem._compact_threshold == conv_slot - DEFAULT_COMPACT_BUFFER_TOKENS
+    assert mem._compact_threshold == budget.compact_threshold
 
 
 def test_explicit_single_result_cap_wins() -> None:
-    builder = AgentBuilder()
-    builder.memory(microcompact_single_result_max_tokens=12_345)
-    builder.context_budget(context_window=CW_1M)
-    mem = builder._build_memory_factory()()
-
+    mem = _mem(_budget(), microcompact_single_result_max_tokens=12_345)
     assert mem._micro_compactor._single_result_max_tokens == 12_345
 
 
-def test_without_budget_keeps_legacy_defaults() -> None:
-    """无 context_budget 时不注入 compaction_policy → Memory 内旧默认值保持不变。"""
+def test_without_budget_uses_sdk_fallback() -> None:
+    """无 context_budget 时由 SDK 兜底预算对象派生（SDK 可独立运行）。"""
     mem = AgentBuilder()._build_memory_factory()()
     policy = mem._short_term._compaction_policy
+    T = SDK_FALLBACK_BUDGET.compact_threshold
 
-    assert policy._min_tokens == DEFAULT_MIN_KEEP_TOKENS
-    assert policy._max_tokens == DEFAULT_MAX_KEEP_TOKENS
+    assert mem._compact_threshold == T
+    assert policy._min_tokens == BALANCED.min_keep_tokens(T)
+    assert policy._max_tokens == BALANCED.max_keep_tokens(T)
     assert mem._micro_compactor._single_result_max_tokens == (
-        DEFAULT_MICROCOMPACT_SINGLE_RESULT_MAX_TOKENS
+        BALANCED.single_result_max_tokens(T)
     )

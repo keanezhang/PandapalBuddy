@@ -21,11 +21,6 @@ from __future__ import annotations
 import logging
 
 from ..models import MessageDict, CompactionSplit
-from ..constants import (
-    DEFAULT_MIN_KEEP_TOKENS,
-    DEFAULT_MIN_KEEP_TEXT_MESSAGES,
-    DEFAULT_MAX_KEEP_TOKENS,
-)
 from ..protocols import TokenEstimator, CharBasedTokenEstimator
 from .tool_pair_integrity import ensure_tool_pair_integrity
 
@@ -77,19 +72,23 @@ class WindowedKeepPolicy:
     """三维度窗口保留切分策略（实现 CompactionPolicy Protocol）。
 
     Args:
-        min_keep_tokens:        保留窗口最少 token 数（默认 8K）
-        min_keep_text_messages: 保留窗口最少"含 text 块"消息数（默认 4）
-        max_keep_tokens:        保留窗口最多 token 数（默认 40K）
+        min_keep_tokens:        保留窗口最少 token 数（由 ``CompactionProfile`` 派生，必填）
+        min_keep_text_messages: 保留窗口最少"含 text 块"消息数（由 profile 提供，必填），在constants.py中给出了默认最小值：BALANCED = CompactionProfile(0.70, 0.12, 0.45, 4)    # 默认
+        max_keep_tokens:        保留窗口最多 token 数（由 ``CompactionProfile`` 派生，必填）
         token_estimator:        Token 估算器（默认 CharBasedTokenEstimator）
 
     传入的 messages 不含 system 消息（由 Memory Facade 管理）。
+
+    三个窗口参数**无默认值**：它们必须由同一个预算对象（``ContextWindowBudget``）
+    + ``CompactionProfile`` 派生，避免"两处写死绝对值"与阈值漂移（见 SPEC §2.7）。
     """
 
     def __init__(
         self,
-        min_keep_tokens: int = DEFAULT_MIN_KEEP_TOKENS,
-        min_keep_text_messages: int = DEFAULT_MIN_KEEP_TEXT_MESSAGES,
-        max_keep_tokens: int = DEFAULT_MAX_KEEP_TOKENS,
+        *,
+        min_keep_tokens: int,
+        min_keep_text_messages: int,
+        max_keep_tokens: int,
         token_estimator: TokenEstimator | None = None,
     ) -> None:
         if min_keep_tokens <= 0:

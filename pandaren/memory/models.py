@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal, NotRequired, TypedDict, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .protocols import WorkingMemoryAccessor
+    from .protocols import TokenEstimator, WorkingMemoryAccessor
 
 
 # ─────────────────────────────────────────────
@@ -103,11 +103,13 @@ class PostCompactContext:
 
     session_id / run_id:  当前 run 的标识
     working_memory:       run 级 KV 存储读取接口（最近文件 read 记录约定写在此处）
-    skill_registry:       Skill 注册表（None = Agent 没启用 skill 层）
     session_meta:         跨 run 同 session 的状态（plan_file_path 等），传深拷贝
     """
     session_id: str
     run_id: str
     working_memory: "WorkingMemoryAccessor"
-    skill_registry: Any | None  # 类型用 Any 避免在 memory 层引入对 skill 层的强依赖
     session_meta: dict[str, Any]
+    #: Token 估算器 —— 由 `Memory` 传入**它自己的那个实例**，保证
+    #: 「回注截断」与「压缩判据」用同一把尺子（SPEC §2.5 P0）。
+    #: None = 回退 `CharBasedTokenEstimator`（仅独立使用 source 的场景，如单测）。
+    token_estimator: "TokenEstimator | None" = None

@@ -170,7 +170,7 @@ class AgentBuilder:
         self._error_policy: ErrorPolicy | None = None
         self._step_guard: StepGuard | None = None
         self._tool_feedback_providers: list[ToolFeedbackProvider] = []
-        self._tool_budget_ratio: float | None = None
+        self._tool_schema_max_tokens: int | None = None
         self._tool_max_always_count: int | None = None
         self._tool_max_discovered: int | None = None
         self._stream: bool = True
@@ -189,6 +189,10 @@ class AgentBuilder:
 
         # 被丢弃消息的脉络摘要（None = 不摘要；应用层可注入 LLM-driven 实现）
         self._drop_summarizer: DropSummarizer | None = None
+        # 摘要产物 token 预留（None = Memory 内默认 DEFAULT_RESERVED_SUMMARY_TOKENS）。
+        # 应用层应与摘要器 max_output_tokens **同源**传入，否则预留与实际输出上限
+        # 漂移（见 COMPACT_BUDGET_LAYERING_SPEC §2.4）
+        self._reserved_summary_tokens: int | None = None
 
         # Token 估算器（None = CharBasedTokenEstimator；应用层可注入真实 tokenizer
         # 实现如 TiktokenEstimator，使压缩触发判据与实际 LLM token 同量纲）
@@ -551,7 +555,7 @@ class AgentBuilder:
         max_retries: int = 3,
         base_delay_s: float = 1.0,
         max_delay_s: float = 30.0,
-        tool_budget_ratio: float | None = None,
+        tool_schema_max_tokens: int | None = None,
         tool_max_always_count: int | None = None,
         tool_max_discovered: int | None = None,
         stream: bool = True,
@@ -574,7 +578,7 @@ class AgentBuilder:
             max_retries:           工具重试上限
             base_delay_s:          重试基础延迟（秒）
             max_delay_s:           重试最大延迟（秒）
-            tool_budget_ratio:     工具 schema 占 context 的比例
+            tool_schema_max_tokens: 工具 schema 熔断线（绝对 token 数）
             tool_max_always_count: ALWAYS tier 工具最大数量
             tool_max_discovered:   每会话最多发现的 DEFERRED 工具数
             stream:                是否使用流式 LLM 调用
@@ -592,58 +596,25 @@ class AgentBuilder:
         )
         self._step_guard = step_guard
         self._tool_feedback_providers = list(tool_feedback_providers or ())
-        self._tool_budget_ratio = tool_budget_ratio
+        self._tool_schema_max_tokens = tool_schema_max_tokens
         self._tool_max_always_count = tool_max_always_count
         self._tool_max_discovered = tool_max_discovered
         self._stream = stream
         return self
 
-    def context_budget(
-        self,
-        *,
-        context_window: int | None = None,
-        system_prompt_ratio: float | None = None,
-        tool_schema_ratio: float | None = None,
-        conversation_ratio: float | None = None,
-        recall_ratio: float | None = None,
-        system_prompt_tokens_abs: int | None = None,
-        tool_schema_tokens_abs: int | None = None,
-    ) -> "AgentBuilder":
-        """设置上下文窗口 Token 预算分配。
+    def context_budget(self, budget: ContextWindowBudget) -> "AgentBuilder":
+        """设置上下文窗口 Token 预算（唯一真相源）。
 
-        提供模型 context window 的 token 预算配额，作为所有消费方的单一真相源。
-        设置后 Memory 的 compact_threshold 将自动使用 conversation_tokens 配额，
-        ToolBudget 将使用 tool_schema_tokens 配额。
+        传入一个不可变的 ``ContextWindowBudget`` 实例，使 Memory 的
+        ``compact_threshold``、ToolBudget 的 schema 熔断线、footer 进度条
+        三者引用**同一个对象**，漂移在结构上不可能发生。
 
-        所有参数均可选，未传入时使用 ContextWindowBudget 内部默认值。
-
-        绝对槽位：``*_tokens_abs`` 传正整数时该 slot 直接用绝对值，
-        conversation 自动吸收剩余量（不再受 ``conversation_ratio`` 控制）。
-
-        注意：LLM 最大输出 token 数请通过 .llm_settings(max_tokens=...) 配置。
+        注意：LLM 最大输出 token 数请通过 ``.llm_settings(max_tokens=...)`` 配置。
 
         Args:
-            context_window:          模型输入上下文窗口大小（token），建议查阅模型文档后传入
-            system_prompt_ratio:     system prompt 占比（未给 abs 时生效）
-            tool_schema_ratio:       工具 schema 占比（未给 abs 时生效）
-            conversation_ratio:      对话历史占比（绝对槽位模式下被忽略）
-            recall_ratio:            召回内容占比（默认 0.00，该功能已废弃）
-            system_prompt_tokens_abs: system prompt 的绝对配额（优先级高于 ratio）
-            tool_schema_tokens_abs:   工具 schema 的绝对配额（优先级高于 ratio）
+            budget: 由应用层构造（见 ``pandapal/config/llm/context_budget.py``）。
         """
-        # 只透传用户显式传入的参数，其余由 ContextWindowBudget 默认值兜底
-        kwargs = {
-            k: v for k, v in {
-                "context_window": context_window,
-                "system_prompt_ratio": system_prompt_ratio,
-                "tool_schema_ratio": tool_schema_ratio,
-                "conversation_ratio": conversation_ratio,
-                "recall_ratio": recall_ratio,
-                "system_prompt_tokens_abs": system_prompt_tokens_abs,
-                "tool_schema_tokens_abs": tool_schema_tokens_abs,
-            }.items() if v is not None
-        }
-        self._context_window_budget = ContextWindowBudget(**kwargs)
+        self._context_window_budget = budget
         return self
 
     # ── Memory ──
@@ -661,6 +632,8 @@ class AgentBuilder:
         token_estimator: TokenEstimator | None = None,
         # ── 摘要扩展点（异步、可调 LLM、应用层注入） ──
         drop_summarizer: DropSummarizer | None = None,
+        # 摘要产物预留 token（None = Memory 内默认）。应与摘要器 max_output_tokens 同源
+        reserved_summary_tokens: int | None = None,
         # ── MicroCompact（清旧工具结果，与切分正交，本次重构不动） ──
         microcompact_tools: frozenset[str] | set[str] | None = None,
         microcompact_keep_recent: int | None = None,
@@ -723,6 +696,10 @@ class AgentBuilder:
                                     中文/代码场景建议注入 TiktokenEstimator 等真实 tokenizer
                                     实现，否则压缩触发判据与实际 LLM token 差可达 ~2x）
             drop_summarizer:        被丢弃消息的脉络摘要策略（None = 不摘要，默认）
+            reserved_summary_tokens: 压缩后摘要产物占用的 token 预留
+                                    （None = SDK 默认 DEFAULT_RESERVED_SUMMARY_TOKENS）。
+                                    **应与摘要器 max_output_tokens 同源**传入，
+                                    否则预算预留与实际输出上限漂移（SPEC §2.4）
             microcompact_tools:     可清旧结果的工具白名单（None / 空集 = 不启用清理）
             microcompact_keep_recent: 预清理时保留最近 N 条
             microcompact_single_result_max_tokens: 单条工具结果上限
@@ -745,6 +722,7 @@ class AgentBuilder:
         self._compaction_policy = compaction_policy
         self._token_estimator = token_estimator
         self._drop_summarizer = drop_summarizer
+        self._reserved_summary_tokens = reserved_summary_tokens
         self._microcompact_tools = microcompact_tools
         self._microcompact_keep_recent = microcompact_keep_recent
         self._microcompact_single_result_max_tokens = microcompact_single_result_max_tokens
@@ -863,7 +841,7 @@ class AgentBuilder:
         agent_registry = self._resolve_agent_registry(audit_log, tool_registry)
 
         # ── 5. Memory 工厂 + 通用每步停机守卫（应用层注入，SDK 不知停机理由）──────
-        memory_factory = self._build_memory_factory(skill_registry=skill_registry)
+        memory_factory = self._build_memory_factory()
         step_guard = self._step_guard
 
         # ── 6. 组装 Blueprint（materialize 时才构造 Memory / AgentLoop / Agent）─
@@ -953,11 +931,22 @@ class AgentBuilder:
             DEFAULT_MAX_DISCOVERED,
         )
         from .tool.builtin import SearchToolFactory, PlanToolFactory
-        from .constants import DEFAULT_TOOL_SCHEMA_RATIO
+        from .behavior.context_window_budget import SDK_FALLBACK_BUDGET
+
+        # tool schema 熔断线（绝对 token 数）：预算对象优先；否则 SDK 兜底
+        _tool_schema_max = (
+            self._context_window_budget.tool_cap_tokens
+            if self._context_window_budget is not None
+            else SDK_FALLBACK_BUDGET.tool_cap_tokens
+        )
 
         # ─ A. 创建 ToolRegistry + 早期 hooks 注入 ─
         tool_budget = _ToolBudget(
-            budget_ratio=self._tool_budget_ratio if self._tool_budget_ratio is not None else DEFAULT_TOOL_SCHEMA_RATIO,
+            tool_schema_max_tokens=(
+                self._tool_schema_max_tokens
+                if self._tool_schema_max_tokens is not None
+                else _tool_schema_max
+            ),
             max_always_count=self._tool_max_always_count if self._tool_max_always_count is not None else DEFAULT_MAX_ALWAYS_COUNT,
             max_discovered_per_session=self._tool_max_discovered if self._tool_max_discovered is not None else DEFAULT_MAX_DISCOVERED,
             token_estimator=self._token_estimator,
@@ -997,9 +986,7 @@ class AgentBuilder:
 
         return tool_registry, harness_executor
 
-    def _build_memory_factory(
-        self, skill_registry: Any | None = None,
-    ) -> Callable[[], Memory]:
+    def _build_memory_factory(self) -> Callable[[], Memory]:
         """Phase 3a: 组装 Memory 构造参数快照 → 返回工厂闭包。
 
         每次调用工厂返回一个全新的 Memory 实例，供 Blueprint.materialize()
@@ -1017,11 +1004,6 @@ class AgentBuilder:
           - 显式传 ``raw_log_backend`` → 直接使用
           - 显式传 ``db_path``         → 这里构造 ``SQLiteRawLogBackend(db_path=...)``
           - 都不传                     → ``raw_log_backend=None``（不持久化）
-
-        Args:
-            skill_registry: 由 ``_resolve_skill_registry`` 返回；
-                            ActiveSkillsSource 需要它读取激活技能。
-                            None = 应用没启用 skill 层 / 还没创建 → 该 source 空跑。
 
         Returns:
             factory: 无参 callable，每次调用返回一个新的 Memory 实例。
@@ -1048,8 +1030,6 @@ class AgentBuilder:
             drop_summarizer=self._drop_summarizer,
             # ── 工作记忆持久化 ──
             working_memory_backend=self._working_memory_backend,
-            # ── PostCompact ActiveSkillsSource 需要的引用 ──
-            skill_registry=skill_registry,
         )
 
         # Token 估算器（None → Memory 内默认 CharBasedTokenEstimator）
@@ -1072,32 +1052,40 @@ class AgentBuilder:
         if self._post_compact_token_budget is not None:
             memory_kwargs["post_compact_token_budget"] = self._post_compact_token_budget
 
-        # 压缩阈值 = conversation 配额 − 触发提前量；
-        # 保留窗口 / 单条工具结果上限按阈值比例派生（不再用写死的绝对值）。
-        if self._context_window_budget is not None:
-            from .memory.constants import (
-                derive_compact_threshold,
-                derive_keep_window,
-                derive_single_result_max_tokens,
-            )
+        # 摘要产物预留（None → 用 Memory 内默认 DEFAULT_RESERVED_SUMMARY_TOKENS）
+        if self._reserved_summary_tokens is not None:
+            memory_kwargs["reserved_summary_tokens"] = self._reserved_summary_tokens
 
-            _conv_slot = self._context_window_budget.get_slot_tokens("conversation")
-            _threshold = derive_compact_threshold(_conv_slot)
+        # 压缩阈值 / 保留窗口 / 单条工具结果上限：全部由「同一个预算对象」+ profile 派生，
+        # 与 footer 标记线同源（见 COMPACT_BUDGET_LAYERING_SPEC §2.7）。
+        if self._context_window_budget is not None:
+            from .memory.constants import DEFAULT_COMPACTION_PROFILE
+
+            _budget = self._context_window_budget
+            _profile = DEFAULT_COMPACTION_PROFILE
+            _threshold = _budget.compact_threshold
             memory_kwargs["compact_threshold"] = _threshold
+            memory_kwargs.setdefault("compaction_profile", _profile)
 
             if self._compaction_policy is None:
                 from .memory.compaction import WindowedKeepPolicy
 
-                _min_keep, _max_keep = derive_keep_window(_threshold)
+                # I4 / I5 收敛（SPEC §4）：保留窗口偏离目标时收到最近合法值 + WARNING
+                _min_keep, _max_keep = _profile.keep_window(
+                    _threshold,
+                    sys_acct=_budget.system_prompt_tokens,
+                    target_ceiling=int(_threshold * _profile.target_ratio),
+                )
                 memory_kwargs["compaction_policy"] = WindowedKeepPolicy(
                     min_keep_tokens=_min_keep,
+                    min_keep_text_messages=_profile.min_keep_text_messages,
                     max_keep_tokens=_max_keep,
                     token_estimator=self._token_estimator,
                 )
 
             if self._microcompact_single_result_max_tokens is None:
                 memory_kwargs["microcompact_single_result_max_tokens"] = (
-                    derive_single_result_max_tokens(_threshold)
+                    _profile.single_result_max_tokens(_threshold)
                 )
 
         def factory() -> Memory:
@@ -1152,6 +1140,8 @@ class AgentBuilder:
 
         registry = SkillRegistry(
             audit_log=audit_log,
+            # 与上下文预算 / 压缩判据**同一把尺子**（None 时退化为字符粗估）
+            token_estimator=self._token_estimator,
         )
 
         for skill in self._skill_list:
@@ -1315,21 +1305,9 @@ class AgentBuilder:
                 stream=self._stream,
             )
         )
-        # 继承父级预算（含绝对槽位，漏传会导致子 Agent 阈值与父级不一致）
+        # 继承父级预算（同一个不可变实例；漏传会导致子 Agent 阈值与父级不一致）
         if self._context_window_budget is not None:
-            builder = builder.context_budget(
-                context_window=self._context_window_budget.context_window,
-                system_prompt_ratio=self._context_window_budget.system_prompt_ratio,
-                tool_schema_ratio=self._context_window_budget.tool_schema_ratio,
-                conversation_ratio=self._context_window_budget.conversation_ratio,
-                recall_ratio=self._context_window_budget.recall_ratio,
-                system_prompt_tokens_abs=(
-                    self._context_window_budget.system_prompt_tokens_abs
-                ),
-                tool_schema_tokens_abs=(
-                    self._context_window_budget.tool_schema_tokens_abs
-                ),
-            )
+            builder = builder.context_budget(self._context_window_budget)
         # 继承父级的 Token 估算器：与 context_budget 同理——阈值一致了，
         # 尺子也必须一致，否则子 Agent 的压缩触发判据退回 chars/4.0 量纲。
         if self._token_estimator is not None:

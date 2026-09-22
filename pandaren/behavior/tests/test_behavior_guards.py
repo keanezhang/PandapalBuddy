@@ -17,10 +17,15 @@ from __future__ import annotations
 
 import logging
 import math
+from dataclasses import FrozenInstanceError
 
 import pytest
 
-from pandaren.behavior.context_window_budget import ContextWindowBudget
+from pandaren.behavior.context_window_budget import (
+    SDK_FALLBACK_BUDGET,
+    ContextWindowBudget,
+    SlotBudget,
+)
 from pandaren.behavior.error_policy import ErrorPolicy
 from pandaren.behavior.exceptions import BehaviorConfigError
 from pandaren.behavior.execution_limits import ExecutionLimits, DEFAULT_MAX_STEPS
@@ -142,87 +147,81 @@ def test_hitl_06_resume_rejected_halts_fail_closed():
     assert decision.pending is pending
 
 
-# ─── §4.7 ContextWindowBudget（unit，ratio 校验 + 冻结 + slot 计算）─────────
+# ─── §4.7 ContextWindowBudget / SlotBudget（unit，熔断线 + 实占）────────────
 
 
-def test_cwb_01_default_ratio_slot_tokens_floor():
-    """CWB-01: 默认比值 × 131072 → floor 取整配额（inv-CWB-3，0.15×131072=19660.8→19660）"""
-    budget = ContextWindowBudget(context_window=131072)
-    assert budget.get_slot_tokens("system_prompt") == math.floor(0.15 * 131072)
+def _cwb(
+    context_window: int = 100_000,
+    model_max_context: int = 125_000,
+    sys_measured: int = 5_000,
+    output_tokens_reserve: int = 4_000,
+) -> ContextWindowBudget:
+    return ContextWindowBudget(
+        context_window=context_window,
+        sys_cap=SlotBudget(24_000, 0.26),
+        tool_cap=SlotBudget(8_000, 0.10),
+        system_prompt_tokens=sys_measured,
+        output_tokens_reserve=output_tokens_reserve,
+        model_max_context=model_max_context,
+    )
 
 
-def test_cwb_02_ratio_sum_over_one_raises():
-    """CWB-02: ratio 之和 1.1 > 1.0 → BehaviorConfigError（构造期 fail-fast，Risk-CWB-1）"""
+def test_cwb_01_slot_budget_double_ruler():
+    """CWB-01: 双尺子——大窗口取绝对值、极小窗口取占比（inv-B）"""
+    sys_cap = SlotBudget(24_000, 0.26)
+    assert sys_cap.resolve(131_072) == 24_000
+    assert sys_cap.resolve(50_000) == math.floor(50_000 * 0.26)  # 13,000
+
+
+def test_cwb_02_slot_budget_invalid_share_raises():
+    """CWB-02: share 越界 → 构造期 fail-fast（Risk-CWB-1）"""
     with pytest.raises(BehaviorConfigError):
-        ContextWindowBudget(
-            context_window=131072,
-            system_prompt_ratio=0.5,
-            tool_schema_ratio=0.3,
-            conversation_ratio=0.2,
-            recall_ratio=0.1,
-        )
-
-
-def test_cwb_03_single_ratio_out_of_range_raises():
-    """CWB-03: 单 ratio 越界（conversation_ratio=1.5 > 1.0）→ BehaviorConfigError（inv-CWB-1）"""
+        SlotBudget(24_000, 1.5)
     with pytest.raises(BehaviorConfigError):
-        ContextWindowBudget(context_window=131072, conversation_ratio=1.5)
+        SlotBudget(24_000, -0.1)
+
+
+def test_cwb_03_nonpositive_context_window_raises():
+    """CWB-03: CW ≤ 0 → BehaviorConfigError（inv-D）"""
+    with pytest.raises(BehaviorConfigError):
+        _cwb(context_window=0)
 
 
 def test_cwb_04_frozen_setattr_raises():
-    """CWB-04: 冻结 —— 修改 system_prompt_ratio → PermissionError（配额声明后不可篡改，Risk-CWB-2）"""
-    budget = ContextWindowBudget(context_window=131072)
-    with pytest.raises(PermissionError):
-        budget.system_prompt_ratio = 0.9
+    """CWB-04: 冻结 —— 配额声明后不可篡改（Risk-CWB-2）"""
+    budget = _cwb()
+    with pytest.raises(FrozenInstanceError):
+        budget.context_window = 1  # type: ignore[misc]
 
 
-def test_cwb_05_default_window_snapshot_and_warning(caplog):
-    """CWB-05: 未显式传 context_window → 默认值 + warning；build_slot_snapshot 全量（inv-CWB-4/5）"""
-    with caplog.at_level(logging.WARNING, logger="pandaren.behavior.context_window_budget"):
-        budget = ContextWindowBudget()
-    snapshot = budget.build_slot_snapshot()
-    assert snapshot.system_prompt_tokens == math.floor(0.15 * 128000)  # 19200
-    assert snapshot.tool_schema_tokens == math.floor(0.10 * 128000)   # 12800
-    assert snapshot.conversation_tokens == math.floor(0.50 * 128000)  # 64000
-    # recall 默认 0：功能已废弃
-    assert snapshot.recall_tokens == 0
-    assert any(r.levelname == "WARNING" for r in caplog.records)
+def test_cwb_05_sdk_fallback_matches_spec():
+    """CWB-05: SDK 兜底值符合 SPEC（128,000 × 0.80 = 102,400 → T = 74,697）"""
+    assert SDK_FALLBACK_BUDGET.context_window == 102_400
+    assert SDK_FALLBACK_BUDGET.system_prompt_tokens == 19_203
+    assert SDK_FALLBACK_BUDGET.compact_threshold == 74_697
 
 
-def test_cwb_06_abs_slots_override_ratio_and_conversation_absorbs_remainder():
-    """CWB-06: 绝对槽位优先于 ratio，conversation 自动吸收剩余量。"""
-    budget = ContextWindowBudget(
-        context_window=100_000,
-        system_prompt_tokens_abs=24_000,
-        tool_schema_tokens_abs=8_000,
-        recall_ratio=0.0,
-    )
-    assert budget.system_prompt_tokens == 24_000        # 不是 floor(0.15 × 100,000)
-    assert budget.tool_schema_tokens == 8_000           # 不是 floor(0.10 × 100,000)
-    assert budget.conversation_tokens == 100_000 - 24_000 - 8_000  # 68,000
-    assert budget.recall_tokens == 0
-    assert budget.is_abs_mode is True
-    # 绝对值属性可被子 Agent 继承
-    assert budget.system_prompt_tokens_abs == 24_000
-    assert budget.tool_schema_tokens_abs == 8_000
+def test_cwb_06_accounting_uses_measured_system_and_cap_tool():
+    """CWB-06: 记账口径——sys 用实占、tool 用熔断线（inv-A 守恒）"""
+    budget = _cwb(context_window=100_000, sys_measured=5_000)
+    assert budget.sys_cap_tokens == 24_000        # 熔断线（只用于越界校验/展示）
+    assert budget.tool_cap_tokens == 8_000        # 记账用熔断线（与运行时裁剪同尺）
+    assert budget.system_prompt_tokens == 5_000   # 记账用实占
+    assert budget.conversation_tokens == 100_000 - 5_000 - 8_000
 
 
-def test_cwb_07_abs_slots_exceeding_window_raises():
-    """CWB-07: 绝对槽位之和超过 context_window → BehaviorConfigError（构造期 fail-fast）。"""
+def test_cwb_07_slots_squeeze_conversation_raises():
+    """CWB-07: 固定槽位挤死对话区（conv ≤ 0）→ 构造期 fail-fast"""
     with pytest.raises(BehaviorConfigError):
-        ContextWindowBudget(
-            context_window=100_000,
-            system_prompt_tokens_abs=90_000,
-            tool_schema_tokens_abs=20_000,
-        )
+        _cwb(context_window=10_000, sys_measured=9_900)
 
 
-def test_cwb_08_abs_slot_must_be_positive_int():
-    """CWB-08: 绝对槽位非正整数 → BehaviorConfigError。"""
+def test_cwb_08_negative_accounting_value_raises():
+    """CWB-08: 记账值非法（负数）→ BehaviorConfigError"""
     with pytest.raises(BehaviorConfigError):
-        ContextWindowBudget(context_window=100_000, system_prompt_tokens_abs=0)
+        _cwb(sys_measured=-1)
     with pytest.raises(BehaviorConfigError):
-        ContextWindowBudget(context_window=100_000, tool_schema_tokens_abs=-1)
+        _cwb(output_tokens_reserve=-1)
 
 
 # ─── §4.8 ExecutionLimits / ErrorPolicy（unit，零 mock）─────────────────────

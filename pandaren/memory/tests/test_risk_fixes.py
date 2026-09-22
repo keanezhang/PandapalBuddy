@@ -16,15 +16,12 @@ import sqlite3
 import pytest
 
 from pandaren.memory.backends.sqlite_raw_log import SQLiteRawLogBackend
-from pandaren.memory.constants import (
-    DEFAULT_POST_COMPACT_MAX_BYTES_PER_FILE,
-    RECENT_FILE_READS_WM_KEY,
-)
+from pandaren.memory.constants import RECENT_FILE_READS_WM_KEY
 from pandaren.memory.models import PostCompactContext
 from pandaren.memory.reinject.sources import (
     PlanStateSource,
     RecentFilesSource,
-    _read_file_with_size_limit,
+    _truncate_to_tokens,
 )
 
 SOURCES_LOGGER = "pandaren.memory.reinject.sources"
@@ -318,275 +315,263 @@ def test_ldb7_empty_session_returns_empty_and_deterministic(tmp_path):
 
 
 # ─────────────────────────────────────────────
-# RD 组：_read_file_with_size_limit helper（reinject/sources.py）
+# TR 组：_truncate_to_tokens = 统一尺子 + 标记计入上限（SPEC §2.5 P0）
 # ─────────────────────────────────────────────
 
-# RD-1 inv-R3（正常文件返回全文）
-def test_rd1_helper_reads_full_file(tmp_path):
-    f = tmp_path / "small.txt"
-    f.write_text("hello world, read me", encoding="utf-8")  # 20 字节
 
-    text = _read_file_with_size_limit(str(f), max_bytes=1024, source_name="test_src")
+class _PerCharEstimator:
+    """假尺子：1 字符 = ``ratio`` token。用来证明「用的是**注入的**尺子」。"""
 
-    assert text == "hello world, read me"
+    def __init__(self, ratio: float) -> None:
+        self._ratio = ratio
 
-
-# RD-2 inv-R3 + Risk-R3（恰好等于上限不误杀，无 warning）
-def test_rd2_helper_exact_limit_still_reads(tmp_path, caplog):
-    f = tmp_path / "exact.txt"
-    f.write_text("a" * 64, encoding="utf-8")
-
-    with caplog.at_level(logging.WARNING, logger=SOURCES_LOGGER):
-        text = _read_file_with_size_limit(str(f), max_bytes=64, source_name="test_src")
-
-    assert text == "a" * 64
-    assert _source_records(caplog, min_level=logging.WARNING) == []
-
-
-# RD-3 inv-R1 + Risk-R1（超限 → None + warning，stat 后跳过不整读）
-def test_rd3_helper_over_limit_returns_none_with_warning(tmp_path, caplog):
-    f = tmp_path / "big.txt"
-    f.write_text("y" * 100, encoding="utf-8")  # 100 > 64
-
-    with caplog.at_level(logging.WARNING, logger=SOURCES_LOGGER):
-        text = _read_file_with_size_limit(str(f), max_bytes=64, source_name="test_src")
-
-    assert text is None
-    warnings = _source_records(caplog, min_level=logging.WARNING)
-    assert len(warnings) == 1
-    msg = warnings[0].getMessage()
-    assert "exceeds limit" in msg and "100" in msg and "64" in msg and "big.txt" in msg
-
-
-# RD-4 inv-R2 + Risk-R2（文件不存在 → None + info，E4 降级）
-def test_rd4_helper_missing_file_returns_none_with_info(tmp_path, caplog):
-    missing = tmp_path / "nope.txt"
-
-    with caplog.at_level(logging.INFO, logger=SOURCES_LOGGER):
-        text = _read_file_with_size_limit(
-            str(missing), max_bytes=1024, source_name="test_src"
+    def estimate(self, messages) -> int:
+        return int(
+            sum(len(str(m.get("content") or "")) for m in messages) * self._ratio
         )
 
-    assert text is None
-    infos = _source_records(caplog, min_level=logging.INFO)
-    assert len(infos) == 1
-    msg = infos[0].getMessage()
-    assert "cannot stat" in msg and "nope.txt" in msg
+
+# TR-1：截断后（**含标记**）的真实估算不超上限 —— 旧实现把标记加在限额外
+def test_tr1_truncated_result_stays_within_limit():
+    truncated, est = _truncate_to_tokens("x" * 500, 100, _PerCharEstimator(1.0))
+
+    assert truncated.endswith("[...truncated by PostCompactSource]")
+    assert est <= 100
+    assert est == _PerCharEstimator(1.0).estimate(
+        [{"role": "tool", "content": truncated}]
+    )
 
 
-# RD-5 inv-R2 + Risk-R2（stat 成功、read 失败 → None + info，不抛异常）
-def test_rd5_helper_read_failure_returns_none_with_info(tmp_path, monkeypatch, caplog):
-    f = tmp_path / "readable_stat.txt"
-    f.write_text("x" * 16, encoding="utf-8")
+# TR-2：未超限 → 原样返回，不加标记
+def test_tr2_within_limit_returned_verbatim():
+    truncated, est = _truncate_to_tokens("hello", 100, _PerCharEstimator(1.0))
 
-    real_open = builtins.open
+    assert truncated == "hello"
+    assert est == 5
 
-    def fake_open(*args, **kwargs):
-        if args and str(args[0]) == str(f):
-            raise OSError("simulated read failure")
-        return real_open(*args, **kwargs)
 
-    monkeypatch.setattr(builtins, "open", fake_open)
+# TR-3：用**注入的**尺子，而不是 CHARS_PER_TOKEN 粗估
+def test_tr3_uses_injected_estimator_not_chars_per_token():
+    """1 字符 = 10 token → 上限 1,000 只允许 ~100 字符。
 
-    with caplog.at_level(logging.INFO, logger=SOURCES_LOGGER):
-        text = _read_file_with_size_limit(str(f), max_bytes=1024, source_name="test_src")
+    旧实现按 chars/4 会给出 4,000 字符 → 超支约 40 倍（中文实际超支 ~2 倍）。
+    """
+    truncated, est = _truncate_to_tokens("y" * 5_000, 1_000, _PerCharEstimator(10.0))
 
-    assert text is None
-    infos = _source_records(caplog, min_level=logging.INFO)
-    assert len(infos) == 1
-    msg = infos[0].getMessage()
-    assert "failed to read" in msg and "readable_stat.txt" in msg
+    assert est <= 1_000
+    assert len(truncated) < 200
+    assert truncated.endswith("[...truncated by PostCompactSource]")
+
+
+# TR-4：二分收敛 → 恰好用满上限（不是一刀切到保守值）
+def test_tr4_converges_to_full_budget():
+    truncated, est = _truncate_to_tokens("z" * 1_000, 100, _PerCharEstimator(1.0))
+
+    assert est == 100
+    assert len(truncated) == 100
+
+
+# TR-5：空文本
+def test_tr5_empty_text():
+    assert _truncate_to_tokens("", 100, _PerCharEstimator(1.0)) == ("", 0)
+
+
+# TR-6：极端 —— 上限比标记本身还小，仍不得超限（此时不带标记）
+def test_tr6_limit_smaller_than_marker():
+    truncated, est = _truncate_to_tokens("w" * 500, 10, _PerCharEstimator(1.0))
+
+    assert est <= 10
+    assert "[...truncated" not in truncated
 
 
 # ─────────────────────────────────────────────
-# RFS 组：RecentFilesSource 字节上限（reinject/sources.py）
+# RFS 组：RecentFilesSource = 文件清单**指针**（不注入正文）
 # ─────────────────────────────────────────────
 
-# RFS-1 inv-R4 + Risk-R4（混用：超限跳过，正常文件照常回注）
-def test_rfs1_mixed_files_skip_oversized_but_reinject_normal(tmp_path, caplog):
-    small = tmp_path / "small.txt"
-    small.write_text("hello world", encoding="utf-8")  # 11 字节
-    big = tmp_path / "big.txt"
-    big.write_text("y" * 100, encoding="utf-8")  # 100 > 64
 
-    fake_wm = FakeWM()
-    fake_wm.set(
-        RECENT_FILE_READS_WM_KEY,
-        [
-            {"path": str(small), "timestamp": 2.0},
-            {"path": str(big), "timestamp": 1.0},
-        ],
-    )
-    source = RecentFilesSource(
-        max_files=5,
-        max_tokens_per_file=1000,
-        total_token_budget=10000,
-        max_bytes_per_file=64,
-    )
-    ctx = PostCompactContext(
+def _ctx(wm=None, meta=None, estimator=None):
+    """构造 PostCompactContext（默认无 estimator → 走 chars/4 回退）。"""
+    return PostCompactContext(
         session_id="s",
         run_id="r",
-        working_memory=fake_wm,
-        skill_registry=None,
-        session_meta={},
+        working_memory=wm if wm is not None else FakeWM(),
+        session_meta=meta or {},
+        token_estimator=estimator,
     )
 
-    with caplog.at_level(logging.INFO, logger=SOURCES_LOGGER):
-        attachments = source.collect(ctx)
+
+def _record(path, ts=1.0, size=None):
+    r = {"path": str(path), "timestamp": ts}
+    if size is not None:
+        r["size_hint"] = size
+    return r
+
+
+# RFS-1：清单 = 路径 + 大小，**正文绝不进上下文**
+def test_rfs1_lists_paths_not_content(tmp_path):
+    f = tmp_path / "main.py"
+    f.write_text("SECRET_BODY_MARKER" * 10, encoding="utf-8")
+
+    wm = FakeWM()
+    wm.set(RECENT_FILE_READS_WM_KEY, [_record(f, ts=1.0)])
+
+    attachments = RecentFilesSource().collect(_ctx(wm))
 
     assert len(attachments) == 1
-    assert attachments[0]["source_name"] == "recent_files"
-    assert "small.txt" in attachments[0]["title"]
-    assert attachments[0]["content"] == "hello world"
-
-    warnings = _source_records(caplog, min_level=logging.WARNING)
-    assert any(
-        "big.txt" in r.getMessage() and "exceeds limit" in r.getMessage()
-        for r in warnings
-    )
-    infos = _source_records(caplog, min_level=logging.INFO)
-    assert any("reinjected 1 file(s)" in r.getMessage() for r in infos)
+    content = attachments[0]["content"]
+    assert "main.py" in content
+    assert "SECRET_BODY_MARKER" not in content   # ← 指针模式的核心：正文不回注
+    assert "read_file" in content                # 明确指引 AI 去重取
+    assert "仅在确实需要" in content              # ← 指导语：给了 ≠ 要读（防逐个重读）
 
 
-# RFS-2 inv-R4 + Risk-R1（全超限 → 空列表，E4 不崩溃）
-def test_rfs2_all_files_oversized_returns_empty(tmp_path, caplog):
-    f1 = tmp_path / "f1.txt"
-    f1.write_text("x" * 100, encoding="utf-8")
-    f2 = tmp_path / "f2.txt"
-    f2.write_text("z" * 100, encoding="utf-8")
+# RFS-2：同路径去重（留最近）+ 按时间倒序 + 只取前 max_files
+def test_rfs2_dedup_and_recency_order(tmp_path):
+    a, b, c = (tmp_path / n for n in ("a.py", "b.py", "c.py"))
+    for f in (a, b, c):
+        f.write_text("x", encoding="utf-8")
 
-    fake_wm = FakeWM()
-    fake_wm.set(
+    wm = FakeWM()
+    wm.set(RECENT_FILE_READS_WM_KEY, [
+        _record(a, ts=1.0),
+        _record(b, ts=3.0),
+        _record(a, ts=5.0),      # a 重复 → 取更近的 5.0
+        _record(c, ts=2.0),
+    ])
+
+    content = RecentFilesSource(max_files=2).collect(_ctx(wm))[0]["content"]
+
+    assert content.index("a.py") < content.index("b.py")   # a(5.0) 排在 b(3.0) 前
+    assert "c.py" not in content                            # max_files=2 → c 落选
+
+
+# RFS-3：文件已删除 → 不列进清单（指针指向读不到的文件没有意义）
+def test_rfs3_missing_file_skipped(tmp_path):
+    here = tmp_path / "here.py"
+    here.write_text("x", encoding="utf-8")
+
+    wm = FakeWM()
+    wm.set(RECENT_FILE_READS_WM_KEY, [
+        _record(here, ts=2.0),
+        _record(tmp_path / "gone.py", ts=1.0),
+    ])
+
+    content = RecentFilesSource().collect(_ctx(wm))[0]["content"]
+
+    assert "here.py" in content
+    assert "gone.py" not in content
+
+
+# RFS-4：WM 无记录 / 格式非法 → 空列表（E4 降级，不抛异常）
+def test_rfs4_empty_or_bad_records():
+    assert RecentFilesSource().collect(_ctx()) == []
+
+    wm = FakeWM()
+    wm.set(RECENT_FILE_READS_WM_KEY, ["not-a-dict", {"no_path": 1}])
+    assert RecentFilesSource().collect(_ctx(wm)) == []
+
+
+# RFS-5：清单超上限 → 截断且**不超限**（用注入的同一把尺子）
+def test_rfs5_listing_truncated_within_limit(tmp_path):
+    wm = FakeWM()
+    wm.set(
         RECENT_FILE_READS_WM_KEY,
         [
-            {"path": str(f1), "timestamp": 2.0},
-            {"path": str(f2), "timestamp": 1.0},
+            _record(
+                tmp_path / f"very_long_file_name_number_{i}.py", ts=float(i)
+            )
+            for i in range(5)
         ],
     )
-    source = RecentFilesSource(
-        max_files=5,
-        max_tokens_per_file=1000,
-        total_token_budget=10000,
-        max_bytes_per_file=64,
+    for i in range(5):
+        (tmp_path / f"very_long_file_name_number_{i}.py").write_text(
+            "x", encoding="utf-8"
+        )
+
+    att = RecentFilesSource(max_files=5, max_tokens=60).collect(
+        _ctx(wm, estimator=_PerCharEstimator(1.0))
+    )[0]
+
+    assert att["estimated_tokens"] <= 60
+    assert att["content"].endswith("[...truncated by PostCompactSource]")
+
+
+# RFS-6：清单被截断时，**头部的指导语必须仍在**（截断切尾部 → 指导语放头部才安全）
+def test_rfs6_guidance_survives_truncation(tmp_path):
+    wm = FakeWM()
+    records = []
+    for i in range(10):
+        f = tmp_path / f"long_file_name_{i}.py"
+        f.write_text("x", encoding="utf-8")
+        records.append(_record(f, ts=float(i)))
+    wm.set(RECENT_FILE_READS_WM_KEY, records)
+
+    att = RecentFilesSource(max_tokens=400).collect(
+        _ctx(wm, estimator=_PerCharEstimator(1.0))
+    )[0]
+    content = att["content"]
+
+    assert att["estimated_tokens"] <= 400
+    assert "仅在确实需要" in content              # ← 指导语活下来了
+    assert "long_file_name_9.py" in content      # 最近读的排第一行（倒序）→ 保留
+    assert "long_file_name_0.py" not in content  # 最旧的排最后 → 被切（可接受）
+    assert content.endswith("[...truncated by PostCompactSource]")
+
+
+# RFS-7：配额不变式 —— 各 source cap 之和 ≤ 总预算
+def test_rfs7_source_caps_fit_total_budget():
+    """编排器超**总预算**时是整体丢弃（不是截断）——cap 之和一旦超过总预算，
+    排后面的 source 会被前面的饿死（如 plan 指针被文件清单挤掉）。"""
+    from pandaren.memory.constants import (
+        DEFAULT_POST_COMPACT_FILES_LIST_MAX_TOKENS,
+        DEFAULT_POST_COMPACT_PLAN_MAX_TOKENS,
+        DEFAULT_POST_COMPACT_TOKEN_BUDGET,
     )
-    ctx = PostCompactContext(
-        session_id="s",
-        run_id="r",
-        working_memory=fake_wm,
-        skill_registry=None,
-        session_meta={},
+
+    total_caps = (
+        DEFAULT_POST_COMPACT_FILES_LIST_MAX_TOKENS
+        + DEFAULT_POST_COMPACT_PLAN_MAX_TOKENS
     )
-
-    with caplog.at_level(logging.INFO, logger=SOURCES_LOGGER):
-        attachments = source.collect(ctx)
-
-    assert attachments == []
-    infos = _source_records(caplog, min_level=logging.INFO)
-    assert not any("reinjected" in r.getMessage() for r in infos)
-
-
-# RFS-3 inv-R6 + Risk-R5（构造默认 max_bytes = 1 MiB 回归）
-def test_rfs3_default_max_bytes_is_1mib():
-    rfs = RecentFilesSource()
-    pss = PlanStateSource()
-
-    assert rfs._max_bytes_per_file == 1_048_576 == DEFAULT_POST_COMPACT_MAX_BYTES_PER_FILE
-    assert pss._max_bytes == 1_048_576 == DEFAULT_POST_COMPACT_MAX_BYTES_PER_FILE
+    assert total_caps <= DEFAULT_POST_COMPACT_TOKEN_BUDGET, (
+        f"cap 之和 {total_caps} 超过总预算 {DEFAULT_POST_COMPACT_TOKEN_BUDGET}"
+    )
 
 
 # ─────────────────────────────────────────────
-# PSS 组：PlanStateSource 字节上限（reinject/sources.py）
+# PSS 组：PlanStateSource = plan **路径指针**（不注入正文）
 # ─────────────────────────────────────────────
 
-# PSS-1 inv-R5（正常 plan 文件 → 单附件，content 未截断）
-def test_pss1_normal_plan_file_reinjects_single_attachment(tmp_path):
+
+# PSS-1：只给路径 + 指引，plan 正文绝不进上下文
+def test_pss1_pointer_only(tmp_path):
     plan = tmp_path / "plan.md"
-    plan.write_text("plan body text", encoding="utf-8")  # 14 字符
+    plan.write_text("PLAN_BODY_MARKER", encoding="utf-8")
 
-    ctx = PostCompactContext(
-        session_id="s",
-        run_id="r",
-        working_memory=FakeWM(),
-        skill_registry=None,
-        session_meta={"plan_file_path": str(plan)},
-    )
-    source = PlanStateSource(max_bytes=1024)
-
-    attachments = source.collect(ctx)
+    attachments = PlanStateSource().collect(_ctx(meta={"plan_file_path": str(plan)}))
 
     assert len(attachments) == 1
     assert attachments[0]["source_name"] == "plan_state"
     assert "plan.md" in attachments[0]["title"]
-    assert attachments[0]["content"] == "plan body text"
+    content = attachments[0]["content"]
+    assert str(plan) in content
+    assert "PLAN_BODY_MARKER" not in content   # ← 指针模式的核心
+    assert "read_file" in content              # 明确指引 AI 去读正文
+    assert "需要回顾计划细节时" in content      # ← 指导语：给了 ≠ 要读
 
 
-# PSS-2 inv-R5 + Risk-R1（plan 超限 → 空列表 + warning）
-def test_pss2_oversized_plan_returns_empty(tmp_path, caplog):
-    plan = tmp_path / "plan.md"
-    plan.write_text("y" * 100, encoding="utf-8")
-
-    ctx = PostCompactContext(
-        session_id="s",
-        run_id="r",
-        working_memory=FakeWM(),
-        skill_registry=None,
-        session_meta={"plan_file_path": str(plan)},
-    )
-    source = PlanStateSource(max_bytes=64)
-
-    with caplog.at_level(logging.WARNING, logger=SOURCES_LOGGER):
-        attachments = source.collect(ctx)
-
-    assert attachments == []
-    warnings = _source_records(caplog, min_level=logging.WARNING)
-    assert any("exceeds limit" in r.getMessage() for r in warnings)
+# PSS-2：meta 缺失 / 文件不存在 → 空列表（E4 降级）
+def test_pss2_missing_meta_or_file(tmp_path):
+    assert PlanStateSource().collect(_ctx()) == []
+    assert PlanStateSource().collect(
+        _ctx(meta={"plan_file_path": str(tmp_path / "ghost.md")})
+    ) == []
 
 
-# PSS-3 inv-R5 + Risk-R2（meta 缺失 / 文件不存在 → 空列表，降级不崩溃）
-def test_pss3_missing_meta_or_file_returns_empty(tmp_path, caplog):
-    source = PlanStateSource(max_bytes=1024)
-    ctx_a = PostCompactContext(
-        session_id="s",
-        run_id="r",
-        working_memory=FakeWM(),
-        skill_registry=None,
-        session_meta={},
-    )
-    ghost = tmp_path / "ghost.md"
-    ctx_b = PostCompactContext(
-        session_id="s",
-        run_id="r",
-        working_memory=FakeWM(),
-        skill_registry=None,
-        session_meta={"plan_file_path": str(ghost)},
-    )
-
-    with caplog.at_level(logging.INFO, logger=SOURCES_LOGGER):
-        a = source.collect(ctx_a)
-        b = source.collect(ctx_b)
-
-    assert a == []
-    assert b == []
-    infos = _source_records(caplog, min_level=logging.INFO)
-    assert any(
-        ("cannot stat" in r.getMessage() or "failed to read" in r.getMessage())
-        and "ghost.md" in r.getMessage()
-        for r in infos
-    )
+# PSS-3：路径类型非法（空串 / None / 非字符串）→ 空列表（防御）
+def test_pss3_bad_path_types():
+    for bad in ("", None, 123, ["x"]):
+        assert PlanStateSource().collect(
+            _ctx(meta={"plan_file_path": bad})
+        ) == []
 
 
-# PSS-4 inv-R5（空白 plan 文件 → 空列表，不回注）
-def test_pss4_blank_plan_returns_empty(tmp_path):
-    plan = tmp_path / "plan.md"
-    plan.write_text("   \n\t", encoding="utf-8")
-
-    ctx = PostCompactContext(
-        session_id="s",
-        run_id="r",
-        working_memory=FakeWM(),
-        skill_registry=None,
-        session_meta={"plan_file_path": str(plan)},
-    )
-    source = PlanStateSource(max_bytes=1024)
-
-    assert source.collect(ctx) == []

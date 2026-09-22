@@ -17,13 +17,14 @@ from typing import TYPE_CHECKING
 
 from .models import Skill, SkillResult, SkillSummary
 from .exceptions import SkillRegistrationError
-# token 估算系数：从全局 constants 统一引用
-from ..constants import CHARS_PER_TOKEN as _CHARS_PER_TOKEN
+# token 估算系数：**仅作 estimator 缺位时的兜底**（唯一真相源是 TokenEstimator）
+from ..memory.protocols import CHARS_PER_TOKEN as _CHARS_PER_TOKEN
 
 if TYPE_CHECKING:
     from ..tool.definition.context import ToolContext
     from ..tool.definition.tool_result import ToolResult
     from ..observability.audit import AuditLog
+    from ..memory.protocols import TokenEstimator
 
 logger = logging.getLogger("pandaren.skill.registry")
 
@@ -49,6 +50,7 @@ class SkillRegistry:
         self,
         *,
         audit_log: AuditLog | None = None,
+        token_estimator: "TokenEstimator | None" = None,
         max_description_chars: int = _DEFAULT_MAX_DESCRIPTION_CHARS,
     ) -> None:
         # ── A 类：Skill 定义存储 ──
@@ -58,6 +60,9 @@ class SkillRegistry:
         # ── 配置（构造后只读）──
         self._max_description_chars = max_description_chars
         self._audit_log = audit_log
+        # Token 估算器（与上下文预算 / 压缩判据**同一把尺子**）；
+        # None = 摘要预算退化为字符粗估（chars/CHARS_PER_TOKEN）
+        self._token_estimator = token_estimator
 
         # ── B 类：运行时状态 ──
         # Turn 级 Skill 激活状态（SK2 执行期约束）
@@ -333,8 +338,8 @@ class SkillRegistry:
             desc = self._truncate_description(
                 skill.when_to_use, self._max_description_chars,
             )
-            # 粗略估算：name + when_to_use 的 token 数
-            entry_tokens = (len(skill.name) + len(desc)) // _CHARS_PER_TOKEN + 5
+            # 估算 name + when_to_use 的 token 数（estimator 优先 → 与压缩判据同尺）
+            entry_tokens = self._estimate_entry_tokens(skill.name, desc)
             if used_tokens + entry_tokens > budget_tokens:
                 logger.debug(
                     "Skill 摘要预算已满（%d/%d tokens），跳过 '%s'",
@@ -345,6 +350,36 @@ class SkillRegistry:
             used_tokens += entry_tokens
 
         return summaries
+
+    def _estimate_tokens(self, text: str) -> int | None:
+        """用注入的 estimator 估算文本 token 数；不可用时返回 None（调用方走兜底）。
+
+        「同一把尺子」在这里的意义：技能摘要会进 `static_context`（属 system prompt），
+        它占多少 token 直接影响 `sys_acct` 与 I1 判定。而 `chars/4` 对中文
+        **低估约 2 倍**，会让这里的 1% 预算形同虚设。
+        """
+        if self._token_estimator is None:
+            return None
+        try:
+            tokens = self._token_estimator.estimate([
+                {"role": "system", "content": text},
+            ])
+        except Exception as e:
+            logger.warning(
+                "SkillRegistry: TokenEstimator 估算失败（兜底 chars/%s）: %s",
+                _CHARS_PER_TOKEN, e,
+            )
+            return None
+        # 非法返回值（非 int / ≤ 0）也走兜底，避免 0 值让预算判定失真
+        return tokens if isinstance(tokens, int) and tokens > 0 else None
+
+    def _estimate_entry_tokens(self, name: str, desc: str) -> int:
+        """估算单条 Skill 摘要的 token 数（estimator 优先，兜底字符粗估）。"""
+        est = self._estimate_tokens(f"name: {name}\nwhen_to_use: {desc}")
+        if est is not None:
+            return est
+        # 兜底：字符粗估 + 5（对 XML 包装开销的粗略补偿）
+        return (len(name) + len(desc)) // _CHARS_PER_TOKEN + 5
 
     # ════════════════════════════════════════════════
     #  search_skills — 一步到位搜索 + 加载
@@ -416,8 +451,10 @@ class SkillRegistry:
         # 记录当前激活的 Skill 名称（供 AgentHooks 触发 on_skill_activated）
         self._active_skill_name = skill.name
 
-        # 5. 写审计事件
-        content_tokens = len(content) // _CHARS_PER_TOKEN
+        # 5. 写审计事件（content_tokens 用同一把尺子，便于与预算口径对照）
+        content_tokens = self._estimate_tokens(content)
+        if content_tokens is None:
+            content_tokens = len(content) // _CHARS_PER_TOKEN
         self._write_audit_skill_invoked(skill, content_tokens, context)
 
         # 6. 构建返回内容

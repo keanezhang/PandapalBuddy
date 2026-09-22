@@ -225,20 +225,21 @@ class AgentLoop(RunCoreMixin):
             agent_summaries=agent_summaries_static,
         )
 
-        # ── system_prompt token 配额校验（与压缩链路同一把尺子）──
+        # ── system prompt 熔断线校验（sys_cap = min(绝对上限, CW × share)）──
+        # base prompt 截不掉（I9）；能截的只有 static_context。
         if self._context_window_budget is not None and result:
-            system_prompt_budget = self._context_window_budget.system_prompt_tokens
+            sys_cap = self._context_window_budget.sys_cap_tokens
             system_base_tokens = self._memory.estimate_text(
                 self._memory.system_prompt or ""
             )
-            available_for_static = system_prompt_budget - system_base_tokens
+            available_for_static = sys_cap - system_base_tokens
             static_context_tokens = self._memory.estimate_text(result)
 
             if available_for_static <= 0:
                 logger.warning(
-                    "context_window_budget: system_prompt 本身 (%d tokens, 真实口径) 已超出 "
-                    "system_prompt_tokens 配额 (%d)，static_context 被完全丢弃。",
-                    system_base_tokens, system_prompt_budget,
+                    "context_window_budget: system prompt 基座本身 (%d tokens, 真实口径) 已超出 "
+                    "system prompt 熔断线 (%d)，static_context 被完全丢弃（base 截不掉，见 I9）。",
+                    system_base_tokens, sys_cap,
                 )
                 self._static_context_version = new_version
                 return None
@@ -248,7 +249,7 @@ class AgentLoop(RunCoreMixin):
                 )
                 logger.warning(
                     "context_window_budget: static_context (%d tokens) 超出 "
-                    "system_prompt 剩余配额 (%d tokens)，已按同一估算器截断至 %d tokens。",
+                    "system prompt 熔断线剩余量 (%d tokens)，已按同一估算器截断至 %d tokens。",
                     static_context_tokens, available_for_static,
                     self._memory.estimate_text(truncated),
                 )

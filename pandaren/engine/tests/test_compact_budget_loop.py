@@ -54,9 +54,11 @@ class _FakeToolRegistry:
 
 
 class _FakeCWB:
-    def __init__(self, context_window: int, system_prompt_tokens: int):
+    """只暴露 loop 截断需要的派生量（``sys_cap_tokens`` / ``context_window``）。"""
+
+    def __init__(self, context_window: int, sys_cap_tokens: int):
         self.context_window = context_window
-        self.system_prompt_tokens = system_prompt_tokens
+        self.sys_cap_tokens = sys_cap_tokens
 
 
 class _FakeSkillRegistry:
@@ -102,9 +104,9 @@ def _make_loop(
 
 
 def test_lop1_system_prompt_exceeds_quota_discards_static_context(caplog):
-    # (a) system_prompt 本身超配额 → available_for_static <= 0 → 完全丢弃
+    # (a) system prompt 基座超熔断线 → available_for_static <= 0 → 完全丢弃
     memory = _FakeMemory(system_prompt="你" * 24_001)  # 24_001 chars → 24_001 tokens
-    cwb = _FakeCWB(context_window=100_000, system_prompt_tokens=24_000)
+    cwb = _FakeCWB(context_window=100_000, sys_cap_tokens=24_000)
     loop = _make_loop(memory, cwb, catalog=[{"name": "search_tools", "when_to_use": "检索工具"}])
 
     with caplog.at_level(logging.WARNING):
@@ -117,7 +119,7 @@ def test_lop1_system_prompt_exceeds_quota_discards_static_context(caplog):
 def test_lop1_static_context_truncated_with_estimator():
     # (b) system 不超但 static_context 超 → 按同一估算器截断到 <= available
     memory = _FakeMemory(system_prompt="系" * 100)  # 100 chars → 100 tokens
-    cwb = _FakeCWB(context_window=100_000, system_prompt_tokens=24_000)
+    cwb = _FakeCWB(context_window=100_000, sys_cap_tokens=24_000)
     catalog = [{"name": "search_tools", "when_to_use": "查" * 30_000}]
     loop = _make_loop(memory, cwb, catalog=catalog)
 
@@ -135,7 +137,7 @@ def test_lop1_static_context_truncated_with_estimator():
 
 def test_lop2_summary_builders_receive_context_window():
     memory = _FakeMemory(system_prompt="")
-    cwb = _FakeCWB(context_window=600_000, system_prompt_tokens=600_000)
+    cwb = _FakeCWB(context_window=600_000, sys_cap_tokens=600_000)
     skills = _FakeSkillRegistry()
     agents = _FakeAgentRegistry()
     loop = _make_loop(

@@ -1398,7 +1398,7 @@ class RunCoreMixin:
                     # 从 ContextWindowBudget 获取工具 schema token 预算（如已配置）
                     _tool_schema_tokens: int | None = None
                     if getattr(self, "_context_window_budget", None) is not None:
-                        _tool_schema_tokens = self._context_window_budget.get_slot_tokens("tool_schema")
+                        _tool_schema_tokens = self._context_window_budget.tool_cap_tokens
 
                     tool_schemas = self._tool_registry.build_tool_schemas(
                         agent_id=agent_id,

@@ -80,11 +80,12 @@ from .protocols import (
     CharBasedTokenEstimator,
 )
 from .constants import (
-    DEFAULT_COMPACT_THRESHOLD,
     DEFAULT_WORKING_MEMORY_MAX_ENTRIES,
     DEFAULT_POST_COMPACT_TOKEN_BUDGET,
     DEFAULT_RESERVED_SUMMARY_TOKENS,
-    COMPACT_TARGET_RATIO,
+    DEFAULT_COMPACTION_PROFILE,
+    FIXED_AFTER_COMPACT_WARN_RATIO,
+    CompactionProfile,
 )
 from .compaction.windowed import WindowedKeepPolicy
 from .compaction.micro_compact import MicroCompactor
@@ -160,36 +161,64 @@ class Memory:
 
     Args:
         # ── 必传参数 ──
-        system_prompt:              系统提示词
+        system_prompt:              系统提示词。始终作为 messages[0] 发出，**不参与压缩**。
 
         # ── 持久化（应用层注入）──
-        raw_log_backend:            原始日志后端（None = 不持久化原始日志）
+        raw_log_backend:            原始日志后端。None = 不落盘（仅内存）。
+                                    有值时每条消息经 FlushPolicy 异步批量写入。
 
-        # ── 压缩切分策略 ──
-        compaction_policy:          自定义 CompactionPolicy（None = 默认 WindowedKeepPolicy）
-        compact_threshold:          token 压缩阈值（None = DEFAULT_COMPACT_THRESHOLD；
-                                    builder 若配置了 ContextWindowBudget 则传入对应值）
+        # ── 压缩切分（决定"什么时候压、压完留多少"）──
+        compaction_policy:          自定义切分策略。None = 默认 WindowedKeepPolicy
+                                    （保留最近窗口内的消息）。
+        compact_threshold:          压缩触发线 T（token）。对话历史估算值 > T → 触发压缩管线。
+                                    None = 由 SDK 兜底预算对象派生
+                                    （``SDK_FALLBACK_BUDGET.compact_threshold``，见 SPEC §2.6）。
+                                    应用层正常路径由 builder 从 ``ContextWindowBudget`` 传入。
+        compaction_profile:         压缩力度档（GENTLE / BALANCED / TIGHT）。
+                                    派生 min_keep / max_keep / target / 单条结果上限
+                                    （见 SPEC §2.5 D 组）。默认 BALANCED。
 
         # ── 摘要扩展点（应用层注入，可调 LLM）──
-        drop_summarizer:            被丢弃消息的脉络摘要策略（None = 不摘要，默认）
+        drop_summarizer:            被丢弃消息的"脉络摘要"策略。None = 不摘要（默认）。
+                                    非 None 时，压缩会把 dropped 消息交给它生成摘要，
+                                    摘要再插回 kept 之前（替代丢掉的上下文）。
+        reserved_summary_tokens:    压缩后**摘要产物**占用的 token 预留，参与 target 扣减。
+                                    仅 drop_summarizer 非 None 时生效（否则按 0 记）。
+                                    默认 ``DEFAULT_RESERVED_SUMMARY_TOKENS`` = 1,000。
 
         # ── MicroCompact（SDK 算法 + 应用白名单）──
-        microcompact_tools:         工具白名单（None / set() = 不启用清理）
-        microcompact_keep_recent:   compact_if_needed 入口预清理时保留最近 N 条
-        microcompact_single_result_max_tokens: 单条工具结果上限（add_tool_result 入口截断）
+        microcompact_tools:         工具白名单：只清这些工具的早期结果。
+                                    None / set() = 不启用清理（算法在，但调用是 no-op）。
+        microcompact_keep_recent:   入口预清理时保留最近 N 条工具结果不动。
+                                    None = ``MICROCOMPACT_KEEP_RECENT``（= 3）。
+        microcompact_single_result_max_tokens: 单条工具结果上限（``add_tool_result`` 入口截尾部）。
+                                    None = ``profile.single_result_max_tokens(T)``
+                                    = ``clamp(T × TOOL_RESULT_CAP_RATIO,
+                                    TOOL_RESULT_CAP_FLOOR, TOOL_RESULT_CAP_MAX)``
+                                    （常量定义见 ``memory/constants.py``；此处不写数值，
+                                    避免与唯一事实来源漂移）。
 
-        # ── PostCompact 回注 ──
-        post_compact_sources:       PostCompactSource 列表（默认空 = 不启用）
-        post_compact_token_budget:  回注 attachment 总 token 预算
+        # ── PostCompact 回注（压缩后把"必要上下文"重新塞回去）──
+        post_compact_sources:       回注源列表（内置：``RecentFilesSource`` /
+                                    ``PlanStateSource``，两者都是**指针模式**）。
+                                    空 = 不启用回注。
+        post_compact_token_budget:  回注 attachment 的**总** token 预算。
+                                    None 走默认 ``DEFAULT_POST_COMPACT_TOKEN_BUDGET``。
+                                    ⚠️ 该值会**直接从 ``target_tokens`` 里扣掉** ——
+                                    指针模式下默认值很小（见 ``constants.py`` 注释）。
 
         # ── 其他 ──
-        session_mode:               "multi_turn"（默认）| "single_turn"
-        working_memory_backend:     工作记忆持久化后端（None = 纯内存，不持久化）
-        flush_policy:               异步批量写策略（默认 AsyncBatchFlushPolicy）
-        token_estimator:            Token 估算器（默认 CharBasedTokenEstimator）
-        agent_config_text:          Agent Config 字符串（拼到 system message 末尾）
-        skill_registry:             SkillRegistry 引用（PostCompact ActiveSkillsSource 用；
-                                    无 skill 层时传 None）
+        session_mode:               ``"multi_turn"``（默认，历史跨轮/跨 run 保留）
+                                    | ``"single_turn"``（每轮重置）。
+        working_memory_backend:     KV 工作记忆（如"最近读过的文件"）的持久化后端。
+                                    None = 纯内存，进程结束即丢。
+        flush_policy:               异步批量写策略（避免每条消息都触发一次 IO）。
+                                    None = ``AsyncBatchFlushPolicy``。
+        token_estimator:            Token 估算器。**所有子组件共用同一个实例**——
+                                    这是"压缩判据"与"记账口径"不漂移的前提。
+                                    None = ``CharBasedTokenEstimator``（chars/4 近似）。
+        agent_config_text:          Agent Config 文本（跨 session 不变的配置块），
+                                    拼到 system message 末尾；同样不参与压缩。
 
     运行时隔离：session_id 每次 init_from_restore 时传入。
     """
@@ -201,9 +230,11 @@ class Memory:
         raw_log_backend: RawLogBackend | None = None,
         # ── 压缩切分 ──
         compaction_policy: CompactionPolicy | None = None,
-        compact_threshold: int = DEFAULT_COMPACT_THRESHOLD,
+        compact_threshold: int | None = None,
+        compaction_profile: CompactionProfile = DEFAULT_COMPACTION_PROFILE,
         # ── 摘要扩展点 ──
         drop_summarizer: DropSummarizer | None = None,
+        reserved_summary_tokens: int = DEFAULT_RESERVED_SUMMARY_TOKENS,
         # ── MicroCompact ──
         microcompact_tools: frozenset[str] | set[str] | None = None,
         microcompact_keep_recent: int | None = None,
@@ -217,93 +248,116 @@ class Memory:
         flush_policy: FlushPolicy | None = None,
         token_estimator: TokenEstimator | None = None,
         agent_config_text: str | None = None,
-        skill_registry: Any | None = None,
     ) -> None:
         # HC1: 配置字段初始化后只读（_FROZEN_ATTRS 守护）
+        # 系统提示词；始终 messages[0]，不参与压缩
         self._system_prompt: str = system_prompt
+        # 压缩力度档：派生 min_keep / max_keep / target / 单条结果上限（SPEC §2.5 D 组）
+        self._compaction_profile: CompactionProfile = compaction_profile
+        if compact_threshold is None:
+            # 未注入时由 SDK 兜底预算对象派生（见 SPEC §2.6）
+            from ..behavior.context_window_budget import SDK_FALLBACK_BUDGET
+
+            compact_threshold = SDK_FALLBACK_BUDGET.compact_threshold
+        # 压缩触发线 T：历史估算 token > T → 触发压缩（compact_if_needed）
         self._compact_threshold: int = compact_threshold
+        # 会话模式："multi_turn"（跨轮保留历史）| "single_turn"（每轮重置）
         self._session_mode: str = session_mode
+        # Agent Config 文本：拼到 system message 末尾；跨 session 不变、不参与压缩
         self._agent_config_text: str | None = agent_config_text
-        self._skill_registry: Any | None = skill_registry
 
         # 共享同一个 token estimator（所有组件共用一把尺子，保证估算一致性）
+        # ← "同尺"是压缩判据与记账口径不漂移的前提：不要在这里另建第二个估算器
         _token_estimator: TokenEstimator = token_estimator or CharBasedTokenEstimator()
         self._token_estimator: TokenEstimator = _token_estimator
 
         # 切分策略（默认 WindowedKeepPolicy：保留最近窗口内的消息）
+        # 窗口参数由 profile + T 派生，避免两处写死绝对值（见 SPEC §2.7）
         _compaction_policy: CompactionPolicy = (
             compaction_policy
-            or WindowedKeepPolicy(token_estimator=_token_estimator)
+            or WindowedKeepPolicy(
+                min_keep_tokens=compaction_profile.min_keep_tokens(compact_threshold),
+                min_keep_text_messages=compaction_profile.min_keep_text_messages,
+                max_keep_tokens=compaction_profile.max_keep_tokens(compact_threshold),
+                token_estimator=_token_estimator,
+            )
         )
 
-        # ShortTermMemory（不含 system 消息，只存对话轮次）
+        # 对话历史本体（**不含 system 消息**，只存 user/assistant/tool 轮次）
+        # 压缩就是在它身上切分：kept 留、dropped 丢
         self._short_term = ShortTermMemory(
             compaction_policy=_compaction_policy,
             token_estimator=_token_estimator,
         )
 
-        # LongTermMemory（瘦身：只剩 RawLog 路由）
+        # 长期记忆：瘦身后只剩"RawLog 路由"一个职责（不再管摘要 / 召回）
         self._long_term = LongTermMemory(
             raw_log_backend=raw_log_backend,
         )
 
-        # 应用层注入的"被丢弃消息脉络摘要"扩展点（异步、可调 LLM）
+        # 被丢弃消息的"脉络摘要"器（应用可注入、可调 LLM）
+        # None → 压缩就是"纯丢弃"，不留摘要（默认）
         self._drop_summarizer: DropSummarizer | None = drop_summarizer
 
-        # WorkingMemory（KV 存储，用于保存运行时状态，如最近读过的文件列表）
+        # WorkingMemory：KV 存储，存"跨轮要用但不算对话历史"的小状态
+        # （典型用途：最近读过的文件列表；上限 1,000 条）
+        # 注：不另存 backend 引用 —— `_working` 内部已持有它
+        # （曾有一个 `self._working_memory_backend` 副本，只写不读，已删）
         self._working = WorkingMemory(
             max_entries=DEFAULT_WORKING_MEMORY_MAX_ENTRIES,
             backend=working_memory_backend,
         )
-        self._working_memory_backend: WorkingMemoryBackend | None = working_memory_backend
 
         # FlushPolicy（异步批量写入策略，避免每条消息都触发 IO）
         self._flush_policy: FlushPolicy = flush_policy or AsyncBatchFlushPolicy()
 
-        # MicroCompactor（轻量级清理器：清掉早期工具结果）
+        # MicroCompactor（轻量级清理器：**入口**就把早期工具结果清掉/截断）
         # 应用层无白名单时算法仍存在，但 clear_old_tool_results 是 no-op
-        from .constants import (
-            DEFAULT_MICROCOMPACT_KEEP_RECENT,
-            DEFAULT_MICROCOMPACT_SINGLE_RESULT_MAX_TOKENS,
-        )
+        from .constants import MICROCOMPACT_KEEP_RECENT
         self._micro_compactor = MicroCompactor(
             compactable_tools=microcompact_tools,
+            # 最近 keep_recent 条工具结果不动（避免刚拿到的结果就被清）
             keep_recent=(
                 microcompact_keep_recent
                 if microcompact_keep_recent is not None
-                else DEFAULT_MICROCOMPACT_KEEP_RECENT
+                else MICROCOMPACT_KEEP_RECENT
             ),
+            # 单条工具结果上限：未显式给 → 由 profile + T 派生
             single_result_max_tokens=(
                 microcompact_single_result_max_tokens
                 if microcompact_single_result_max_tokens is not None
-                else DEFAULT_MICROCOMPACT_SINGLE_RESULT_MAX_TOKENS
+                else compaction_profile.single_result_max_tokens(compact_threshold)
             ),
             token_estimator=_token_estimator,
         )
 
-        # PostCompactReinjector（压缩后回注编排器）
+        # PostCompactReinjector（压缩后回注编排器：把"必要上下文"按预算重新塞回来）
         self._reinjector = PostCompactReinjector(
             sources=post_compact_sources,
             token_budget=post_compact_token_budget,
         )
 
-        # 压缩后固定占用：摘要产物 + 立即回注（不预留会导致压缩后立刻又超阈值）
+        # 压缩后固定占用 = 下面两项之和，代表"压缩后一定会新增的 token"
+        # （不预留的话，压缩完会立刻再次超阈值 → 反复压缩）
+        # ① 摘要产物预留：没有摘要器 → 0（没有摘要消息会被插回来）
         self._reserved_summary_tokens: int = (
-            DEFAULT_RESERVED_SUMMARY_TOKENS if drop_summarizer is not None else 0
+            reserved_summary_tokens if drop_summarizer is not None else 0
         )
+        # ② 立即回注预留：没有回注源 → 0（没有 attachment 会被塞回来）
         self._reinject_token_budget: int = (
             post_compact_token_budget if post_compact_sources else 0
         )
         _fixed_after_compact = self._reserved_summary_tokens + self._reinject_token_budget
-        if _fixed_after_compact > compact_threshold * 0.3:
+        if _fixed_after_compact > compact_threshold * FIXED_AFTER_COMPACT_WARN_RATIO:
             logger.warning(
-                "Memory: 压缩后固定占用 %d token (摘要 %d + 回注 %d) 超过阈值的 30%% (%d)，"
+                "Memory: 压缩后固定占用 %d token (摘要 %d + 回注 %d) 超过阈值的 %.0f%% (%d)，"
                 "压缩后可能立即再次触发。建议调小 post_compact_token_budget "
                 "或提高 compact_threshold。",
                 _fixed_after_compact,
                 self._reserved_summary_tokens,
                 self._reinject_token_budget,
-                int(compact_threshold * 0.3),
+                FIXED_AFTER_COMPACT_WARN_RATIO * 100,
+                int(compact_threshold * FIXED_AFTER_COMPACT_WARN_RATIO),
             )
 
         # ── Run / Session 级状态 ──
@@ -343,15 +397,14 @@ class Memory:
     _FROZEN_ATTRS: ClassVar[frozenset[str]] = frozenset({
         "_system_prompt",
         "_compact_threshold",
+        "_compaction_profile",
         "_session_mode",
         "_agent_config_text",
-        "_skill_registry",
         "_token_estimator",
         "_short_term",
         "_long_term",
         "_drop_summarizer",
         "_working",
-        "_working_memory_backend",
         "_flush_policy",
         "_micro_compactor",
         "_reinjector",
@@ -743,11 +796,12 @@ class Memory:
         fixed_after_compact = (
             self._reserved_summary_tokens + self._reinject_token_budget
         )
-        target_tokens = (
-            int(self._compact_threshold * COMPACT_TARGET_RATIO)
-            - system_overhead
-            - attachment_overhead
-            - fixed_after_compact
+        target_tokens = self._compaction_profile.target_tokens(
+            self._compact_threshold,
+            system_overhead=system_overhead,
+            old_attachments=attachment_overhead,
+            reserved_summary=self._reserved_summary_tokens,
+            reinject=self._reinject_token_budget,
         )
 
         # 极端情况：system + attachments + 压缩后固定占用 自己就超了，压缩也没用
@@ -757,7 +811,7 @@ class Memory:
                 "摘要 %d + 回注 %d) 已超过 compact target (%d)，跳过压缩。",
                 system_overhead, attachment_overhead, fixed_after_compact,
                 self._reserved_summary_tokens, self._reinject_token_budget,
-                int(self._compact_threshold * COMPACT_TARGET_RATIO),
+                int(self._compact_threshold * self._compaction_profile.target_ratio),
             )
             return current_tokens
 
@@ -842,8 +896,9 @@ class Memory:
                 session_id=self._current_session_id,
                 run_id=_run_id_var.get(""),
                 working_memory=self._working.accessor,
-                skill_registry=self._skill_registry,
                 session_meta=copy.deepcopy(self._session_meta),
+                # 同一把尺子：回注截断必须与压缩判据口径一致（SPEC §2.5 P0）
+                token_estimator=self._token_estimator,
             )
             try:
                 attachments = self._reinjector.collect_all(ctx)

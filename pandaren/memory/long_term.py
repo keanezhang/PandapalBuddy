@@ -29,7 +29,6 @@ import logging
 
 from .models import MessageDict, CompactBoundaryDict
 from .protocols import RawLogBackend
-from .constants import DEFAULT_RESTORE_TOKEN_BUDGET
 
 logger = logging.getLogger("pandaren.memory.long_term")
 
@@ -85,14 +84,21 @@ class LongTermMemory:
     def load_for_restore(
         self,
         session_id: str,
-        token_budget: int = DEFAULT_RESTORE_TOKEN_BUDGET,
+        token_budget: int | None = None,
     ) -> list[MessageDict]:
         """从 RawLogBackend 加载历史消息（用于 session restore）。
+
+        ``token_budget=None`` 时用 SDK 兜底预算对象的 ``compact_threshold``
+        （``Memory.init_from_restore`` 会传入当时的 ``compact_threshold``）。
 
         E4：失败时返回空列表。HC2：返回深拷贝。
         """
         if self._raw_log is None:
             return []
+        if token_budget is None:
+            from ..behavior.context_window_budget import SDK_FALLBACK_BUDGET
+
+            token_budget = SDK_FALLBACK_BUDGET.compact_threshold
         try:
             result = self._raw_log.load_within_budget(
                 session_id=session_id, token_budget=token_budget,

@@ -20,7 +20,7 @@ SDK 内置的 WindowedKeepPolicy 不调 LLM；应用层若需要"对被丢弃的
 
 from __future__ import annotations
 
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, ClassVar, Protocol, runtime_checkable
 
 from .models import (
     MessageDict,
@@ -29,7 +29,11 @@ from .models import (
     PostCompactContext,
     ReinjectionAttachment,
 )
-from ..constants import CHARS_PER_TOKEN
+
+#: 字符→token 的粗略折算系数（1 token ≈ 4 字符，中英文混合经验值）。
+#: 真实身份是 ``CharBasedTokenEstimator`` 的系数，故定义在 estimator 模块，
+#: 不再放全局 ``constants.py``（见 COMPACT_BUDGET_LAYERING_SPEC §2.6）。
+CHARS_PER_TOKEN: float = 4.0
 
 
 # ─────────────────────────────────────────────
@@ -65,6 +69,9 @@ class CharBasedTokenEstimator:
     默认保持字符估算是为了零依赖（B3），SDK 不替应用层决定 token 口径。
     """
 
+    #: 折算系数（类属性；子类 / 实例可按模型 tokenizer 覆盖）
+    CHARS_PER_TOKEN: ClassVar[float] = CHARS_PER_TOKEN
+
     def estimate(self, messages: list[MessageDict]) -> int:
         """估算消息列表的 token 总数（1 token ≈ CHARS_PER_TOKEN 字符）。"""
         total_chars = 0
@@ -81,7 +88,7 @@ class CharBasedTokenEstimator:
             tool_calls = msg.get("tool_calls")
             if tool_calls:
                 total_chars += len(str(tool_calls))
-        return max(1, int(total_chars / CHARS_PER_TOKEN))
+        return max(1, int(total_chars / self.CHARS_PER_TOKEN))
 
 
 # ─────────────────────────────────────────────
@@ -271,6 +278,15 @@ class DropSummarizer(Protocol):
       - 返回的 MessageDict 必须是 ``role="system"`` 的可序列化消息，
         将被 Memory Facade 插入到保留消息（kept）之前
     """
+
+    @property
+    def max_output_tokens(self) -> int:
+        """本次摘要调用的输出上限（token）。
+
+        ``Memory`` 直接读它作为 ``RESERVED_SUMMARY_TOKENS``，从而与摘要器
+        实际 ``max_tokens`` **同源**（见 COMPACT_BUDGET_LAYERING_SPEC §2.4）。
+        """
+        ...
 
     async def summarize(
         self,

@@ -89,12 +89,24 @@ def check(cond: bool, msg: str) -> None:
         FAILURES.append(msg)
 
 
-# ── 治理后的目标配额（B1 落地：固定槽位用实测绝对值）──────────────────────
-NEW_SYS_SLOT = 24_000     # 实测 coding 17,590 → 留 ~40% 余量
-NEW_TOOL_SLOT = 8_000     # 实测 13 个工具 3,374 → 留 2.4x 余量（MCP 另需封顶）
-NEW_RECALL_SLOT = 0       # 功能已废弃
-NEW_RESERVED = 512        # LLMDropSummarizer 实测 max_tokens=512
-NEW_REINJECT = 8_000      # 原 50,000 是危险默认值（阈值 65,000 时占 77%）
+# ── 目标配额：**全部从唯一事实来源 import**（不再手抄，避免与代码漂移）──────
+# 手抄过的值必然过期：本文件曾写 `NEW_RESERVED = 512`，而摘要器早已是 1,000。
+from pandapal.config.llm.context_budget import (  # noqa: E402
+    SYSTEM_PROMPT_CAP,
+    TOOL_SCHEMA_CAP,
+)
+from pandapal.local.llm_policies import (  # noqa: E402
+    DEFAULT_SUMMARY_MAX_OUTPUT_TOKENS,
+)
+from pandaren.memory.constants import (  # noqa: E402
+    DEFAULT_POST_COMPACT_TOKEN_BUDGET,
+)
+
+NEW_SYS_SLOT = SYSTEM_PROMPT_CAP.absolute_cap              # 24,000（熔断线绝对值）
+NEW_TOOL_SLOT = TOOL_SCHEMA_CAP.absolute_cap               # 8,000（熔断线绝对值）
+NEW_RECALL_SLOT = 0                                        # 功能已废弃
+NEW_RESERVED = DEFAULT_SUMMARY_MAX_OUTPUT_TOKENS           # 1,000（摘要器 max_tokens）
+NEW_REINJECT = DEFAULT_POST_COMPACT_TOKEN_BUDGET           # 指针模式默认值（见 constants.py）
 
 
 # ═══════════════════════════════════════════════════════════════════════════

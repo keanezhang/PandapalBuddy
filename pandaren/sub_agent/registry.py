@@ -30,8 +30,8 @@ from .models import (
     SubAgentSummary, SubAgentDelegateResult, SubAgentSource,
 )
 from .exceptions import SubAgentRegistrationError
-# token 估算系数：从全局 constants 统一引用
-from ..constants import CHARS_PER_TOKEN as _CHARS_PER_TOKEN
+# token 估算系数：来自 estimator（唯一真相源）
+from ..memory.protocols import CHARS_PER_TOKEN as _CHARS_PER_TOKEN
 
 if TYPE_CHECKING:
     from ..identity.models import Identity

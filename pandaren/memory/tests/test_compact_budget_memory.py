@@ -10,7 +10,7 @@ import logging
 import pytest
 
 from pandaren.memory.constants import (
-    COMPACT_TARGET_RATIO,
+    BALANCED,
     DEFAULT_RESERVED_SUMMARY_TOKENS,
 )
 from pandaren.memory.memory import Memory
@@ -95,8 +95,9 @@ def test_construct_warns_when_fixed_over_30pct(caplog):
 
     assert mem._reserved_summary_tokens == DEFAULT_RESERVED_SUMMARY_TOKENS
     assert mem._reinject_token_budget == 8_000
+    expected_fixed = DEFAULT_RESERVED_SUMMARY_TOKENS + 8_000
     assert "超过阈值的 30%" in caplog.text
-    assert "8512" in caplog.text
+    assert str(expected_fixed) in caplog.text
 
 
 def test_construct_no_30pct_warning_without_sources(caplog):
@@ -203,6 +204,96 @@ async def test_compact_returns_none_when_under_threshold(monkeypatch):
 
 
 # ─────────────────────────────────────────────────────────────
+# MEM-7：回注 ctx 必须携带**同一个** token_estimator（SPEC §2.5 P0：统一尺子）
+# ─────────────────────────────────────────────────────────────
+
+
+async def test_mem7_reinject_ctx_carries_same_estimator(monkeypatch):
+    """Memory 必须把**自己那个** estimator 实例塞进 PostCompactContext。
+
+    否则回注截断会退回 chars/4 粗估（中文低估约 2 倍）→ 实际回注量超预算
+    → 压缩后重新超阈值 → `CONTEXT_OVERFLOW` 终止 run。
+    """
+    seen: dict = {}
+
+    class ProbeSource:
+        def collect(self, ctx):
+            seen["estimator"] = ctx.token_estimator
+            return []
+
+    # 1 字符 = 1 token，长度相关 → original / kept 的估算彼此可分
+    estimator = FakeTokenEstimator(
+        lambda messages: sum(len(str(m.get("content") or "")) for m in messages)
+    )
+    mem = Memory(
+        system_prompt="",
+        compact_threshold=100_000,
+        post_compact_sources=[ProbeSource()],
+        # ⚠️ 必须显式给小预算：回注预算会**直接扣减** target_tokens，
+        #    默认 8,000 相对小阈值会让 target ≤ 0 → 压缩被跳过（本测试就踩过一次）
+        token_estimator=estimator,
+    )
+
+    def fake_split_with(*args, **kwargs):   # split_with 是**同步**调用，勿写 async
+        return (
+            [{"role": "user", "content": "x" * 400}],   # original 必须 > kept，否则压缩被丢弃
+            CompactionSplit(
+                kept=[{"role": "assistant", "content": "recent"}],
+                dropped=[{"role": "user", "content": "x" * 400}],
+            ),
+        )
+
+    monkeypatch.setattr(mem._short_term, "split_with", fake_split_with)
+    monkeypatch.setattr(mem, "estimate_tokens", lambda: 150_000)
+
+    await mem.compact_if_needed()
+
+    assert seen.get("estimator") is estimator   # 同一实例，不是新建的
+
+
+# ─────────────────────────────────────────────────────────────
+# MEM-8：端到端 —— 启用指针回注后，路径真的进 messages，**正文不进**
+# ─────────────────────────────────────────────────────────────
+
+
+async def test_mem8_pointer_reinject_reaches_messages(tmp_path, monkeypatch):
+    from pandaren.memory.reinject import PlanStateSource
+
+    plan = tmp_path / "plan.md"
+    plan.write_text("PLAN_BODY_MARKER", encoding="utf-8")
+
+    estimator = FakeTokenEstimator(
+        lambda messages: sum(len(str(m.get("content") or "")) for m in messages)
+    )
+    mem = Memory(
+        system_prompt="",
+        compact_threshold=100_000,
+        post_compact_sources=[PlanStateSource()],   # ← 指针模式 source
+        token_estimator=estimator,
+    )
+    mem.set_session_meta("plan_file_path", str(plan))
+
+    def fake_split_with(*args, **kwargs):
+        return (
+            [{"role": "user", "content": "x" * 400}],
+            CompactionSplit(
+                kept=[{"role": "assistant", "content": "recent"}],
+                dropped=[{"role": "user", "content": "x" * 400}],
+            ),
+        )
+
+    monkeypatch.setattr(mem._short_term, "split_with", fake_split_with)
+    monkeypatch.setattr(mem, "estimate_tokens", lambda: 150_000)
+
+    await mem.compact_if_needed()
+
+    joined = "\n".join(str(m.get("content", "")) for m in mem.get_messages())
+    assert str(plan) in joined              # ← 路径指针真的进了 messages
+    assert "PLAN_BODY_MARKER" not in joined  # ← 正文没进（指针模式的核心契约）
+    assert "read_file" in joined             # 指导语也在
+
+
+# ─────────────────────────────────────────────────────────────
 # MEM-6：target_tokens 显式扣减 RESERVED + REINJECT（R6 + inv-5）
 # ─────────────────────────────────────────────────────────────
 
@@ -253,14 +344,14 @@ async def test_compact_target_deducts_reserved_and_reinject(monkeypatch):
 
     result = await mem.compact_if_needed()
 
-    # 独立手算公式：int(T×0.70) − sys − att − (reserved + reinject)
+    # 独立手算公式：int(T × target_ratio) − sys − att − (reserved + reinject)
     expected_target = (
-        int(100_000 * COMPACT_TARGET_RATIO)
+        int(100_000 * BALANCED.target_ratio)
         - 100
         - 0
         - (DEFAULT_RESERVED_SUMMARY_TOKENS + 8_000)
     )
-    assert expected_target == 61_388
+    assert expected_target == 60_900
     assert captured["target"] == expected_target
     assert result is None
 
