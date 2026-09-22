@@ -489,12 +489,45 @@ def _build_blueprint(
     from pandapal.config.budget.repo import JsonFileBudgetRepo
     from pandapal.config.budget.ledger import BudgetLedger
     from pandapal.config.budget.guard import CostBudgetGuard
+    # 上下文预算：**跟随模型配置**，各字段 = 比例 × 模型上下文上限。
+    # 解析链路（配置在 pandapal/config/llm/model_context_windows.toml，改配置不用改代码）：
+    #   model_id（用户凭据 BYOK）
+    #     → model_max_context（exact / pattern / default 三级匹配）
+    #     → 档位 tier（small / medium / large / huge）
+    #     → 各字段配额（比例 × M，带兜底下限）
+    # 提前到此处解析：footer 进度条的分母（模型窗口）与标记线（压缩阈值）要交给守卫带出。
+    # 查看档位表 / 某个模型的解析结果：
+    #   .venv/bin/python -m pandapal.config.llm.context_window_resolver --table
+    #   .venv/bin/python -m pandapal.config.llm.context_window_resolver --model <id>
+    from pandapal.config.llm.context_window_resolver import resolve_budget
+    from pandaren.behavior.execution_limits import DEFAULT_MAX_STEPS
+    from pandaren.memory.constants import derive_compact_threshold
+
+    context_budget = resolve_budget(default_cred["model_id"])
+    logger.info("context budget: %s", context_budget.summary())
+    if context_budget.fell_back:
+        logger.warning(
+            "context budget: 模型 %r 未在 model_context_windows.toml 命中任何规则，"
+            "已回落默认档位（大窗口模型可能被低估）。建议补一条映射。",
+            default_cred["model_id"],
+        )
     # 预算账本（按 provider 分账）：JSON 文件持久化（mode-agnostic，跨会话/重启累计），
     # 注入守卫。守卫每步把净费用委托账本累加并取超额裁决；账本 spent_usd 是唯一已花费量，
     # 与「停机判据 / 额度条 / Dashboard 该 provider 聚合」同源（PRD §3.4.8）。
     # 用户为每个 provider 分别设额度（SET_BUDGET IPC → ledger.set_budget）；某家耗尽只停该家。
     budget_ledger = BudgetLedger(JsonFileBudgetRepo(str(user_data_dir / "data" / "budgets.json")))
-    cost_guard = CostBudgetGuard(max_usd=None, ledger=budget_ledger)
+    cost_guard = CostBudgetGuard(
+        max_usd=None,
+        ledger=budget_ledger,
+        # footer 上下文进度条：分母 = 模型窗口；标记线 = 与 Memory 压缩阈值同一公式
+        context_window=context_budget.model_max_context,
+        compact_threshold=derive_compact_threshold(context_budget.conversation_tokens),
+        # 实占 / 配额 对比（system_prompt 与 tool_schema 是固定尺寸槽位，配额来自档位表）
+        context_quotas={
+            "system_prompt": context_budget.system_prompt_tokens,
+            "tool_schema": context_budget.tool_schema_tokens,
+        },
+    )
 
     # 编码质量门控：Agent 写完 .py 立刻跑 ruff，诊断随同一条 tool 消息回灌到下一轮，
     # 把「改完代码要检查」从 prompt 软倡议变成框架强制。规则唯一真相源是**用户工作区的**
@@ -504,7 +537,7 @@ def _build_blueprint(
     quality_gate = _build_quality_gate(work_dir)
 
     agent_builder.behavior(
-        max_steps=200,
+        max_steps=DEFAULT_MAX_STEPS,
         step_timeout=600.0,
         total_timeout=1200.0,
         step_guard=cost_guard,
@@ -517,12 +550,7 @@ def _build_blueprint(
         auto_confirm_high=True,
         stream=True,
     )
-    agent_builder.context_budget(
-        context_window=100000,
-        system_prompt_ratio=0.15,
-        tool_schema_ratio=0.10,
-        conversation_ratio=0.65,
-    )
+    agent_builder.context_budget(**context_budget.to_builder_kwargs())
     agent_builder.plan_mode(
         plan_dir=str(user_data_dir / "plans"),
     )

@@ -55,6 +55,19 @@ class RunUsageSummary(NamedTuple):
     net_cost_usd: float
     full_cost_usd: float
     saved_usd: float
+    # ── footer 上下文进度条 ──
+    # input_tokens 是**跨步累加**（不受窗口约束，长 run 可达数百万）；
+    # 进度条要用的是「单次请求的上下文占用」，故单列 last_input_tokens——
+    # 与 Claude Code / Cline 的 context 进度条同口径（最近一次 API 返回的输入侧）。
+    last_input_tokens: int = 0   # 最后一步的单次输入（当前上下文占用）
+    step_count: int = 0          # 本 run 的 LLM 调用步数
+    context_window: int = 0      # 分母：模型上下文上限（model_max_context）
+    compact_threshold: int = 0   # 标记线：自动压缩触发阈值
+    # 当前上下文被谁占了（最后一步的组成，四段之和 == last_input_tokens）：
+    # {"system": .., "tools": .., "attachments": .., "history": ..}
+    context_breakdown: dict[str, int] | None = None
+    # 各槽位配额（实占/配额对比用）：{"system_prompt": .., "tool_schema": ..}
+    context_quotas: dict[str, int] | None = None
 
     @property
     def miss_tokens(self) -> int:
@@ -86,6 +99,12 @@ class RunUsageSummary(NamedTuple):
             "reply_tokens": self.reply_tokens,
             "reasoning_tokens": self.reasoning_tokens,
             "hit_rate": round(self.hit_rate, 4),
+            "last_input_tokens": self.last_input_tokens,
+            "step_count": self.step_count,
+            "context_window": self.context_window,
+            "compact_threshold": self.compact_threshold,
+            "context_breakdown": self.context_breakdown,
+            "context_quotas": self.context_quotas,
         }
 
 
@@ -101,6 +120,9 @@ class _RunAccount:
     net_usd: float = 0.0
     full_usd: float = 0.0
     saved_usd: float = 0.0
+    last_input_tokens: int = 0
+    step_count: int = 0
+    context_breakdown: dict[str, int] | None = None
 
 
 class CostBudgetGuard:
@@ -117,6 +139,9 @@ class CostBudgetGuard:
     - Fail-Safe（O3）：内部任何异常吞掉并返回 `GuardDecision(False)`，绝不因计价问题炸断 run。
     - 累加器按 run_id 分桶，pause/resume 续用同桶。
     - `spent(run_id)` → 本 run 累计净费用；`summary(run_id)` → 完整用量+费用汇总（会话末尾展示）。
+    - 注意两个 token 口径**不同**，footer 同时展示，别混：
+      `input_tokens` = 跨步累加（长 run 可达数百万，不受窗口约束）；
+      `last_input_tokens` = 最后一次调用的单次输入（= 当前上下文占用，才是进度条的分子）。
     """
 
     def __init__(
@@ -124,12 +149,20 @@ class CostBudgetGuard:
         max_usd: float | None = None,
         *,
         ledger: "BudgetLedger | None" = None,
+        context_window: int = 0,
+        compact_threshold: int = 0,
+        context_quotas: dict[str, int] | None = None,
     ) -> None:
         self._max_usd = max_usd
         self._accounts: dict[str, _RunAccount] = {}
         # 可选：按 (user,provider) 分账的预算账本。注入后本守卫每步把净费用委托给它
         # 累加并取超额裁决（PRD 预算分账）；未注入则退化为原「按 run 单一 max_usd」行为。
         self._ledger = ledger
+        # footer 上下文进度条的分母 / 标记线（应用层按模型解析后注入；0 = 前端不画进度条）。
+        self._context_window = context_window
+        self._compact_threshold = compact_threshold
+        # 各槽位配额（实占/配额对比）；None = 未注入，前端只显示实占。
+        self._context_quotas = dict(context_quotas) if context_quotas else None
 
     @property
     def ledger(self) -> "BudgetLedger | None":
@@ -154,6 +187,12 @@ class CostBudgetGuard:
             acc.cache_creation_tokens += max(0, usage.cache_creation_tokens)
             acc.output_tokens += max(0, usage.output_tokens)
             acc.reasoning_tokens += max(0, usage.reasoning_tokens)
+            # 进度条口径：覆盖（不是累加）——最后一次调用的输入即「当前上下文占用」。
+            acc.last_input_tokens = max(0, usage.input_tokens)
+            acc.step_count += 1
+            # 组成同理取最后一次（None = 本次未采集，保留上一次可用值）
+            if usage.context_breakdown:
+                acc.context_breakdown = dict(usage.context_breakdown)
             acc.net_usd = round(acc.net_usd + cc.net_usd, _COST_DECIMAL_PLACES)
             acc.full_usd = round(acc.full_usd + cc.full_usd, _COST_DECIMAL_PLACES)
             acc.saved_usd = round(acc.saved_usd + cc.saved_usd, _COST_DECIMAL_PLACES)
@@ -193,6 +232,16 @@ class CostBudgetGuard:
             net_cost_usd=acc.net_usd,
             full_cost_usd=acc.full_usd,
             saved_usd=acc.saved_usd,
+            last_input_tokens=acc.last_input_tokens,
+            step_count=acc.step_count,
+            context_window=self._context_window,
+            compact_threshold=self._compact_threshold,
+            context_breakdown=(
+                dict(acc.context_breakdown) if acc.context_breakdown else None
+            ),
+            context_quotas=(
+                dict(self._context_quotas) if self._context_quotas else None
+            ),
         )
         return s
 

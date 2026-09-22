@@ -128,8 +128,37 @@ export const MessageBubble = memo(function MessageBubble({ message }: MessageBub
   );
 });
 
-/* ── 本轮消耗页脚：净费用 · tokens 明细（命中/未命中/新写 · 回复/推理）· 命中率 · 耗时 ── */
+/* ── 本轮消耗页脚：净费用 · tokens 明细（命中/未命中/新写 · 回复/推理）· 命中率 · 耗时 · 上下文占用 ── */
 function UsageFooter({ usage: u, t }: { usage: ReplyUsage; t: (key: string, opts?: Record<string, unknown>) => string }) {
+  /* 上下文进度条：分子是「最后一次调用的单次输入」（= 当前上下文占用），不是 ↑ 那个跨步累计值。
+     竖线 = 自动压缩阈值，与 Claude Code 的 auto-compact 线同义。context_window=0 → 后端未注入，整行不画。 */
+  const ctxPct = u.context_window > 0
+    ? Math.min(100, (u.last_input_tokens / u.context_window) * 100) : 0;
+  const markPct = u.context_window > 0 && u.compact_threshold > 0
+    ? Math.min(100, (u.compact_threshold / u.context_window) * 100) : 0;
+  const overLine = u.compact_threshold > 0 && u.last_input_tokens >= u.compact_threshold;
+
+  /* 当前上下文被谁占了：后端按 run 收敛的最后一步组成，四段之和 == last_input_tokens。
+     后端未采集（旧 sidecar / 无 guard）→ 退化为单色单段进度条。
+     实占/配额：system_prompt 与 tool_schema 是固定尺寸槽位，配额来自档位表。 */
+  const bd = u.context_breakdown;
+  const quota = u.context_quotas;
+  const PART_STYLE: { key: "system" | "tools" | "attachments" | "history"; label: string; color: string }[] = [
+    { key: "system", label: "chat.usage.partSystem", color: "var(--info)" },
+    { key: "tools", label: "chat.usage.partTools", color: "var(--success)" },
+    { key: "attachments", label: "chat.usage.partAttachments", color: "var(--warning)" },
+    { key: "history", label: "chat.usage.partHistory", color: "var(--accent)" },
+  ];
+  const parts = bd
+    ? PART_STYLE.map((p) => ({
+        ...p,
+        v: bd[p.key] ?? 0,
+        q: p.key === "system" ? quota?.system_prompt
+          : p.key === "tools" ? quota?.tool_schema : undefined,
+      })).filter((p) => p.v > 0)
+    : [];
+  const segW = (v: number) => (u.context_window > 0 ? (v / u.context_window) * 100 : 0);
+
   return (
     <div
       style={{
@@ -150,7 +179,7 @@ function UsageFooter({ usage: u, t }: { usage: ReplyUsage; t: (key: string, opts
         <span style={{ color: "var(--text-muted)" }}>
           {" ("}{t("chat.usage.cacheHit")}{fmtTok(u.cached_tokens)} · {t("chat.usage.cacheMiss")}{fmtTok(u.miss_tokens)}
           {u.cache_creation_tokens > 0 && <> · {t("chat.usage.cacheNewWrite")}{fmtTok(u.cache_creation_tokens)}</>}
-          {")"}
+          {")"}{u.step_count > 0 && t("chat.usage.stepsInline", { n: u.step_count })}
         </span>
       </span>
       <span title={t("chat.usage.outputTokensTitle")}>
@@ -163,6 +192,51 @@ function UsageFooter({ usage: u, t }: { usage: ReplyUsage; t: (key: string, opts
       </span>
       <span title={t("chat.usage.hitRateTitle")}>🎯 {(u.hit_rate * 100).toFixed(1)}%</span>
       <span title={t("chat.usage.durationTitle")}>⏱ {fmtDuration(u.duration_ms)}</span>
+      {u.context_window > 0 && (
+        <span
+          style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px 8px", width: "100%" }}
+          title={t("chat.usage.contextTitle", {
+            used: fmtTok(u.last_input_tokens),
+            total: fmtTok(u.context_window),
+            line: fmtTok(u.compact_threshold),
+          })}
+        >
+          <span style={{ color: "var(--text-muted)" }}>{t("chat.usage.contextLabel")}</span>
+          <span style={{
+            position: "relative", display: "flex", flex: "1 1 auto", minWidth: "100px",
+            height: "6px", background: "var(--bg-hover)", borderRadius: "3px", overflow: "hidden",
+          }}>
+            {parts.length > 0 ? parts.map((p) => (
+              <span key={p.key} style={{ width: `${segW(p.v)}%`, background: p.color }} />
+            )) : (
+              <span style={{
+                width: `${ctxPct}%`,
+                background: overLine ? "var(--danger)" : "var(--accent)",
+              }} />
+            )}
+            {markPct > 0 && markPct < 100 && (
+              <span style={{
+                position: "absolute", top: 0, bottom: 0, left: `${markPct}%`,
+                width: "2px", background: "var(--text-primary)",
+              }} />
+            )}
+          </span>
+          <span style={{ color: overLine ? "var(--danger)" : "var(--text-tertiary)" }}>
+            {fmtTok(u.last_input_tokens)} / {fmtTok(u.context_window)} ({ctxPct.toFixed(0)}%)
+          </span>
+          {parts.map((p) => (
+            <span key={p.key} style={{ color: "var(--text-muted)" }}>
+              <span style={{ color: p.color }}>●</span> {t(p.label)} {fmtTok(p.v)}
+              {p.q ? ` / ${fmtTok(p.q)}` : ""}
+            </span>
+          ))}
+          {u.compact_threshold > 0 && (
+            <span style={{ color: "var(--text-muted)" }}>
+              {t("chat.usage.compactLine", { v: fmtTok(u.compact_threshold) })}
+            </span>
+          )}
+        </span>
+      )}
     </div>
   );
 }

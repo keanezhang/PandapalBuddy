@@ -48,6 +48,24 @@ jobs:
         if: always()
         run: python scripts/lint_robustness.py --baseline
 
+  context-budget:
+    name: context budget assertions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # 治理进度条：断言「各项实占 ≤ 对应配额」（scripts/measure_context_budget.py --check）。
+      # tokenizer extra 提供 tiktoken —— 断言必须用真实 BPE 计数，否则测的不是同一件事。
+      - name: Install package (tokenizer extra)
+        run: pip install -e ".[tokenizer]"
+
+      - name: Assert measured usage <= quota
+        run: python scripts/measure_context_budget.py --check
+
   desktop-ui:
     name: desktop UI consistency (stylelint + lint:ui)
     runs-on: ubuntu-latest

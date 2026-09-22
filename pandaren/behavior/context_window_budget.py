@@ -29,7 +29,12 @@ logger = logging.getLogger("pandaren.behavior.context_window_budget")
 # ── 默认值常量 ─────────────────────────────────────────────────────────────────
 # 各 input slot 的默认配额比例
 DEFAULT_SYSTEM_PROMPT_RATIO: float = 0.15
-DEFAULT_RECALL_RATIO: float = 0.10
+
+# recall slot 配额比例。
+# v1.4 重构后「跨 session 召回」已整体废弃，项目内**无任何消费方**，
+# 原默认 0.10 在 CW=100,000 时白占 10,000 token（实测 100% 空置）。
+# 故默认置 0 回收配额；见 COMPACT_BUDGET_AUDIT.md G4。
+DEFAULT_RECALL_RATIO: float = 0.00
 
 # 有效 slot 名称集合
 _VALID_SLOT_NAMES: frozenset[str] = frozenset({
@@ -86,6 +91,8 @@ class ContextWindowBudget:
         "_tool_schema_tokens",
         "_conversation_tokens",
         "_recall_tokens",
+        "_system_prompt_tokens_abs",
+        "_tool_schema_tokens_abs",
     )
 
     # 类变量：slot 名到内部属性名的映射
@@ -103,6 +110,8 @@ class ContextWindowBudget:
         tool_schema_ratio: float = DEFAULT_TOOL_SCHEMA_RATIO,
         conversation_ratio: float = DEFAULT_CONVERSATION_RATIO,
         recall_ratio: float = DEFAULT_RECALL_RATIO,
+        system_prompt_tokens_abs: int | None = None,
+        tool_schema_tokens_abs: int | None = None,
     ) -> None:
         # ── 默认值 WARNING ──
         if context_window == DEFAULT_CONTEXT_WINDOW:
@@ -119,6 +128,17 @@ class ContextWindowBudget:
                 f"当前值: {context_window!r}"
             )
 
+        # ── 绝对槽位合法性校验 ──
+        for _name, _value in (
+            ("system_prompt_tokens_abs", system_prompt_tokens_abs),
+            ("tool_schema_tokens_abs", tool_schema_tokens_abs),
+        ):
+            if _value is not None and (not isinstance(_value, int) or _value <= 0):
+                raise BehaviorConfigError(
+                    f"context_window_budget.{_name} 必须是正整数或 None，"
+                    f"当前值: {_value!r}"
+                )
+
         # ── 各 ratio 合法性校验 ──
         ratios = {
             "system_prompt_ratio": system_prompt_ratio,
@@ -134,7 +154,22 @@ class ContextWindowBudget:
                 )
 
         # ── ratio 总和校验 ──
-        self._validate_ratios(ratios)
+        # 被绝对槽位接管的 slot：其 ratio 不再参与"总和 ≤ 1.0"校验，
+        # 因为它的实际配额由绝对值决定，且 conversation 会自动吸收剩余（见下）。
+        _abs_mode = (
+            system_prompt_tokens_abs is not None or tool_schema_tokens_abs is not None
+        )
+        effective_ratios = {
+            "system_prompt_ratio": (
+                0.0 if system_prompt_tokens_abs is not None else system_prompt_ratio
+            ),
+            "tool_schema_ratio": (
+                0.0 if tool_schema_tokens_abs is not None else tool_schema_ratio
+            ),
+            "conversation_ratio": (0.0 if _abs_mode else conversation_ratio),
+            "recall_ratio": recall_ratio,
+        }
+        self._validate_ratios(effective_ratios)
 
         # ── 冻结字段赋值 ──
         object.__setattr__(self, "_context_window", context_window)
@@ -142,31 +177,54 @@ class ContextWindowBudget:
         object.__setattr__(self, "_tool_schema_ratio", tool_schema_ratio)
         object.__setattr__(self, "_conversation_ratio", conversation_ratio)
         object.__setattr__(self, "_recall_ratio", recall_ratio)
+        object.__setattr__(self, "_system_prompt_tokens_abs", system_prompt_tokens_abs)
+        object.__setattr__(self, "_tool_schema_tokens_abs", tool_schema_tokens_abs)
 
         # ── 计算各 slot 绝对 token 配额 ──
-        object.__setattr__(
-            self, "_system_prompt_tokens",
-            self._calculate_slot_tokens(context_window, system_prompt_ratio),
+        # 为什么需要绝对槽位？
+        #   实测显示 system_prompt / tool_schema 是"固定用途"的槽位，其真实占用
+        #   与窗口大小无关（实测 coding system_prompt 17,590 / office 2,236，差 9.3 倍；
+        #   13 个工具 schema 合计仅 3,374）。按比例给配额必然一处不够、一处浪费。
+        #   见 COMPACT_BUDGET_AUDIT.md 结论 3。
+        _sys_tokens = (
+            system_prompt_tokens_abs
+            if system_prompt_tokens_abs is not None
+            else self._calculate_slot_tokens(context_window, system_prompt_ratio)
         )
-        object.__setattr__(
-            self, "_tool_schema_tokens",
-            self._calculate_slot_tokens(context_window, tool_schema_ratio),
+        _tool_tokens = (
+            tool_schema_tokens_abs
+            if tool_schema_tokens_abs is not None
+            else self._calculate_slot_tokens(context_window, tool_schema_ratio)
         )
-        object.__setattr__(
-            self, "_conversation_tokens",
-            self._calculate_slot_tokens(context_window, conversation_ratio),
+        _recall_tokens = self._calculate_slot_tokens(context_window, recall_ratio)
+        _conv_tokens = (
+            context_window - _sys_tokens - _tool_tokens - _recall_tokens
+            if _abs_mode
+            else self._calculate_slot_tokens(context_window, conversation_ratio)
         )
-        object.__setattr__(
-            self, "_recall_tokens",
-            self._calculate_slot_tokens(context_window, recall_ratio),
-        )
+        if _conv_tokens <= 0:
+            raise BehaviorConfigError(
+                f"context_window_budget: 绝对槽位配置下 conversation 剩余配额为 "
+                f"{_conv_tokens} ≤ 0 "
+                f"(context_window={context_window}, system={_sys_tokens}, "
+                f"tool_schema={_tool_tokens}, recall={_recall_tokens})"
+            )
+
+        object.__setattr__(self, "_system_prompt_tokens", _sys_tokens)
+        object.__setattr__(self, "_tool_schema_tokens", _tool_tokens)
+        object.__setattr__(self, "_conversation_tokens", _conv_tokens)
+        object.__setattr__(self, "_recall_tokens", _recall_tokens)
 
         logger.info(
             "context_window_budget: created context_window=%d, "
-            "slots={system_prompt=%d, tool_schema=%d, conversation=%d, recall=%d}",
+            "slots={system_prompt=%d%s, tool_schema=%d%s, conversation=%d, recall=%d}, "
+            "abs_mode=%s",
             context_window,
-            self._system_prompt_tokens, self._tool_schema_tokens,
-            self._conversation_tokens, self._recall_tokens,
+            self._system_prompt_tokens,
+            "(abs)" if system_prompt_tokens_abs is not None else "",
+            self._tool_schema_tokens,
+            "(abs)" if tool_schema_tokens_abs is not None else "",
+            self._conversation_tokens, self._recall_tokens, _abs_mode,
         )
 
     # ── 不可变性保护 ─────────────────────────────────────────────────────────
@@ -210,6 +268,24 @@ class ContextWindowBudget:
     def recall_ratio(self) -> float:
         """recall slot 的配额比例。"""
         return object.__getattribute__(self, "_recall_ratio")
+
+    @property
+    def system_prompt_tokens_abs(self) -> int | None:
+        """system_prompt 的绝对配额覆盖。None = 由 ratio 推导。"""
+        return object.__getattribute__(self, "_system_prompt_tokens_abs")
+
+    @property
+    def tool_schema_tokens_abs(self) -> int | None:
+        """tool_schema 的绝对配额覆盖。None = 由 ratio 推导。"""
+        return object.__getattribute__(self, "_tool_schema_tokens_abs")
+
+    @property
+    def is_abs_mode(self) -> bool:
+        """是否启用了绝对槽位模式（此时 conversation = 剩余量，不受 ratio 控制）。"""
+        return (
+            self.system_prompt_tokens_abs is not None
+            or self.tool_schema_tokens_abs is not None
+        )
 
     @property
     def system_prompt_tokens(self) -> int:
@@ -300,13 +376,22 @@ class ContextWindowBudget:
     # ── repr ─────────────────────────────────────────────────────────────────
 
     def __repr__(self) -> str:
+        _sys_src = (
+            "abs" if self.system_prompt_tokens_abs is not None
+            else f"{self.system_prompt_ratio:.0%}"
+        )
+        _tool_src = (
+            "abs" if self.tool_schema_tokens_abs is not None
+            else f"{self.tool_schema_ratio:.0%}"
+        )
+        _conv_src = "剩余" if self.is_abs_mode else f"{self.conversation_ratio:.0%}"
         return (
             f"ContextWindowBudget("
             f"context_window={self.context_window}, "
             f"slots={{"
-            f"system_prompt={self.system_prompt_ratio:.0%}→{self.system_prompt_tokens}, "
-            f"tool_schema={self.tool_schema_ratio:.0%}→{self.tool_schema_tokens}, "
-            f"conversation={self.conversation_ratio:.0%}→{self.conversation_tokens}, "
+            f"system_prompt={_sys_src}→{self.system_prompt_tokens}, "
+            f"tool_schema={_tool_src}→{self.tool_schema_tokens}, "
+            f"conversation={_conv_src}→{self.conversation_tokens}, "
             f"recall={self.recall_ratio:.0%}→{self.recall_tokens}"
             f"}})"
         )

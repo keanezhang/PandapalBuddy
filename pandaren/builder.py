@@ -54,7 +54,13 @@ from .tool import ToolRegistry, create_tool_registry, Tool
 from .behavior.harness.executor import HarnessExecutor
 from .behavior.permission_guard import PermissionGuard
 from .behavior.hitl_controller import HITLController
-from .behavior.execution_limits import ExecutionLimits, DEFAULT_STEP_TIMEOUT, DEFAULT_TOTAL_TIMEOUT
+from .behavior.execution_limits import (
+    ExecutionLimits,
+    DEFAULT_MAX_STEPS,
+    DEFAULT_STEP_TIMEOUT,
+    DEFAULT_SUB_AGENT_MAX_STEPS,
+    DEFAULT_TOTAL_TIMEOUT,
+)
 from .behavior.error_policy import ErrorPolicy
 from .behavior.step_guard import StepGuard
 from .behavior.harness.tool_feedback import ToolFeedbackProvider
@@ -82,6 +88,7 @@ if TYPE_CHECKING:
     from .agent import Agent
     from .agent.blueprint import AgentBlueprint
     from .skill.models import SkillSource
+    from .sub_agent.models import SubAgentSource
 
 
 # 模块级标记：防止子 Agent 构建时重复加载内置蓝图
@@ -535,7 +542,7 @@ class AgentBuilder:
     def behavior(
         self,
         *,
-        max_steps: int = 30,
+        max_steps: int = DEFAULT_MAX_STEPS,
         step_timeout: float = DEFAULT_STEP_TIMEOUT,
         total_timeout: float = DEFAULT_TOTAL_TIMEOUT,
         step_guard: "StepGuard | None" = None,
@@ -599,6 +606,8 @@ class AgentBuilder:
         tool_schema_ratio: float | None = None,
         conversation_ratio: float | None = None,
         recall_ratio: float | None = None,
+        system_prompt_tokens_abs: int | None = None,
+        tool_schema_tokens_abs: int | None = None,
     ) -> "AgentBuilder":
         """设置上下文窗口 Token 预算分配。
 
@@ -608,14 +617,19 @@ class AgentBuilder:
 
         所有参数均可选，未传入时使用 ContextWindowBudget 内部默认值。
 
+        绝对槽位：``*_tokens_abs`` 传正整数时该 slot 直接用绝对值，
+        conversation 自动吸收剩余量（不再受 ``conversation_ratio`` 控制）。
+
         注意：LLM 最大输出 token 数请通过 .llm_settings(max_tokens=...) 配置。
 
         Args:
-            context_window:       模型输入上下文窗口大小（token），建议查阅模型文档后传入
-            system_prompt_ratio:  system prompt 占比
-            tool_schema_ratio:    工具 schema 占比
-            conversation_ratio:   对话历史占比
-            recall_ratio:         召回内容占比
+            context_window:          模型输入上下文窗口大小（token），建议查阅模型文档后传入
+            system_prompt_ratio:     system prompt 占比（未给 abs 时生效）
+            tool_schema_ratio:       工具 schema 占比（未给 abs 时生效）
+            conversation_ratio:      对话历史占比（绝对槽位模式下被忽略）
+            recall_ratio:            召回内容占比（默认 0.00，该功能已废弃）
+            system_prompt_tokens_abs: system prompt 的绝对配额（优先级高于 ratio）
+            tool_schema_tokens_abs:   工具 schema 的绝对配额（优先级高于 ratio）
         """
         # 只透传用户显式传入的参数，其余由 ContextWindowBudget 默认值兜底
         kwargs = {
@@ -625,6 +639,8 @@ class AgentBuilder:
                 "tool_schema_ratio": tool_schema_ratio,
                 "conversation_ratio": conversation_ratio,
                 "recall_ratio": recall_ratio,
+                "system_prompt_tokens_abs": system_prompt_tokens_abs,
+                "tool_schema_tokens_abs": tool_schema_tokens_abs,
             }.items() if v is not None
         }
         self._context_window_budget = ContextWindowBudget(**kwargs)
@@ -944,6 +960,7 @@ class AgentBuilder:
             budget_ratio=self._tool_budget_ratio if self._tool_budget_ratio is not None else DEFAULT_TOOL_SCHEMA_RATIO,
             max_always_count=self._tool_max_always_count if self._tool_max_always_count is not None else DEFAULT_MAX_ALWAYS_COUNT,
             max_discovered_per_session=self._tool_max_discovered if self._tool_max_discovered is not None else DEFAULT_MAX_DISCOVERED,
+            token_estimator=self._token_estimator,
         )
         tool_registry = create_tool_registry(budget=tool_budget)
         tool_registry.set_hooks(hooks)  # 早期注入：后续注册都能触发 on_tool_register
@@ -1055,11 +1072,33 @@ class AgentBuilder:
         if self._post_compact_token_budget is not None:
             memory_kwargs["post_compact_token_budget"] = self._post_compact_token_budget
 
-        # 压缩阈值：优先用 ContextWindowBudget 的 conversation 配额
+        # 压缩阈值 = conversation 配额 − 触发提前量；
+        # 保留窗口 / 单条工具结果上限按阈值比例派生（不再用写死的绝对值）。
         if self._context_window_budget is not None:
-            memory_kwargs["compact_threshold"] = (
-                self._context_window_budget.get_slot_tokens("conversation")
+            from .memory.constants import (
+                derive_compact_threshold,
+                derive_keep_window,
+                derive_single_result_max_tokens,
             )
+
+            _conv_slot = self._context_window_budget.get_slot_tokens("conversation")
+            _threshold = derive_compact_threshold(_conv_slot)
+            memory_kwargs["compact_threshold"] = _threshold
+
+            if self._compaction_policy is None:
+                from .memory.compaction import WindowedKeepPolicy
+
+                _min_keep, _max_keep = derive_keep_window(_threshold)
+                memory_kwargs["compaction_policy"] = WindowedKeepPolicy(
+                    min_keep_tokens=_min_keep,
+                    max_keep_tokens=_max_keep,
+                    token_estimator=self._token_estimator,
+                )
+
+            if self._microcompact_single_result_max_tokens is None:
+                memory_kwargs["microcompact_single_result_max_tokens"] = (
+                    derive_single_result_max_tokens(_threshold)
+                )
 
         def factory() -> Memory:
             return Memory(**memory_kwargs)
@@ -1260,6 +1299,8 @@ class AgentBuilder:
             .skills(filtered_skills)
             .system_prompt(bp.system_prompt)
             .behavior(
+                # 子 Agent 固定用统一的委派型步数常量（比主 Agent 收敛）；唯一真相源见 execution_limits。
+                max_steps=DEFAULT_SUB_AGENT_MAX_STEPS,
                 step_timeout=self._execution_limits.step_timeout if self._execution_limits else DEFAULT_STEP_TIMEOUT,
                 total_timeout=self._execution_limits.total_timeout if self._execution_limits else DEFAULT_TOTAL_TIMEOUT,
                 step_guard=self._step_guard,  # 子 Agent 继承父级停机守卫
@@ -1268,12 +1309,13 @@ class AgentBuilder:
                 # 收尾而触发 —— 父 run 的熔断计数不会被子 Agent 提前清掉。
                 tool_feedback_providers=self._tool_feedback_providers,
                 # 继承 stream：父级显式关闭流式时子 Agent 不应自行开启（行为一致性）。
-                # max_steps / auto_confirm_high / 重试参数**不继承**——子 Agent 是委派型
-                # 短期执行，默认 30 步 / HIGH 需审批 / 默认重试即更保守的安全下限，有意为之。
+                # max_steps / auto_confirm_high / 重试参数**不继承**——子 Agent 固定用
+                # DEFAULT_SUB_AGENT_MAX_STEPS（300，见 execution_limits 唯一真相源）
+                # / HIGH 需审批 / 默认重试即更保守的安全下限，有意为之。
                 stream=self._stream,
             )
         )
-        # 继承父级的上下文窗口预算，确保子 Agent 与父 Agent 使用一致的 compact_threshold
+        # 继承父级预算（含绝对槽位，漏传会导致子 Agent 阈值与父级不一致）
         if self._context_window_budget is not None:
             builder = builder.context_budget(
                 context_window=self._context_window_budget.context_window,
@@ -1281,6 +1323,12 @@ class AgentBuilder:
                 tool_schema_ratio=self._context_window_budget.tool_schema_ratio,
                 conversation_ratio=self._context_window_budget.conversation_ratio,
                 recall_ratio=self._context_window_budget.recall_ratio,
+                system_prompt_tokens_abs=(
+                    self._context_window_budget.system_prompt_tokens_abs
+                ),
+                tool_schema_tokens_abs=(
+                    self._context_window_budget.tool_schema_tokens_abs
+                ),
             )
         # 继承父级的 Token 估算器：与 context_budget 同理——阈值一致了，
         # 尺子也必须一致，否则子 Agent 的压缩触发判据退回 chars/4.0 量纲。

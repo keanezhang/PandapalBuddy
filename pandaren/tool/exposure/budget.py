@@ -10,6 +10,8 @@ import logging
 
 from ..definition.tool_schema import ToolSchema
 from ...constants import DEFAULT_CONTEXT_WINDOW, DEFAULT_TOOL_SCHEMA_RATIO
+from ...memory.protocols import TokenEstimator
+
 
 # token 估算属「计费/预算类」：兜底绝不静默（§九金额类留痕硬要求）——
 # 估算失败回落 _FALLBACK_TOKEN_ESTIMATE 会影响工具暴露预算裁剪，必须 warning 留痕。
@@ -31,10 +33,13 @@ class ToolBudget:
         budget_ratio: float = DEFAULT_TOOL_SCHEMA_RATIO,
         max_always_count: int = DEFAULT_MAX_ALWAYS_COUNT,
         max_discovered_per_session: int = DEFAULT_MAX_DISCOVERED,
+        token_estimator: TokenEstimator | None = None,
     ) -> None:
         self.budget_ratio = budget_ratio
         self.max_always_count = max_always_count
         self.max_discovered_per_session = max_discovered_per_session
+        # 注入后与压缩链路同一把尺子；None = 回落 bytes/4（无 tokenizer 场景）
+        self._token_estimator = token_estimator
 
     def enforce(
         self,
@@ -66,13 +71,18 @@ class ToolBudget:
         return schemas
 
     def _estimate_tokens(self, schema: ToolSchema) -> int:
-        """估算单个 ToolSchema 的 token 数。"""
+        """估算单个 ToolSchema 的 token 数（优先用注入的 estimator）。"""
         try:
             text = json.dumps({
                 "name": schema.name,
                 "description": schema.description,
                 "parameters": schema.parameters,
             }, ensure_ascii=False)
+            if self._token_estimator is not None:
+                return max(
+                    1,
+                    self._token_estimator.estimate([{"role": "user", "content": text}]),
+                )
             byte_len = len(text.encode("utf-8"))
             return max(1, byte_len // _BYTES_PER_TOKEN)
         except Exception:

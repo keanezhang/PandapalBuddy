@@ -23,7 +23,7 @@ import pytest
 from pandaren.behavior.context_window_budget import ContextWindowBudget
 from pandaren.behavior.error_policy import ErrorPolicy
 from pandaren.behavior.exceptions import BehaviorConfigError
-from pandaren.behavior.execution_limits import ExecutionLimits
+from pandaren.behavior.execution_limits import ExecutionLimits, DEFAULT_MAX_STEPS
 from pandaren.behavior.harness.halt import HaltChecker
 from pandaren.behavior.harness.rate_limiter import RateLimiter
 from pandaren.behavior.hitl_controller import (
@@ -184,17 +184,54 @@ def test_cwb_05_default_window_snapshot_and_warning(caplog):
     assert snapshot.system_prompt_tokens == math.floor(0.15 * 128000)  # 19200
     assert snapshot.tool_schema_tokens == math.floor(0.10 * 128000)   # 12800
     assert snapshot.conversation_tokens == math.floor(0.50 * 128000)  # 64000
-    assert snapshot.recall_tokens == math.floor(0.10 * 128000)        # 12800
+    # recall 默认 0：功能已废弃
+    assert snapshot.recall_tokens == 0
     assert any(r.levelname == "WARNING" for r in caplog.records)
+
+
+def test_cwb_06_abs_slots_override_ratio_and_conversation_absorbs_remainder():
+    """CWB-06: 绝对槽位优先于 ratio，conversation 自动吸收剩余量。"""
+    budget = ContextWindowBudget(
+        context_window=100_000,
+        system_prompt_tokens_abs=24_000,
+        tool_schema_tokens_abs=8_000,
+        recall_ratio=0.0,
+    )
+    assert budget.system_prompt_tokens == 24_000        # 不是 floor(0.15 × 100,000)
+    assert budget.tool_schema_tokens == 8_000           # 不是 floor(0.10 × 100,000)
+    assert budget.conversation_tokens == 100_000 - 24_000 - 8_000  # 68,000
+    assert budget.recall_tokens == 0
+    assert budget.is_abs_mode is True
+    # 绝对值属性可被子 Agent 继承
+    assert budget.system_prompt_tokens_abs == 24_000
+    assert budget.tool_schema_tokens_abs == 8_000
+
+
+def test_cwb_07_abs_slots_exceeding_window_raises():
+    """CWB-07: 绝对槽位之和超过 context_window → BehaviorConfigError（构造期 fail-fast）。"""
+    with pytest.raises(BehaviorConfigError):
+        ContextWindowBudget(
+            context_window=100_000,
+            system_prompt_tokens_abs=90_000,
+            tool_schema_tokens_abs=20_000,
+        )
+
+
+def test_cwb_08_abs_slot_must_be_positive_int():
+    """CWB-08: 绝对槽位非正整数 → BehaviorConfigError。"""
+    with pytest.raises(BehaviorConfigError):
+        ContextWindowBudget(context_window=100_000, system_prompt_tokens_abs=0)
+    with pytest.raises(BehaviorConfigError):
+        ContextWindowBudget(context_window=100_000, tool_schema_tokens_abs=-1)
 
 
 # ─── §4.8 ExecutionLimits / ErrorPolicy（unit，零 mock）─────────────────────
 
 
 def test_el_01_default_values():
-    """EL-01: ExecutionLimits 默认值 30 / 120.0 / 600.0（inv-EL-1）"""
+    """EL-01: ExecutionLimits 默认值来自常量（max_steps=DEFAULT_MAX_STEPS）/ 120.0 / 600.0（inv-EL-1）"""
     limits = ExecutionLimits()
-    assert limits.max_steps == 30
+    assert limits.max_steps == DEFAULT_MAX_STEPS
     assert limits.step_timeout == 120.0
     assert limits.total_timeout == 600.0
 

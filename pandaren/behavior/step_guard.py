@@ -36,6 +36,10 @@ class StepUsage:
       - provider              发起本次调用的平台/API 厂商名（dashscope/volcengine/openai/
                               deepseek）。SDK 只如实转交，供应用层守卫按 provider 分账/统计
                               （如 CostBudgetGuard/BudgetLedger）。未知/未注入能力时为 ""。
+      - context_breakdown     本步请求的上下文组成（token）：``system`` / ``tools`` /
+                              ``attachments`` / ``history`` 四段，之和 == input_tokens。
+                              仅 system/tools/attachments 是估算值（与压缩判据同一把尺子），
+                              history 是残差。纯观测数据，None 表示未采集（守卫须容忍）。
     """
     model: str
     input_tokens: int
@@ -45,6 +49,7 @@ class StepUsage:
     cache_creation_tokens: int = 0
     reasoning_tokens: int = 0
     provider: str = ""
+    context_breakdown: dict[str, int] | None = None
 
 
 @dataclass(frozen=True)

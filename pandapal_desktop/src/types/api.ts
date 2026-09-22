@@ -606,7 +606,7 @@ export interface ReplyUsage {
   net_cost_usd: number;   // 实际净费用（主口径）
   full_cost_usd: number;  // 全价基线（无缓存假设）
   saved_usd: number;      // 命中节省 = full − net
-  input_tokens: number;   // 输入总量
+  input_tokens: number;   // 输入总量【跨步累加，长 run 可达数百万，不受窗口约束】
   cached_tokens: number;  // 命中
   miss_tokens: number;    // 未命中 = input − cached
   cache_creation_tokens: number; // 新写入缓存
@@ -615,6 +615,16 @@ export interface ReplyUsage {
   reasoning_tokens: number; // 推理
   hit_rate: number;       // 命中率 0~1
   duration_ms: number;    // 本轮耗时（executor 墙钟）
+  // ── 上下文进度条（0 = 后端未注入配置，前端不画）──
+  last_input_tokens: number;  // 最后一次调用的单次输入 = 当前上下文占用（进度条分子）
+  step_count: number;         // 本 run 的 LLM 调用步数（累计量的解释项）
+  context_window: number;     // 分母：模型上下文上限
+  compact_threshold: number;  // 标记线：自动压缩触发阈值
+  /** 当前上下文被谁占了（四段之和 == last_input_tokens）。
+   *  仅 system/tools/attachments 为估算值（与压缩判据同一把尺子），history 为残差。 */
+  context_breakdown?: { system: number; tools: number; attachments: number; history: number } | null;
+  /** 各槽位配额（实占/配额对比）：{ system_prompt, tool_schema }。缺省 = 只显示实占。 */
+  context_quotas?: Record<string, number> | null;
 }
 
 export interface ReplyEndMsg extends IpcMessageBase {

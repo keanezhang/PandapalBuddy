@@ -44,6 +44,10 @@ DEFAULT_MIN_KEEP_TEXT_MESSAGES: int = 4
 # 保留窗口最多 token 数（硬上限，避免压缩后立即又触发）
 DEFAULT_MAX_KEEP_TOKENS: int = 40_000
 
+# 保留窗口比例：有 compact_threshold 时按比例派生（替代上面两个写死的绝对值）
+DEFAULT_MIN_KEEP_RATIO: float = 0.12
+DEFAULT_MAX_KEEP_RATIO: float = 0.45
+
 # ─────────────────────────────────────────────
 # RoundBasedPolicy 默认参数（保留为可选实现）
 # ─────────────────────────────────────────────
@@ -56,6 +60,11 @@ DEFAULT_MAX_KEEP_TOKENS: int = 40_000
 
 # add_tool_result 时单条结果超过此值立即截断
 DEFAULT_MICROCOMPACT_SINGLE_RESULT_MAX_TOKENS: int = 20_000
+
+# 单条工具结果上限比例：min(ratio × T, MAX)，不低于 FLOOR
+DEFAULT_TOOL_RESULT_CAP_RATIO: float = 0.15
+DEFAULT_TOOL_RESULT_CAP_MAX: int = 30_000
+DEFAULT_TOOL_RESULT_CAP_FLOOR: int = 8_000
 
 # compact_if_needed 入口预清理时，最近 N 条工具结果不动
 DEFAULT_MICROCOMPACT_KEEP_RECENT: int = 3
@@ -70,12 +79,15 @@ MICROCOMPACT_TRUNCATED_SUFFIX: str = (
     "\n\n[...truncated by MicroCompact: tool result exceeded single-message limit]"
 )
 
+# 摘要输出预留（实测 max_tokens=512）
+DEFAULT_RESERVED_SUMMARY_TOKENS: int = 512
+
 # ─────────────────────────────────────────────
 # PostCompact 回注默认参数
 # ─────────────────────────────────────────────
 
-# PostCompactReinjector 总 token 预算
-DEFAULT_POST_COMPACT_TOKEN_BUDGET: int = 50_000
+# PostCompactReinjector 总 token 预算（原 50_000 会导致启用回注后 overflow）
+DEFAULT_POST_COMPACT_TOKEN_BUDGET: int = 8_000
 
 # RecentFilesSource 默认参数
 DEFAULT_POST_COMPACT_MAX_FILES: int = 5
@@ -125,3 +137,38 @@ DEFAULT_RESTORE_TOKEN_BUDGET: int = DEFAULT_COMPACT_THRESHOLD
 DEFAULT_FLUSH_COALESCE_MS: int = 100
 # 写入缓冲区条数上限，超出时立即触发写入（溢出保护）
 DEFAULT_FLUSH_BUFFER_MAX_ENTRIES: int = 50
+
+# ─────────────────────────────────────────────
+# 按 compact_threshold 派生
+# ─────────────────────────────────────────────
+
+
+def derive_buffer_tokens(conversation_slot: int) -> int:
+    """触发提前量：不超过 conversation 配额的 1/4（小窗口下不至于把阈值压到 0）。"""
+    return max(0, min(DEFAULT_COMPACT_BUFFER_TOKENS, conversation_slot // 4))
+
+
+def derive_compact_threshold(conversation_slot: int) -> int:
+    """压缩触发阈值 = conversation 配额 − 触发提前量。
+
+    builder（注入 Memory）与 footer 进度条共用同一公式，避免两处口径漂移。
+    """
+    return max(1, conversation_slot - derive_buffer_tokens(conversation_slot))
+
+
+def derive_keep_window(compact_threshold: int) -> tuple[int, int]:
+    """派生 WindowedKeepPolicy 的 (min_keep_tokens, max_keep_tokens)。"""
+    max_keep = max(1, int(compact_threshold * DEFAULT_MAX_KEEP_RATIO))
+    min_keep = max(1, min(int(compact_threshold * DEFAULT_MIN_KEEP_RATIO), max_keep))
+    return min_keep, max_keep
+
+
+def derive_single_result_max_tokens(compact_threshold: int) -> int:
+    """派生 add_tool_result 入口的单条工具结果上限。"""
+    return max(
+        DEFAULT_TOOL_RESULT_CAP_FLOOR,
+        min(
+            int(compact_threshold * DEFAULT_TOOL_RESULT_CAP_RATIO),
+            DEFAULT_TOOL_RESULT_CAP_MAX,
+        ),
+    )

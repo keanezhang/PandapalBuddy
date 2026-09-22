@@ -34,7 +34,6 @@ from .exceptions import SubAgentRegistrationError
 from ..constants import CHARS_PER_TOKEN as _CHARS_PER_TOKEN
 
 if TYPE_CHECKING:
-    from ..agent import Agent
     from ..identity.models import Identity
     from ..tool.registry import ToolRegistry
     from ..observability.audit import AuditLog

@@ -179,8 +179,6 @@ class AgentLoop(RunCoreMixin):
         __init__ 和 _run_stream_core 入口处均调用。通过三注册表的 version 做脏检查，
         版本号不变则直接返回缓存的 _static_context_str，确保 LLM Prefix Cache 命中率。
         """
-        from ..constants import CHARS_PER_TOKEN
-
         # ── 脏检查：三注册表版本号均未变 → 直接返回缓存 ──
         tool_ver = self._tool_registry.version
         skill_ver = self._skill_registry.version if self._skill_registry is not None else 0
@@ -194,15 +192,32 @@ class AgentLoop(RunCoreMixin):
             agent_id=self._identity.agent_id,
         )
 
+        # 摘要预算按配置的 context_window 派生（此前不传参 → 恒用默认 128,000）
+        _ctx_window = (
+            self._context_window_budget.context_window
+            if self._context_window_budget is not None else None
+        )
+
         skill_summaries_static = None
         if self._skill_registry is not None:
-            skill_summaries_static = self._skill_registry.build_skill_summaries()
+            if _ctx_window is not None:
+                skill_summaries_static = self._skill_registry.build_skill_summaries(
+                    context_window=_ctx_window,
+                )
+            else:
+                skill_summaries_static = self._skill_registry.build_skill_summaries()
 
         agent_summaries_static = None
         if self._agent_registry is not None:
-            agent_summaries_static = self._agent_registry.build_agent_summaries(
-                exclude_agent_id=self._identity.agent_id,
-            )
+            if _ctx_window is not None:
+                agent_summaries_static = self._agent_registry.build_agent_summaries(
+                    context_window=_ctx_window,
+                    exclude_agent_id=self._identity.agent_id,
+                )
+            else:
+                agent_summaries_static = self._agent_registry.build_agent_summaries(
+                    exclude_agent_id=self._identity.agent_id,
+                )
 
         result = MessageBuilder.build_static_context_str(
             deferred_tool_summaries=deferred_tool_catalog,
@@ -210,29 +225,34 @@ class AgentLoop(RunCoreMixin):
             agent_summaries=agent_summaries_static,
         )
 
-        # ── system_prompt token 配额校验（ContextWindowBudget 场景 5）──
+        # ── system_prompt token 配额校验（与压缩链路同一把尺子）──
         if self._context_window_budget is not None and result:
             system_prompt_budget = self._context_window_budget.system_prompt_tokens
-            system_base_tokens = int(len(self._memory.system_prompt or "") / CHARS_PER_TOKEN)
+            system_base_tokens = self._memory.estimate_text(
+                self._memory.system_prompt or ""
+            )
             available_for_static = system_prompt_budget - system_base_tokens
-            static_context_tokens = int(len(result) / CHARS_PER_TOKEN)
+            static_context_tokens = self._memory.estimate_text(result)
 
             if available_for_static <= 0:
                 logger.warning(
-                    "context_window_budget: system_prompt 本身 (%d tokens) 已超出 "
+                    "context_window_budget: system_prompt 本身 (%d tokens, 真实口径) 已超出 "
                     "system_prompt_tokens 配额 (%d)，static_context 被完全丢弃。",
                     system_base_tokens, system_prompt_budget,
                 )
                 self._static_context_version = new_version
                 return None
             elif static_context_tokens > available_for_static:
-                max_chars = int(available_for_static * CHARS_PER_TOKEN)
+                truncated = self._memory.truncate_text_to_tokens(
+                    result, available_for_static,
+                )
                 logger.warning(
                     "context_window_budget: static_context (%d tokens) 超出 "
-                    "system_prompt 剩余配额 (%d tokens)，已截断至 %d 字符。",
-                    static_context_tokens, available_for_static, max_chars,
+                    "system_prompt 剩余配额 (%d tokens)，已按同一估算器截断至 %d tokens。",
+                    static_context_tokens, available_for_static,
+                    self._memory.estimate_text(truncated),
                 )
-                result = result[:max_chars]
+                result = truncated
 
         self._static_context_version = new_version
         return result

@@ -82,8 +82,8 @@ from .protocols import (
 from .constants import (
     DEFAULT_COMPACT_THRESHOLD,
     DEFAULT_WORKING_MEMORY_MAX_ENTRIES,
-    DEFAULT_RESTORE_TOKEN_BUDGET,
     DEFAULT_POST_COMPACT_TOKEN_BUDGET,
+    DEFAULT_RESERVED_SUMMARY_TOKENS,
     COMPACT_TARGET_RATIO,
 )
 from .compaction.windowed import WindowedKeepPolicy
@@ -287,6 +287,25 @@ class Memory:
             token_budget=post_compact_token_budget,
         )
 
+        # 压缩后固定占用：摘要产物 + 立即回注（不预留会导致压缩后立刻又超阈值）
+        self._reserved_summary_tokens: int = (
+            DEFAULT_RESERVED_SUMMARY_TOKENS if drop_summarizer is not None else 0
+        )
+        self._reinject_token_budget: int = (
+            post_compact_token_budget if post_compact_sources else 0
+        )
+        _fixed_after_compact = self._reserved_summary_tokens + self._reinject_token_budget
+        if _fixed_after_compact > compact_threshold * 0.3:
+            logger.warning(
+                "Memory: 压缩后固定占用 %d token (摘要 %d + 回注 %d) 超过阈值的 30%% (%d)，"
+                "压缩后可能立即再次触发。建议调小 post_compact_token_budget "
+                "或提高 compact_threshold。",
+                _fixed_after_compact,
+                self._reserved_summary_tokens,
+                self._reinject_token_budget,
+                int(compact_threshold * 0.3),
+            )
+
         # ── Run / Session 级状态 ──
 
         # 压缩后回注 attachments（每次 compact 写入，下一次 compact 前清空）
@@ -336,6 +355,8 @@ class Memory:
         "_flush_policy",
         "_micro_compactor",
         "_reinjector",
+        "_reserved_summary_tokens",
+        "_reinject_token_budget",
         "_initialized",
     })
 
@@ -474,7 +495,7 @@ class Memory:
 
         restored = self._long_term.load_for_restore(
             session_id=session_id,
-            token_budget=DEFAULT_RESTORE_TOKEN_BUDGET,
+            token_budget=self._compact_threshold,
         )
 
         if restored:
@@ -641,6 +662,27 @@ class Memory:
         )
         return system_tokens + attachment_tokens + self._short_term.estimate_tokens()
 
+    def estimate_text(self, text: str) -> int:
+        """估算任意文本的 token 数（与压缩判据共用同一把尺子）。"""
+        if not text:
+            return 0
+        return self._token_estimator.estimate([{"role": "user", "content": text}])
+
+    def truncate_text_to_tokens(self, text: str, max_tokens: int) -> str:
+        """把文本截断到 max_tokens 以内（二分，前缀 token 数单调，用于配额兜底）。"""
+        if not text or max_tokens <= 0:
+            return ""
+        if self.estimate_text(text) <= max_tokens:
+            return text
+        lo, hi = 0, len(text)
+        while lo < hi:
+            mid = (lo + hi + 1) // 2
+            if self.estimate_text(text[:mid]) <= max_tokens:
+                lo = mid
+            else:
+                hi = mid - 1
+        return text[:lo]
+
     async def compact_if_needed(self) -> int | None:
         """四层压缩管线——核心方法。
 
@@ -697,18 +739,25 @@ class Memory:
         attachment_overhead = self._token_estimator.estimate(
             self._build_attachment_messages()
         ) if self._post_compact_attachments else 0
+        # 预留压缩后重新出现的量：旧回注 + 摘要 + 立即回注
+        fixed_after_compact = (
+            self._reserved_summary_tokens + self._reinject_token_budget
+        )
         target_tokens = (
             int(self._compact_threshold * COMPACT_TARGET_RATIO)
             - system_overhead
             - attachment_overhead
+            - fixed_after_compact
         )
 
-        # 极端情况：system + attachments 自己就超了，压缩也没用
+        # 极端情况：system + attachments + 压缩后固定占用 自己就超了，压缩也没用
         if target_tokens <= 0:
             logger.warning(
-                "Memory.compact: system+attachments overhead (%d tokens) alone exceeds "
-                "compact target, skipping compression.",
-                system_overhead + attachment_overhead,
+                "Memory.compact: system(%d) + attachments(%d) + 压缩后固定占用(%d = "
+                "摘要 %d + 回注 %d) 已超过 compact target (%d)，跳过压缩。",
+                system_overhead, attachment_overhead, fixed_after_compact,
+                self._reserved_summary_tokens, self._reinject_token_budget,
+                int(self._compact_threshold * COMPACT_TARGET_RATIO),
             )
             return current_tokens
 

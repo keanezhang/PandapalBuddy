@@ -56,6 +56,10 @@ HIDDEN_IMPORTS = [
     "pandapal.config.llm.credentials_handler",
     "pandapal.config.llm.credentials_store",
     "pandapal.config.llm.provider_catalog",
+    # run_local 内延迟 import（上下文预算：模型 → 上限 → 档位 → 配额），
+    # 静态分析虽能捕获函数内 import，但本仓惯例是显式声明，避免打包后解析器缺失
+    # → 预算回落默认档位，大窗口模型被静默低估。
+    "pandapal.config.llm.context_window_resolver",
     # config.budget — 计费 / 预算（价格表、停机守卫、账本、持久化）
     "pandapal.config.budget",
     "pandapal.config.budget.pricing",
@@ -470,6 +474,11 @@ DATA_FILES = [
     #   open() 它（计费类零默认，缺失必须 fail-fast），不打进包 → import pandapal.config
     #   整条链直接 FileNotFoundError，sidecar 起不来。
     (os.path.join(PROJECT_ROOT, "pandapal", "config", "llm", "model_prices.toml"), "pandapal/config/llm"),
+    # ★ model_context_windows.toml — 模型上限映射表 + 上下文预算档位表。
+    #   context_window_resolver 用 Path(__file__).parent 定位它；不打进包则
+    #   _load_table() 读失败 → 回落内置 128K 默认档位（只打一行日志），
+    #   1M 级模型会被静默低估到 128K 预算。
+    (os.path.join(PROJECT_ROOT, "pandapal", "config", "llm", "model_context_windows.toml"), "pandapal/config/llm"),
     # ★ cl100k_base.tiktoken — TiktokenEstimator 的离线词表（run_local 按
     #   _MEIPASS/pandapal/resources/tokenizer/ 定位）；不打进包则估算器构造失败
     #   → 降级回 chars/4.0，压缩触发过晚的根因复活。

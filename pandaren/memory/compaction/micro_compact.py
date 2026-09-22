@@ -33,7 +33,6 @@ from ..constants import (
     DEFAULT_MICROCOMPACT_SINGLE_RESULT_MAX_TOKENS,
     MICROCOMPACT_CLEARED_PLACEHOLDER,
     MICROCOMPACT_TRUNCATED_SUFFIX,
-    CHARS_PER_TOKEN,
 )
 from ..models import MessageDict
 from ..protocols import TokenEstimator, CharBasedTokenEstimator
@@ -90,29 +89,48 @@ class MicroCompactor:
         self,
         content: str | list,
     ) -> str | list:
-        """单条工具结果超过单条上限时截断尾部并加截断标记。
-
-        若未超过返回原 content；超过返回截断后的字符串
-        （不保留 multimodal 结构 —— 截断意味着已经超过预算，丢掉非 text 内容是合理的）。
-        """
+        """单条工具结果超过上限时截断尾部并加标记；未超过返回原 content。"""
         msg_for_estimate: MessageDict = {"role": "tool", "content": content}
         tokens = self._token_estimator.estimate([msg_for_estimate])
         if tokens <= self._single_result_max_tokens:
             return content
 
         text = _content_to_text(content)
-        # 按字符数粗略对齐到 token 上限（CHARS_PER_TOKEN 是 float，必须 int 转换）
-        max_chars = int(self._single_result_max_tokens * CHARS_PER_TOKEN)
-        # 留 ~200 字给截断标记
-        cut_at = max(0, max_chars - 200)
+        # 极端情况：正文本身（不含后缀）已在限额内，说明超限来自消息包装开销
+        if self._estimate_text(text) <= self._single_result_max_tokens:
+            return text
+
+        suffix_tokens = self._estimate_text(MICROCOMPACT_TRUNCATED_SUFFIX)
+        body_cap = max(1, self._single_result_max_tokens - suffix_tokens)
+        cut_at = self._converge_prefix_length(text, body_cap)
         truncated = text[:cut_at] + MICROCOMPACT_TRUNCATED_SUFFIX
+
         logger.info(
-            "MicroCompact.truncate_single_result: %d tokens → ~%d tokens (cap %d)",
+            "MicroCompact.truncate_single_result: %d tokens → %d tokens (cap %d)",
             tokens,
-            self._single_result_max_tokens,
+            self._estimate_text(truncated),
             self._single_result_max_tokens,
         )
         return truncated
+
+    def _estimate_text(self, text: str) -> int:
+        """用同一把尺子估算纯文本 token 数。"""
+        if not text:
+            return 0
+        return self._token_estimator.estimate([{"role": "tool", "content": text}])
+
+    def _converge_prefix_length(self, text: str, body_cap: int) -> int:
+        """二分求最大的前缀长度，使其 token 数 ≤ body_cap。"""
+        lo, hi = 0, len(text)
+        if self._estimate_text(text) <= body_cap:
+            return hi
+        while lo < hi:
+            mid = (lo + hi + 1) // 2
+            if self._estimate_text(text[:mid]) <= body_cap:
+                lo = mid
+            else:
+                hi = mid - 1
+        return lo
 
     # ─── 时机 B: compact_if_needed 入口预清理 ───
 

@@ -9,7 +9,6 @@ import logging
 import platform
 import subprocess
 
-from pandaren.identity.models import SensitivePermission
 from pandaren.tool.types import ToolTier, SensitivityLevel
 from pandaren.tool.definition.context import ToolContext
 from pandaren.tool.definition.tool_policy import ToolPolicy

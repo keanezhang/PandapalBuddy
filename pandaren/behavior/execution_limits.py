@@ -12,7 +12,9 @@ from .exceptions import BehaviorConfigError
 logger = logging.getLogger("pandaren.behavior.execution_limits")
 
 # ── 默认值常量 ─────────────────────────────────────────────────────────────────
-DEFAULT_MAX_STEPS: int = 30          # 单次 run 的最大 agent 步数
+# 步数上限：所有用途统一在此声明（唯一真相源），禁止在其他文件散落字面量。
+DEFAULT_MAX_STEPS: int = 500            # 主 / 通用 Agent 单次 run 的最大步数（HC5 有界循环）
+DEFAULT_SUB_AGENT_MAX_STEPS: int = 300  # 委派型子 Agent 的最大步数（比主 Agent 收敛，控制委派链成本/时延）
 DEFAULT_STEP_TIMEOUT: float = 120.0  # 单步（LLM 调用 + 工具执行）超时时间（秒）
 DEFAULT_TOTAL_TIMEOUT: float = 600.0 # 整个 run 的总超时时间（秒）
 

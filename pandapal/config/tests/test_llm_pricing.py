@@ -219,6 +219,9 @@ def test_summary_full_usage_breakdown():
     assert s.reply_tokens == 230                      # 300 − 70
     assert abs(s.hit_rate - 2400 / 3000) < 1e-9
     assert abs((s.net_cost_usd + s.saved_usd) - s.full_cost_usd) < 1e-9
+    # 进度条口径：last_input_tokens 是「覆盖」（= 最后一次调用）而非累加，step_count 计步
+    assert s.last_input_tokens == 2000                # 第 2 步的 input，不是累加的 3000
+    assert s.step_count == 2
     # 未记账的 run → None（前端据此降级不展示）
     assert g.summary("unknown") is None
     # to_dict 键与前端 ReplyUsage 对齐
@@ -226,7 +229,50 @@ def test_summary_full_usage_breakdown():
         "model", "net_cost_usd", "full_cost_usd", "saved_usd", "input_tokens",
         "cached_tokens", "miss_tokens", "cache_creation_tokens", "output_tokens",
         "reply_tokens", "reasoning_tokens", "hit_rate",
+        "last_input_tokens", "step_count", "context_window", "compact_threshold",
+        "context_breakdown", "context_quotas",
     }
+
+
+def test_summary_context_breakdown_overwrites_and_survives_none():
+    """组成明细：覆盖语义（取最后一次），且本次未采集时保留上次可用值。"""
+    g = CostBudgetGuard(max_usd=None)
+    first = {"system": 100, "tools": 50, "attachments": 0, "history": 850}
+    second = {"system": 120, "tools": 60, "attachments": 0, "history": 1820}
+    g.should_halt(run_id="B", usage=StepUsage(
+        "m", 1000, 10, 0, 1, context_breakdown=first))
+    g.should_halt(run_id="B", usage=StepUsage(
+        "m", 2000, 10, 0, 2, context_breakdown=second))
+    s = g.summary("B")
+    assert s is not None and s.context_breakdown == second
+    # 第三步没采集（context_breakdown=None）→ 不清空已有明细
+    g.should_halt(run_id="B", usage=StepUsage("m", 2000, 10, 0, 3))
+    assert g.summary("B").context_breakdown == second
+    # 配额随构造注入带出
+    assert s.context_quotas is None
+    gq = CostBudgetGuard(max_usd=None, context_quotas={"system_prompt": 24_000})
+    gq.should_halt(run_id="Q", usage=StepUsage("m", 10, 1, 0, 1))
+    assert gq.summary("Q").context_quotas == {"system_prompt": 24_000}
+
+
+def test_summary_context_progress_fields_from_guard_config():
+    """进度条分母/标记线由构造参数带出；未注入时保持 0（前端据此不画进度条）。"""
+    g = CostBudgetGuard(max_usd=None, context_window=1_000_000, compact_threshold=563_000)
+    g.should_halt(run_id="C", usage=StepUsage("qwen-plus", 438_000, 1_200, 400_000, 7))
+    s = g.summary("C")
+    assert s is not None
+    assert s.last_input_tokens == 438_000
+    assert s.step_count == 1
+    assert s.context_window == 1_000_000
+    assert s.compact_threshold == 563_000
+
+    # 未注入 → 0，但 last_input_tokens / step_count 仍照常记
+    bare = CostBudgetGuard(max_usd=None)
+    bare.should_halt(run_id="D", usage=StepUsage("qwen-plus", 500, 10, 0, 0))
+    sb = bare.summary("D")
+    assert sb is not None
+    assert (sb.context_window, sb.compact_threshold) == (0, 0)
+    assert sb.last_input_tokens == 500
 
 
 def test_summary_mixed_model_per_step_accurate():

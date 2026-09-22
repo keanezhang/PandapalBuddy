@@ -182,6 +182,53 @@ def tool_call_end_data(tool_call_id: str, args: dict, result: ToolResult) -> dic
     }
 
 
+def estimate_context_breakdown(
+    memory: Any,
+    messages: list[dict],
+    tools_for_llm: list[dict] | None,
+    real_tokens: int,
+) -> dict[str, int] | None:
+    """把一步请求的真实 prompt_tokens 拆成 system / tools / attachments / history。
+
+    provider 只回一个总量，不返回分项，所以：
+      · 三个「小头」（system 提示词 / 工具 schema / 回注附件）用**与压缩判据同一把尺子**估算；
+      · ``history`` 取**残差**（real − 三个小头）。
+    于是四项之和恒等于真实总量，且**不必对整段历史做 BPE 估算**——每步只估约 20KB
+    的输入，避免 O(全量历史) 的重复分词开销。
+
+    已知偏差：估算器只计 content/tool_calls，不含 role/分隔符等聊天框架开销，
+    故三个小头略偏低；相对百万级总量可忽略（且历史取的是残差，反而吸收了这部分）。
+
+    Fail-Safe：任何异常返回 None（本函数只产出观测数据，绝不参与停机裁决）。
+    """
+    try:
+        if real_tokens <= 0:
+            return None
+        est = memory.estimate_text
+
+        system_est = 0
+        if messages and messages[0].get("role") == "system":
+            system_est = est(str(messages[0].get("content") or ""))
+
+        tools_est = 0
+        if tools_for_llm:
+            tools_est = est(json.dumps(tools_for_llm, ensure_ascii=False, default=str))
+
+        attach_est = 0
+        for att in memory.post_compact_attachments or ():
+            attach_est += est(str(att.get("content") or ""))
+
+        return {
+            "system": system_est,
+            "tools": tools_est,
+            "attachments": attach_est,
+            "history": max(0, real_tokens - system_est - tools_est - attach_est),
+        }
+    except Exception:  # noqa: BLE001 — 观测数据，故障隔离点（留痕见下）
+        logger.debug("estimate_context_breakdown failed", exc_info=True)
+        return None
+
+
 class RunCoreMixin:
     """提供统一执行内核 _run_stream_core()，以及 run_stream() / run() / _safe_hook() 的完整实现。
 
@@ -1851,6 +1898,12 @@ class RunCoreMixin:
                     step_record.llm_input_tokens = step_input_tokens
                     step_record.llm_output_tokens = step_output_tokens
 
+                    # 本步请求的上下文组成（system / tools / 回注 / 历史）：纯观测数据，
+                    # 交给应用层守卫按 run 收敛后供 UI 展示"当前上下文被谁占了"。
+                    _ctx_breakdown = estimate_context_breakdown(
+                        self._memory, messages, tools_for_llm, step_input_tokens,
+                    )
+
                     yield _mk(
                         StreamEventType.LLM_CALL_END,
                         data={
@@ -1883,6 +1936,7 @@ class RunCoreMixin:
                                 # provider 事实透传给应用层守卫（按 provider 分账）；
                                 # 客户端未暴露/无能力声明时为 ""（守卫据此降级为不分账）。
                                 provider=_effective_provider,
+                                context_breakdown=_ctx_breakdown,
                             ),
                         )
                         if _decision.halt:
