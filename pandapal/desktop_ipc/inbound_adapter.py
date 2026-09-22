@@ -69,6 +69,24 @@ _ALLOWED_TYPES: frozenset[str] = frozenset({
     IpcMessageType.MCP_DISCONNECT,
     IpcMessageType.MCP_TEST,
     IpcMessageType.MCP_SET_ENABLED,
+    # 知识库管理（17 种）
+    IpcMessageType.KB_LIST,
+    IpcMessageType.KB_GET,
+    IpcMessageType.KB_CREATE,
+    IpcMessageType.KB_SAVE,
+    IpcMessageType.KB_DELETE,
+    IpcMessageType.KB_BUILD,
+    IpcMessageType.KB_BUILD_CANCEL,
+    IpcMessageType.KB_SEARCH,
+    IpcMessageType.KB_DOCUMENT_UPLOAD,
+    IpcMessageType.KB_DOCUMENT_DELETE,
+    IpcMessageType.KB_SAVE_TEXT,
+    IpcMessageType.KB_TREE_REQUEST,
+    IpcMessageType.KB_FOLDER_CREATE,
+    IpcMessageType.KB_FOLDER_RENAME,
+    IpcMessageType.KB_FOLDER_DELETE,
+    IpcMessageType.KB_DOCUMENT_RENAME,
+    IpcMessageType.KB_DOCUMENT_MOVE,
 })
 
 

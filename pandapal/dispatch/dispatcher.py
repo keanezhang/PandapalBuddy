@@ -96,6 +96,24 @@ _KNOWN_DIRECT_TYPES: frozenset[str] = frozenset({
     "MCP_DISCONNECT",
     "MCP_TEST",
     "MCP_SET_ENABLED",
+    # 知识库管理
+    "KB_LIST",
+    "KB_GET",
+    "KB_CREATE",
+    "KB_SAVE",
+    "KB_DELETE",
+    "KB_BUILD",
+    "KB_BUILD_CANCEL",
+    "KB_SEARCH",
+    "KB_DOCUMENT_UPLOAD",
+    "KB_DOCUMENT_DELETE",
+    "KB_SAVE_TEXT",
+    "KB_TREE_REQUEST",
+    "KB_FOLDER_CREATE",
+    "KB_FOLDER_RENAME",
+    "KB_FOLDER_DELETE",
+    "KB_DOCUMENT_RENAME",
+    "KB_DOCUMENT_MOVE",
 })
 
 

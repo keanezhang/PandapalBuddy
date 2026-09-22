@@ -476,7 +476,18 @@ def _build_blueprint(
     # 流式模式下必须显式开启 include_usage，否则遵守 OpenAI spec 的 provider
     # （如 DashScope/Qwen）不会在流末尾回填 usage，导致 token/缓存命中率全为 0。
     # DeepSeek 默认回填 usage 所以之前没配也正常，换 Qwen 后缺陷才暴露。
-    agent_builder.llm_settings(include_usage=True)
+    # 主对话每次生成的输出上限：显式声明 → 输出预留走「来源①」（精确），
+    # 而不是让 provider 用自己那套（不可见、且会随厂商漂移，见 SPEC §2.3.3）。
+    #
+    # ⚠️⚠️ 32,000 的代价（I1：`输出预留 ≤ 8% × M`，见 SPEC §2.3.1）⚠️⚠️
+    #   32,000 只在 **M ≥ 400,000** 时成立。M < 400,000 的模型会：
+    #     · 启动时 `check_i1` 打 WARNING；
+    #     · `error_overspend_buffer_tokens` 变负 —— 128K: −21,760 / 200K: −16,000
+    #       → **估算误差一旦超过 ε 就直接撞 API 400**，连缓冲都没有（不是"硬扛"，是"扛不住"）。
+    #   若要在 ≤200K 的模型上跑，必须把它降到 `8% × M` 以内：
+    #     8,000 → 门槛 100K ；5,120 → 64K ；4,096 → 51.2K。
+    _LLM_MAX_TOKENS = 32_000
+    agent_builder.llm_settings(include_usage=True, max_tokens=_LLM_MAX_TOKENS)
     from pandapal.local import prompts
     # 初始 system prompt = default_mode 的完整 prompt（含环境块 + 该模式的工作区片段）。
     # 运行中 SessionAgentPool 会按请求 mode / 片段内容变更做 delta-rebind。
@@ -489,28 +500,73 @@ def _build_blueprint(
     from pandapal.config.budget.repo import JsonFileBudgetRepo
     from pandapal.config.budget.ledger import BudgetLedger
     from pandapal.config.budget.guard import CostBudgetGuard
-    # 上下文预算：**跟随模型配置**，各字段 = 比例 × 模型上下文上限。
-    # 解析链路（配置在 pandapal/config/llm/model_context_windows.toml，改配置不用改代码）：
-    #   model_id（用户凭据 BYOK）
-    #     → model_max_context（exact / pattern / default 三级匹配）
-    #     → 档位 tier（small / medium / large / huge）
-    #     → 各字段配额（比例 × M，带兜底下限）
-    # 提前到此处解析：footer 进度条的分母（模型窗口）与标记线（压缩阈值）要交给守卫带出。
-    # 查看档位表 / 某个模型的解析结果：
-    #   .venv/bin/python -m pandapal.config.llm.context_window_resolver --table
+    # ── 上下文预算：两段式（模型事实 + 应用策略）──────────────────────────────
+    #   model_id → model_max_context / max_output（toml，见 model_context_windows.toml）
+    #            → CW = floor(M × 0.80)
+    #            → ContextWindowBudget（唯一真相源，同时供 Memory / ToolBudget / footer）
+    # 查看某个模型的解析结果：
     #   .venv/bin/python -m pandapal.config.llm.context_window_resolver --model <id>
-    from pandapal.config.llm.context_window_resolver import resolve_budget
+    from pandapal.config.llm.context_budget import (
+        STATIC_CONTEXT_RESERVE,
+        SYSTEM_PROMPT_CAP,
+        TOOL_SCHEMA_CAP,
+        check_i1,
+        check_i6,
+        compute_cw,
+        resolve_output_tokens_reserve,
+    )
+    from pandapal.config.llm.context_window_resolver import resolve_model_max_context
+    from pandaren.behavior.context_window_budget import ContextWindowBudget
     from pandaren.behavior.execution_limits import DEFAULT_MAX_STEPS
-    from pandaren.memory.constants import derive_compact_threshold
+    from pandaren.memory.protocols import CharBasedTokenEstimator
 
-    context_budget = resolve_budget(default_cred["model_id"])
-    logger.info("context budget: %s", context_budget.summary())
-    if context_budget.fell_back:
+    # 1) 模型事实（toml）→ CW
+    model_max_context, model_max_output = resolve_model_max_context(default_cred["model_id"])
+    cw = compute_cw(model_max_context)
+
+    # 2) 输出预留（三层来源，见 SPEC §2.3.3）
+    #    来源① 会被夹到来源②（toml max_output = 厂商上限）——见 resolve_output_tokens_reserve。
+    output_tokens_reserve, reserve_priority = resolve_output_tokens_reserve(
+        llm_max_tokens=_LLM_MAX_TOKENS,
+        model_max_output_tokens=model_max_output,
+    )
+    # 夹取生效 → 「请求参数」必须跟着改，否则请求上限(8,000+) > 记账预留(厂商上限)
+    # → 记账小于实际可能生成量 → I1 被悄悄破坏。二者必须同源。
+    if output_tokens_reserve != _LLM_MAX_TOKENS:
         logger.warning(
-            "context budget: 模型 %r 未在 model_context_windows.toml 命中任何规则，"
-            "已回落默认档位（大窗口模型可能被低估）。建议补一条映射。",
-            default_cred["model_id"],
+            "max_tokens 由 %d 夹到 %d（模型厂商上限）；请求参数已同步，"
+            "保证「请求上限 == 记账预留」",
+            _LLM_MAX_TOKENS, output_tokens_reserve,
         )
+        agent_builder.llm_settings(
+            include_usage=True, max_tokens=output_tokens_reserve
+        )
+    check_i1(model_max_context, output_tokens_reserve)
+
+    # 3) system prompt 上界（全部 mode 各组装一次取 max）+ 静态预留
+    token_estimator = _build_token_estimator()
+    _est = token_estimator or CharBasedTokenEstimator()
+    system_measured = max(
+        _est.estimate([{"role": "system", "content": prompt_assembler.get(_m)}])
+        for _m in ("coding", "office")
+    ) + STATIC_CONTEXT_RESERVE
+
+    # 4) 构造唯一预算对象（不可变），同一实例交给 builder 与 guard
+    context_budget = ContextWindowBudget(
+        context_window=cw,
+        sys_cap=SYSTEM_PROMPT_CAP,
+        tool_cap=TOOL_SCHEMA_CAP,
+        system_prompt_tokens=system_measured,
+        output_tokens_reserve=output_tokens_reserve,
+        model_max_context=model_max_context,
+    )
+    logger.info(
+        "context budget: %r (输出预留来源=%d, model_max_output=%s)",
+        context_budget, reserve_priority, model_max_output,
+    )
+    # I6：conv 是否被固定开销挤到防御下限以下（无档位可升，只告警）
+    check_i6(context_budget.conversation_tokens)
+
     # 预算账本（按 provider 分账）：JSON 文件持久化（mode-agnostic，跨会话/重启累计），
     # 注入守卫。守卫每步把净费用委托账本累加并取超额裁决；账本 spent_usd 是唯一已花费量，
     # 与「停机判据 / 额度条 / Dashboard 该 provider 聚合」同源（PRD §3.4.8）。
@@ -519,13 +575,13 @@ def _build_blueprint(
     cost_guard = CostBudgetGuard(
         max_usd=None,
         ledger=budget_ledger,
-        # footer 上下文进度条：分母 = 模型窗口；标记线 = 与 Memory 压缩阈值同一公式
-        context_window=context_budget.model_max_context,
-        compact_threshold=derive_compact_threshold(context_budget.conversation_tokens),
-        # 实占 / 配额 对比（system_prompt 与 tool_schema 是固定尺寸槽位，配额来自档位表）
+        # footer 进度条：分母 = CW（我的输入预算）；标记线 = 同一个预算对象的 compact_threshold
+        context_window=context_budget.context_window,
+        compact_threshold=context_budget.compact_threshold,
+        # 实占 / 熔断线 对比（system 用实占、tool 用熔断线，见 SPEC §2.3.0）
         context_quotas={
             "system_prompt": context_budget.system_prompt_tokens,
-            "tool_schema": context_budget.tool_schema_tokens,
+            "tool_schema": context_budget.tool_cap_tokens,
         },
     )
 
@@ -550,18 +606,31 @@ def _build_blueprint(
         auto_confirm_high=True,
         stream=True,
     )
-    agent_builder.context_budget(**context_budget.to_builder_kwargs())
+    agent_builder.context_budget(context_budget)
     agent_builder.plan_mode(
         plan_dir=str(user_data_dir / "plans"),
     )
 
-    # Token 估算器（真实 BPE tokenizer）——压缩触发判据与实际 LLM token
-    # 同量纲的前提（排查报告问题 1 的根本解）。与持久化解耦：即使 memory
-    # backends 不可用，估算器也必须注入，否则判据退回 chars/4.0 旧量纲。
-    token_estimator = _build_token_estimator()
+    # Token 估算器（真实 BPE tokenizer）已在预算装配阶段（步骤 3）构建：
+    # 它既用于实测 system prompt 上界，也用于压缩触发判据——必须是同一把尺子。
     memory_kwargs: dict = (
         {"token_estimator": token_estimator} if token_estimator is not None else {}
     )
+
+    # ── 压缩后回注（**指针模式**，见 SPEC §2.5 / pandaren/memory/reinject/sources.py）──
+    # 只注入"索引"（最近读过哪些文件 / 当前 plan 在哪个文件），**不注入正文**：
+    #   · AI 本来就有 read_file 工具可按需重取；而索引是它在压缩前**根本看不到**的
+    #     （WorkingMemory / session_meta 都不进 prompt）—— 补的正是这个缺口；
+    #   · 正文会直接挤占 KEEP_BUDGET（压缩后保留的对话历史），代价远高于指针。
+    # 总预算 = DEFAULT_POST_COMPACT_TOKEN_BUDGET（1,600 ≥ 两个 source cap 之和 1,512），
+    # 会从 TARGET 里扣掉 1,600 → 对 128K 模型仅占 T 的 2.1%，不影响压缩能力。
+    # 不启用技能回注：技能目录已在 static_context 常驻，正文可用 search_skills 重取。
+    from pandaren.memory import PlanStateSource, RecentFilesSource
+
+    memory_kwargs["post_compact_sources"] = [
+        RecentFilesSource(),
+        PlanStateSource(),
+    ]
 
     # 注入 memory backends
     # ★ 多 Session 并发：raw_log_backend / working_memory_backend 是共享后端，
@@ -578,6 +647,8 @@ def _build_blueprint(
                     raw_log_backend=raw_log_backend,
                     working_memory_backend=working_memory_backend,
                     drop_summarizer=drop_summarizer,
+                    # 摘要预留与摘要器 max_tokens 同源（见 SPEC §2.4）
+                    reserved_summary_tokens=drop_summarizer.max_output_tokens,
                 )
             else:
                 logger.warning(
@@ -675,7 +746,7 @@ def _build_blueprint(
     _hooks.add(quality_gate.reclaim_hooks())
     agent_builder.hooks(_hooks)
 
-    return agent_builder.build_blueprint(), effective_models
+    return agent_builder.build_blueprint(), effective_models, llm_client
 
 
 def _build_gateway(sys_config, args):
@@ -882,7 +953,7 @@ async def run_local() -> None:
 
     # ── Step 5 · Build Agent Blueprint（凭据已在 Step 1d 注入）──
     boot.step(5, "Build Agent Blueprint")
-    blueprint, available_models = _build_blueprint(
+    blueprint, available_models, _llm_client = _build_blueprint(
         raw_credentials, default_model_id, default_provider,
         user_id, USER_DATA_DIR, USER_RESOURCES_DIR, WORK_DIR, session_manager, storage_manager,
         storage_mode=sys_config.storage_mode,
@@ -912,6 +983,8 @@ async def run_local() -> None:
         "data_dir": str(USER_DATA_DIR),  # ★ 目录分层：用户数据根（AppData/users/{uid}）
         "user_resources_dir": str(USER_RESOURCES_DIR),  # ★ user skills/agents 根 (WORK_DIR/.pandapal)
         "mcp_config_path": str(USER_DATA_DIR / "mcp" / "servers.toml"),  # ★ MCP server 配置
+        # 知识库（RAG）：kbs.toml + documents + index（embedding key 由用户独立填写）
+        "knowledge_bases_dir": str(USER_DATA_DIR / "knowledge_bases"),
     }
     app = PandaPalApp(
         config=app_config,

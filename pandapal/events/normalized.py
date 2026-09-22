@@ -136,6 +136,24 @@ class EventType(str, Enum):
     MCP_TOOLS_RESULT   = "mcp_tools_result"    # 某服务器工具清单（连接/重连后推送）
     MCP_TEST_RESULT    = "mcp_test_result"     # 连接测试结果
 
+    # ── 知识库管理（全局级：scope=global，不带 session_id）──
+    KB_LIST_RESULT      = "kb_list_result"       # 知识库列表响应
+    KB_GET_RESULT       = "kb_get_result"        # 单库详情响应
+    KB_SAVED            = "kb_saved"             # 创建/更新成功确认
+    KB_DELETED          = "kb_deleted"           # 删除成功确认
+    KB_BUILD_PROGRESS   = "kb_build_progress"    # 建库进度（stage/percent/message）
+    KB_BUILD_DONE       = "kb_build_done"        # 建库完成
+    KB_BUILD_FAILED     = "kb_build_failed"      # 建库失败/取消
+    KB_SEARCH_RESULT    = "kb_search_result"     # 检索结果
+    KB_DOCUMENTS_CHANGED = "kb_documents_changed"  # 文档增删（上传/删除）
+    KB_TREE_RESULT      = "kb_tree_result"       # 文档树（全量，含目录结构）
+
+
+# ── 知识库建库进度默认值（唯一默认值定义处，消费点引用本常量）──────────────
+# incremental=False 表示首次/全量建库；True 表示由 auto_rebuild 触发的增量更新。
+# 旧 payload 缺该字段时由 ipc_transport 回落到本默认值。
+KB_BUILD_PROGRESS_DEFAULT_INCREMENTAL: bool = False
+
 
 # ── 事件作用域标记 ──────────────────────────────────────────────────────────
 # SESSION_ID 契约 §八 #4「显式二分」：会话级事件必带 session_id；全局级事件
@@ -538,6 +556,110 @@ class NormalizedEvent:
                 "error": error,
                 EVENT_SCOPE_KEY: SCOPE_GLOBAL,
             },
+        )
+
+    # ── 知识库管理（全局级：显式 scope=global，不带 session_id）──────────
+
+    @classmethod
+    def kb_list_result(cls, knowledge_bases: list[dict]) -> "NormalizedEvent":
+        """知识库摘要列表（KB_LIST 应答）。"""
+        return cls(
+            event_type=EventType.KB_LIST_RESULT,
+            payload={"knowledge_bases": knowledge_bases, EVENT_SCOPE_KEY: SCOPE_GLOBAL},
+        )
+
+    @classmethod
+    def kb_get_result(cls, knowledge_base: dict) -> "NormalizedEvent":
+        """单库详情（KB_GET 应答，含 config + documents）。"""
+        return cls(
+            event_type=EventType.KB_GET_RESULT,
+            payload={"knowledge_base": knowledge_base, EVENT_SCOPE_KEY: SCOPE_GLOBAL},
+        )
+
+    @classmethod
+    def kb_saved(cls, name: str) -> "NormalizedEvent":
+        """知识库创建/更新成功确认。"""
+        return cls(
+            event_type=EventType.KB_SAVED,
+            payload={"name": name, EVENT_SCOPE_KEY: SCOPE_GLOBAL},
+        )
+
+    @classmethod
+    def kb_deleted(cls, name: str) -> "NormalizedEvent":
+        """知识库删除成功确认。"""
+        return cls(
+            event_type=EventType.KB_DELETED,
+            payload={"name": name, EVENT_SCOPE_KEY: SCOPE_GLOBAL},
+        )
+
+    @classmethod
+    def kb_build_progress(cls, name: str, stage: str, percent: int,
+                          message: str,
+                          incremental: bool = KB_BUILD_PROGRESS_DEFAULT_INCREMENTAL) -> "NormalizedEvent":
+        """建库进度推送（stage: prepare/vector/bm25/done）。
+
+        ``incremental=True`` 表示由 ``auto_rebuild`` 触发的增量更新（R2.3），
+        前端据此把「建库中」展示为「增量更新中」。
+        """
+        return cls(
+            event_type=EventType.KB_BUILD_PROGRESS,
+            payload={
+                "name": name,
+                "stage": stage,
+                "percent": percent,
+                "message": message,
+                "incremental": incremental,
+                EVENT_SCOPE_KEY: SCOPE_GLOBAL,
+            },
+        )
+
+    @classmethod
+    def kb_build_done(cls, name: str) -> "NormalizedEvent":
+        """建库完成。"""
+        return cls(
+            event_type=EventType.KB_BUILD_DONE,
+            payload={"name": name, EVENT_SCOPE_KEY: SCOPE_GLOBAL},
+        )
+
+    @classmethod
+    def kb_build_failed(cls, name: str, error: str) -> "NormalizedEvent":
+        """建库失败/取消。"""
+        return cls(
+            event_type=EventType.KB_BUILD_FAILED,
+            payload={"name": name, "error": error, EVENT_SCOPE_KEY: SCOPE_GLOBAL},
+        )
+
+    @classmethod
+    def kb_search_result(cls, result: dict) -> "NormalizedEvent":
+        """知识库检索结果（独立检索页应答）。"""
+        return cls(
+            event_type=EventType.KB_SEARCH_RESULT,
+            payload={**result, EVENT_SCOPE_KEY: SCOPE_GLOBAL},
+        )
+
+    @classmethod
+    def kb_documents_changed(cls, name: str, uploaded: list[dict],
+                             rejected: list[dict]) -> "NormalizedEvent":
+        """文档增删通知（上传/删除后推送，供前端刷新文档列表）。"""
+        return cls(
+            event_type=EventType.KB_DOCUMENTS_CHANGED,
+            payload={
+                "name": name,
+                "uploaded": uploaded,
+                "rejected": rejected,
+                EVENT_SCOPE_KEY: SCOPE_GLOBAL,
+            },
+        )
+
+    @classmethod
+    def kb_tree_result(cls, name: str, tree: list[dict]) -> "NormalizedEvent":
+        """文档树全量响应（KB_TREE_REQUEST 应答 / 任一结构操作后主动推送）。
+
+        ``tree`` 为 ``DocNode`` 序列化后的 dict 列表（目录优先 + 名称升序）。
+        """
+        return cls(
+            event_type=EventType.KB_TREE_RESULT,
+            payload={"name": name, "tree": tree, EVENT_SCOPE_KEY: SCOPE_GLOBAL},
         )
 
     @classmethod

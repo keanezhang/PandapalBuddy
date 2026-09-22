@@ -30,6 +30,7 @@ from pandapal.broadcast.broadcaster import MessageBroadcast
 from pandapal.broadcast.channel_registry import ChannelDispatchPolicy, ChannelRegistry
 from pandapal.desktop_ipc.ipc_transport import IpcStdoutTransport
 from pandapal.hitl.bridge import HITLBridge
+from pandapal.knowledge_base.manager import KnowledgeBaseManager
 from pandapal.mcp.manager import McpManager
 from pandapal.router.router import MessageRouter
 from pandapal.scheduler.agent_pool import SessionAgentPool
@@ -440,6 +441,28 @@ def _make_mcp_manager(broadcast: MessageBroadcast, context: AppContext) -> McpMa
     )
 
 
+def _make_knowledge_base_manager(
+    broadcast: MessageBroadcast, context: AppContext
+) -> KnowledgeBaseManager:
+    """KnowledgeBaseManager（知识库编排：CRUD + 建库 + 检索 + 对话工具）。
+
+    依赖：``MessageBroadcast``（事件发射）+ ``AppContext`` 的 ``knowledge_bases_dir``。
+    embedding / 抽取 LLM 凭据由用户在建库向导独立填写（kbs.toml），
+    与对话 LLM / MCP 配置完全解耦。
+    缺 ``knowledge_bases_dir`` 即抛 ``RuntimeError`` → 容器失败隔离，不炸全局启动。
+    """
+    from pathlib import Path
+
+    from pandapal.knowledge_base.config_store import KnowledgeBaseConfigStore
+
+    if not context.knowledge_bases_dir:
+        raise RuntimeError("KnowledgeBaseManager requires knowledge_bases_dir in AppContext")
+    return KnowledgeBaseManager(
+        config_store=KnowledgeBaseConfigStore(Path(context.knowledge_bases_dir) / "kbs.toml"),
+        broadcast=broadcast,
+    )
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # 入口
 # ══════════════════════════════════════════════════════════════════════════════
@@ -635,6 +658,15 @@ def register_pandapal_subsystems(container: SubsystemContainer) -> None:
     container.register(SubsystemSpec(
         name="mcp_manager",
         factory=_make_mcp_manager,
+        needs=(MessageBroadcast,),
+        context_needs=(AppContext,),
+        start=True,
+    ))
+
+    # 13. KnowledgeBaseManager（知识库：CRUD + 建库 + 检索 + 对话工具）
+    container.register(SubsystemSpec(
+        name="knowledge_base_manager",
+        factory=_make_knowledge_base_manager,
         needs=(MessageBroadcast,),
         context_needs=(AppContext,),
         start=True,

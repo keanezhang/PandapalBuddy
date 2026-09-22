@@ -321,6 +321,8 @@ class PandaPalApp:
             #   + servers.toml 路径。缺省时 _make_mcp_manager 抛错 → 子系统失败隔离。
             tool_registry=getattr(self._blueprint, "tool_registry", None),
             mcp_config_path=self._config.get("mcp_config_path", ""),
+            # 知识库（RAG）：知识库数据根目录（embedding / 抽取 LLM 凭据由用户独立填写）
+            knowledge_bases_dir=self._config.get("knowledge_bases_dir", ""),
         )
         self._container = SubsystemContainer(context=context)
         register_pandapal_subsystems(self._container)
@@ -695,6 +697,185 @@ class PandaPalApp:
                 channels=IPC_ONLY,
             )
             logger.info("MCP server handlers injected (8 direct handlers, IPC_ONLY)")
+
+        # ★ 注入知识库管理 handler（KB_*）。
+        #   事件发射权归 KnowledgeBaseManager 独占：handler 只「解析 payload → 调 manager 方法」
+        #   → return None（Dispatcher 对 None 不重复广播）。manager 缺席 → log.warning + 跳过。
+        kb_mgr = (
+            self._container.get("knowledge_base_manager")
+            if self._container.has("knowledge_base_manager")
+            else None
+        )
+        if kb_mgr is None:
+            logger.warning(
+                "knowledge_base_manager 子系统缺席（未传 llm_client / knowledge_bases_dir），"
+                "跳过 KB IPC handler 注册"
+            )
+        else:
+            broadcast = self._container.get("broadcast")
+            from pandapal.knowledge_base.manager import KnowledgeBaseError
+
+            async def _kb_guard(op: str, call):
+                """执行一次 manager 调用；业务异常映射错误码，意外异常留痕，绝不外抛。"""
+                try:
+                    await call()
+                except KnowledgeBaseError as exc:
+                    logger.warning(
+                        "KB handler %s 业务失败 [%s]: %s", op, exc.code, exc.detail
+                    )
+                    await broadcast.send(
+                        NormalizedEvent.global_error(exc.code, exc.detail)
+                    )
+                except Exception as exc:  # noqa: BLE001 - handler 兜底，绝不外抛
+                    logger.error("KB handler %s failed: %s", op, exc)
+                    await broadcast.send(
+                        NormalizedEvent.global_error("kb_handler_error", str(exc))
+                    )
+
+            dispatcher.register(
+                IpcMessageType.KB_LIST,
+                lambda _t, _d, _c: _kb_guard("list", kb_mgr.emit_list),
+                channels=IPC_ONLY,
+            )
+            dispatcher.register(
+                IpcMessageType.KB_GET,
+                lambda _t, d, _c: _kb_guard(
+                    "get", lambda: kb_mgr.emit_get(str(d.get("name", "")))),
+                channels=IPC_ONLY,
+            )
+            dispatcher.register(
+                IpcMessageType.KB_CREATE,
+                lambda _t, d, _c: _kb_guard(
+                    "create", lambda: kb_mgr.create_kb(d.get("config") or {})),
+                channels=IPC_ONLY,
+            )
+            dispatcher.register(
+                IpcMessageType.KB_SAVE,
+                lambda _t, d, _c: _kb_guard(
+                    "save", lambda: kb_mgr.save_kb(d.get("config") or {})),
+                channels=IPC_ONLY,
+            )
+            dispatcher.register(
+                IpcMessageType.KB_DELETE,
+                lambda _t, d, _c: _kb_guard(
+                    "delete", lambda: kb_mgr.delete_kb(str(d.get("name", "")))),
+                channels=IPC_ONLY,
+            )
+            dispatcher.register(
+                IpcMessageType.KB_BUILD,
+                lambda _t, d, _c: _kb_guard(
+                    "build",
+                    lambda: kb_mgr.build_kb(
+                        str(d.get("name", "")), bool(d.get("rebuild", False)))),
+                channels=IPC_ONLY,
+            )
+            dispatcher.register(
+                IpcMessageType.KB_BUILD_CANCEL,
+                lambda _t, d, _c: _kb_guard(
+                    "cancel", lambda: kb_mgr.cancel_build(str(d.get("name", "")))),
+                channels=IPC_ONLY,
+            )
+            dispatcher.register(
+                IpcMessageType.KB_SEARCH,
+                lambda _t, d, _c: _kb_guard(
+                    "search",
+                    lambda: kb_mgr.emit_search(
+                        str(d.get("name", "")),
+                        str(d.get("query", "")),
+                        int(d.get("k", 5)),
+                    )),
+                channels=IPC_ONLY,
+            )
+            dispatcher.register(
+                IpcMessageType.KB_DOCUMENT_UPLOAD,
+                lambda _t, d, _c: _kb_guard(
+                    "upload",
+                    lambda: kb_mgr.upload_documents(
+                        str(d.get("name", "")),
+                        [str(p) for p in (d.get("source_paths") or [])],
+                        str(d.get("target_dir", "")),
+                    )),
+                channels=IPC_ONLY,
+            )
+            dispatcher.register(
+                IpcMessageType.KB_DOCUMENT_DELETE,
+                lambda _t, d, _c: _kb_guard(
+                    "delete_doc",
+                    lambda: kb_mgr.delete_document(
+                        str(d.get("name", "")), str(d.get("path", "")))),
+                channels=IPC_ONLY,
+            )
+            dispatcher.register(
+                IpcMessageType.KB_SAVE_TEXT,
+                lambda _t, d, _c: _kb_guard(
+                    "save_text",
+                    lambda: kb_mgr.save_text_as_document(
+                        str(d.get("name", "")),
+                        str(d.get("filename", "")),
+                        str(d.get("content", "")),
+                        bool(d.get("auto_build", False)),
+                    )),
+                channels=IPC_ONLY,
+            )
+            dispatcher.register(
+                IpcMessageType.KB_TREE_REQUEST,
+                lambda _t, d, _c: _kb_guard(
+                    "tree", lambda: kb_mgr.emit_tree(str(d.get("name", "")))),
+                channels=IPC_ONLY,
+            )
+            dispatcher.register(
+                IpcMessageType.KB_FOLDER_CREATE,
+                lambda _t, d, _c: _kb_guard(
+                    "create_folder",
+                    lambda: kb_mgr.create_folder(
+                        str(d.get("name", "")),
+                        str(d.get("parent_path", "")),
+                        str(d.get("folder_name", "")),
+                    )),
+                channels=IPC_ONLY,
+            )
+            dispatcher.register(
+                IpcMessageType.KB_FOLDER_RENAME,
+                lambda _t, d, _c: _kb_guard(
+                    "rename_folder",
+                    lambda: kb_mgr.rename_folder(
+                        str(d.get("name", "")),
+                        str(d.get("path", "")),
+                        str(d.get("new_name", "")),
+                    )),
+                channels=IPC_ONLY,
+            )
+            dispatcher.register(
+                IpcMessageType.KB_FOLDER_DELETE,
+                lambda _t, d, _c: _kb_guard(
+                    "delete_folder",
+                    lambda: kb_mgr.delete_folder(
+                        str(d.get("name", "")), str(d.get("path", "")))),
+                channels=IPC_ONLY,
+            )
+            dispatcher.register(
+                IpcMessageType.KB_DOCUMENT_RENAME,
+                lambda _t, d, _c: _kb_guard(
+                    "rename_document",
+                    lambda: kb_mgr.rename_document(
+                        str(d.get("name", "")),
+                        str(d.get("path", "")),
+                        str(d.get("new_name", "")),
+                    )),
+                channels=IPC_ONLY,
+            )
+            dispatcher.register(
+                IpcMessageType.KB_DOCUMENT_MOVE,
+                lambda _t, d, _c: _kb_guard(
+                    "move_entry",
+                    lambda: kb_mgr.move_entry(
+                        str(d.get("name", "")),
+                        str(d.get("source_path", "")),
+                        str(d.get("target_dir", "")),
+                    )),
+                channels=IPC_ONLY,
+            )
+            logger.info("KnowledgeBase handlers injected (17 direct handlers, IPC_ONLY)")
 
         # ★ 注入模型选择 handler：前端 MODEL_LIST_REQUEST → 回推 MODEL_LIST（可选清单 + default）。
         #   请求-响应（拉取）模式：handler 只构建事件返回，Dispatcher 统一转发；

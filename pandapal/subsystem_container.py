@@ -91,6 +91,9 @@ class AppContext:
     #   子系统失败隔离 → mcp_manager 缺席（测试环境不炸全局）。
     tool_registry: Any = None
     mcp_config_path: str = ""
+    # 知识库（RAG）：知识库数据根目录（kbs.toml / documents / index）。
+    #   embedding / 抽取 LLM 凭据由用户在建库向导独立填写（kbs.toml），与对话 LLM 解耦。
+    knowledge_bases_dir: str = ""
 
     def get(self, t: Type) -> Any:
         """按类型获取外部依赖（★ 容器内部使用）。

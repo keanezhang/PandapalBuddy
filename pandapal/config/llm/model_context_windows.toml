@@ -1,139 +1,126 @@
 # pandapal/config/llm/model_context_windows.toml
 # ─────────────────────────────────────────────────────────────────────────────
-# 模型 → 上下文上限（model_max_context）映射表 + 上下文预算档位表
+# 模型 → 上下文上限（model_max_context）+ 输出上限（max_output）
 #
-# 作用：让 token 预算**跟随模型配置**，而不是在代码里写死。
-#   model_id  →  model_max_context  →  档位（tier）  →  各字段配额
+# 本文件**只承载模型事实**：某 model_id 的上下文 / 输出上限是多少。
+# 与"用多少窗口""给各槽位多少预算"无关 —— 那些属于应用策略
+# （见 pandapal/config/llm/context_budget.py）。
 #
 # ⚠️⚠️ 维护须知（必读）⚠️⚠️
 #
 #   1. 本表是**静态数据**，而厂商的"稳定别名"会漂移：
-#      `deepseek-chat` / `gpt-4o` 这类 id 背后的服务端版本会升级
-#      （DeepSeek V3.x 是 128K、V4 是 1M），**同一个 id 的上限会变**。
+#      `deepseek-chat` 背后 V3.x 是 128K、V4 是 1M，**同一个 id 的上限会变**。
 #      所以本表**一定会过期**，必须人工维护。
 #
 #   2. **优先级（高 → 低）**：
 #        ① 环境变量 PANDAPAL_MODEL_MAX_CONTEXT   ← 应急/临时覆盖，改完即生效
-#        ② [models]  精确匹配                     ← ★ 推荐：把你在用的模型显式写进来
-#        ③ [patterns] 通配匹配                    ← 只放"厂商+版本"明确的型号
-#        ④ [default] 保守兜底（128K）+ WARNING
+#        ② [models]   精确匹配                     ← ★ 推荐：把你在用的模型显式写进来
+#        ③ [patterns] 通配匹配                     ← 只放"厂商+版本"明确的型号
+#        ④ [default]  保守兜底（128K）+ WARNING
 #
 #   3. **只写你核实过的值。** 写错比不写更糟：写小了浪费窗口，写大了直接 400。
 #      每条请附 `# 来源/日期`，便于下次核对。
-#
-#   4. BYOK 场景下你最清楚自己在用什么模型——**优先用 [models] 显式声明**。
-#
-# 解析逻辑见 pandapal/config/llm/context_window_resolver.py
-# 实测依据见 pandaren/memory/COMPACT_BUDGET_AUDIT.md
 # ─────────────────────────────────────────────────────────────────────────────
 
 [default]
-value = 128000
+max_context = 128000
+max_output  = 32000
 # 未命中任何规则时的保守兜底（同时打 WARNING）。
-# 128K 是绝大多数模型的公共下限；命中这里说明**你的模型没被声明**，
-# 若你的模型窗口更大，请补 [models] 条目，否则只会用 128K 预算。
+# max_context = 128000：**约定层，十进制**（K=1000）。与 SDK 的
+#   SDK_FALLBACK_BUDGET.context_window 存在护栏测试锁定关系
+#   （pandaren/tests/test_budget_layering.py）。
+# max_output 是"未核实模型"的输出上界兜底 → 同时 WARNING（见 SPEC §2.3.1）。
+# ⚠️ 这是**猜的**，不是厂商事实：它同样会夹住这些模型的 llm_settings(max_tokens)。
+#    命中 [default] 的模型请尽快在 [models] 补一条精确记录。
+#
+# ═══ 数值口径（两层，务必分清）═══════════════════════════════════════════════
+#  ① 约定层（[default] 与 [patterns] 里「按名字猜」的条目）
+#     → 一律**十进制**：K = 1000、M = 1000000。
+#     为什么偏保守：上限**估小只是浪费窗口，估大直接 400**；十进制恰好整体偏小。
+#  ② 真值层（厂商 + 版本明确、且实际用 2 的幂的型号）
+#     → **照抄官方数据**，可以是 2^n（见下方「真值段」）。
+# 没有任何换算规则能替代核实（GPT-4.1 = 1047576，既非 10^6 也非 2^20）。
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 1. 精确匹配（★ 推荐用法：把你在用的模型 id 原样写进来）
-#
-# 例：
-#   "deepseek-chat"    = 1000000   # 你用的是 V4（1M）；若确认是 V3.x 则填 131072
-#   "deepseek-reasoner" = 1000000
-#   "my-vendor-1m"     = 1000000
-#
-# 查看你当前的模型 id：应用内「模型设置」或凭据文件里的 model_id。
-# ─────────────────────────────────────────────────────────────────────────────
 [models]
+# 精确匹配（优先级最高）。把你正在用的 model_id 原样写进来，例如：
+# "my-vendor-1m" = { max_context = 1000000, max_output = 64000 }
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 2. 通配匹配（* 为通配符，按声明顺序，首个命中生效）
+# ── 通配匹配（按声明顺序，首个命中生效）──
+# max_output 是「模型事实」，每个条目**都该配**（本表存在的意义就是这个）；
+# 留空只针对"尚未核实"的厂商 —— 那不是"不需要"，是"还没写"。
 #
-# 收录标准：**厂商 + 版本明确** 的型号，或名称自述窗口大小的型号。
-# 不收录"稳定别名"（如 deepseek-chat / gpt-4o），因为其上限随服务端漂移。
-# ─────────────────────────────────────────────────────────────────────────────
-[patterns]
+# 它有两重作用（见 SPEC §2.3.3）：
+#   ① 未显式设 llm_settings(max_tokens) 时，它就是输出预留
+#      （provider 会按模型自己的上限生成，故以它为上界）；
+#   ② **它是 llm_settings(max_tokens) 的上界**：用户设大了会被夹到它 + WARNING。
+#      厂商事实不可越过 —— 越过要么 API 直接 400，要么高估预留、把对话区压死。
+#
+# ⚠️ 为什么下面的 [[patterns]] 大多**故意不写** max_output：
+#    上下文上限是"型号"属性（同一型号各厂商基本一致），
+#    而**输出上限往往跟"厂商/部署方式"绑定**（同一 llama-3.1 在 Groq / Together 上不同），
+#    且比上下文上限漂移得更勤。粗粒度 glob 写一个数必然误伤。
+#    → 所以 max_output 的正确归属是 **[models]（精确 model_id）**，或版本明确的 [[patterns]]。
+# ⚠️ 写错比不写更糟（写小了会夹住用户的合法请求）→ 只填核实过的值，并附来源/日期。
 
-# ── 名称自述窗口（最可靠的一类）──
-"*1m*"              = 1000000
-"*1000k*"           = 1000000
-"*128k*"            = 131072
-"*200k*"            = 200000
+# ── 约定层：按名字猜，一律十进制（K=1000 / M=1000000）──
+[[patterns]]
+glob        = "*1m*"
+max_context = 1000000
+
+[[patterns]]
+glob        = "*1000k*"
+max_context = 1000000
+
+[[patterns]]
+glob        = "*128k*"
+max_context = 128000
+
+[[patterns]]
+glob        = "*200k*"
+max_context = 200000
+
+# ── 真值层：实际用 2 的幂的厂商型号（照抄官方；命名必须精确到版本）──
+# ⚠️ 通配写宽了会**估大 → 直接 400**，比漏配更危险：
+#    · `llama-3*` 会误伤 8K 的 llama-3-8b（非 3.1）→ 只写 3.1 / 3.2 / 3.3
+#    · `gemini-*` 会误伤 32K 的 Gemini 1.0 → 只写 1.5 / 2
+#    · `mistral-large*` 会误伤 32K 的 Mistral Large 1（2402）→ 暂不收录
+[[patterns]]
+glob        = "gemini-1.5*"
+max_context = 1048576   # 2^20；Vertex AI 模型卡片 input_token_limit
+
+[[patterns]]
+glob        = "gemini-2*"
+max_context = 1048576   # 2^20
+
+[[patterns]]
+glob        = "llama-3.1*"
+max_context = 131072    # 2^17
+
+[[patterns]]
+glob        = "llama-3.2*"
+max_context = 131072    # 2^17
+
+[[patterns]]
+glob        = "llama-3.3*"
+max_context = 131072    # 2^17
 
 # ── DeepSeek（已核实 2026-09）──
-# V3.1 / V3.2：上下文长度 128K（官方 2025-08-19 公告「上下文长度拓展至 128k」）
-# V4 Preview ：1M 上下文（deepseek.com 官方新闻 "cost-effective 1M context length"）
-"deepseek-v4*"      = 1000000
-"deepseek-v3*"      = 131072
+# V3.1 / V3.2：官方标称 128K，**实际 2^17 = 131072**（官方 2025-08-19 公告）
+# V4 Preview：1M 上下文
+[[patterns]]
+glob        = "deepseek-v4*"
+max_context = 1000000
 
-# ── Anthropic Claude（200K 系，业界公认）──
-"claude-3*"         = 200000
-"claude-sonnet*"    = 200000
-"claude-opus*"      = 200000
-"claude-haiku*"     = 200000
+[[patterns]]
+glob        = "deepseek-v3*"
+max_context = 131072
 
-# ── 以下厂商值「未核实」，一律不收录（宁可走 default + WARNING）──
-# ❌ "gpt-4o*" / "gpt-4.1*" / "gemini-*" / "qwen*" / "glm-4*" / "moonshot*"
-#    我此前凭印象写的值没有任何来源，写错会导致配额错误：
-#    写小了浪费窗口；写大了直接 400。需要时应逐一核对方舟/官方文档后补进来。
+# ── Anthropic Claude（200K 系，业界公认；十进制）──
+[[patterns]]
+glob        = "claude-*"
+max_context = 200000
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 3. 上下文预算档位表（tier）
-#
-# 每个字段一律用 **比例 × model_max_context** 计算，保持随模型变化的动态性。
-# 档位由 model_max_context 落入的区间决定（按 max_context 升序，首个命中生效）。
-#
-# ⚠️ 关键物理事实：**system_prompt / tool_schema 的真实占用并不随窗口增长**
-#    （实测 coding system_prompt 17,590、office 2,236，13 个工具 schema 3,374）。
-#    因此这两项的"比例"必须**随档位递减**——窗口越大、比例越小，
-#    否则 1M 模型下 0.15 的比例会给出 150,000 的配额（实测只需要 2 万）。
-#    缩放类字段（conversation 及其派生的 T/TARGET/KEEP_CAP/MIN_KEEP）比例恒定。
-#
-# 计算顺序（见 resolver）：
-#   CW   = floor(model_max_context × context_window_ratio)
-#   slot = max(floor(model_max_context × ratio), floor)      ← floor 是兜底下限
-#   conv = CW − system − tool − recall                        ← 自动吸收剩余
-# ─────────────────────────────────────────────────────────────────────────────
-
-[[tiers]]
-name                    = "small"
-max_context             = 160000      # ≤ 160K
-typical_context         = 128000      # 档位表展示用的代表值（128K 级）
-context_window_ratio    = 0.80        # CW = M × 0.80
-system_prompt_ratio     = 0.172       # → 128K 时 22,016（实测 coding 需 17,590）
-tool_schema_ratio       = 0.078       # → 128K 时  9,984（实测 13 工具 3,374）
-system_prompt_floor     = 22000
-tool_schema_floor       = 8000
-recall_ratio            = 0.0         # 功能已废弃
-
-[[tiers]]
-name                    = "medium"
-max_context             = 300000      # ≤ 300K
-typical_context         = 200000      # 200K 级
-context_window_ratio    = 0.80
-system_prompt_ratio     = 0.110       # → 200K 时 22,000
-tool_schema_ratio       = 0.050       # → 200K 时 10,000
-system_prompt_floor     = 22000
-tool_schema_floor       = 8000
-recall_ratio            = 0.0
-
-[[tiers]]
-name                    = "large"
-max_context             = 600000      # ≤ 600K
-typical_context         = 400000      # 400K 级
-context_window_ratio    = 0.80
-system_prompt_ratio     = 0.060       # → 400K 时 24,000
-tool_schema_ratio       = 0.020       # → 400K 时  8,000
-system_prompt_floor     = 22000
-tool_schema_floor       = 8000
-recall_ratio            = 0.0
-
-[[tiers]]
-name                    = "huge"
-max_context             = 999999999   # ≤ ∞（1M 级）
-typical_context         = 1000000     # 1M 级
-context_window_ratio    = 0.60        # 大窗口下不把整窗都用满，留 40% 给输出/误差
-system_prompt_ratio     = 0.024       # → 1M 时 24,000
-tool_schema_ratio       = 0.008       # → 1M 时  8,000
-system_prompt_floor     = 24000
-tool_schema_floor       = 8000
-recall_ratio            = 0.0
+# ── 未核实厂商一律不收录（宁可走 [default] + WARNING）──
+# ❌ gpt-4o* / gpt-4.1* / qwen* / glm-4* / moonshot*
+#    注意 GPT-4.1 的反例：官方是 1047576（= 2^20 − 1000），
+#    既不是 10^6 也不是 2^20 —— 这正说明「没有可推导的规则，只能逐个核实」。

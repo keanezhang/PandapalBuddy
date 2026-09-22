@@ -20,6 +20,7 @@ from typing import Any
 from pandapal.broadcast.transport import Transport
 from pandapal.events.normalized import (
     EVENT_SCOPE_KEY,
+    KB_BUILD_PROGRESS_DEFAULT_INCREMENTAL,
     SCOPE_GLOBAL,
     EventType,
     NormalizedEvent,
@@ -516,6 +517,61 @@ class IpcStdoutTransport(Transport):
                 "ok": p.get("ok", False),
                 "tools": p.get("tools", []),
                 "error": p.get("error"),
+            }
+
+        # ── 知识库管理（全局级：scope=global，不带 session_id）──
+        if t == EventType.KB_LIST_RESULT:
+            return {
+                "type": IpcMessageType.KB_LIST_RESULT, **base,
+                "knowledge_bases": p.get("knowledge_bases", []),
+            }
+        if t == EventType.KB_GET_RESULT:
+            return {
+                "type": IpcMessageType.KB_GET_RESULT, **base,
+                "knowledge_base": p.get("knowledge_base", {}),
+            }
+        if t == EventType.KB_SAVED:
+            return {"type": IpcMessageType.KB_SAVED, **base, "name": p.get("name", "")}
+        if t == EventType.KB_DELETED:
+            return {"type": IpcMessageType.KB_DELETED, **base, "name": p.get("name", "")}
+        if t == EventType.KB_BUILD_PROGRESS:
+            return {
+                "type": IpcMessageType.KB_BUILD_PROGRESS, **base,
+                "name": p.get("name", ""),
+                "stage": p.get("stage", ""),
+                "percent": p.get("percent", 0),
+                "message": p.get("message", ""),
+                # 旧 payload 缺 incremental 时回落到唯一默认值定义处（normalized.py）
+                "incremental": p.get("incremental", KB_BUILD_PROGRESS_DEFAULT_INCREMENTAL),
+            }
+        if t == EventType.KB_BUILD_DONE:
+            return {"type": IpcMessageType.KB_BUILD_DONE, **base, "name": p.get("name", "")}
+        if t == EventType.KB_BUILD_FAILED:
+            return {
+                "type": IpcMessageType.KB_BUILD_FAILED, **base,
+                "name": p.get("name", ""),
+                "error": p.get("error", ""),
+            }
+        if t == EventType.KB_SEARCH_RESULT:
+            return {
+                "type": IpcMessageType.KB_SEARCH_RESULT, **base,
+                "knowledge_base": p.get("knowledge_base", ""),
+                "query": p.get("query", ""),
+                "count": p.get("count", 0),
+                "results": p.get("results", []),
+            }
+        if t == EventType.KB_DOCUMENTS_CHANGED:
+            return {
+                "type": IpcMessageType.KB_DOCUMENTS_CHANGED, **base,
+                "name": p.get("name", ""),
+                "uploaded": p.get("uploaded", []),
+                "rejected": p.get("rejected", []),
+            }
+        if t == EventType.KB_TREE_RESULT:
+            return {
+                "type": IpcMessageType.KB_TREE_RESULT, **base,
+                "name": p.get("name", ""),
+                "tree": p.get("tree", []),
             }
 
         # 未知事件类型：走 extra 兜底

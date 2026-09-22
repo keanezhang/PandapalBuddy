@@ -256,7 +256,7 @@ def test_summary_context_breakdown_overwrites_and_survives_none():
 
 
 def test_summary_context_progress_fields_from_guard_config():
-    """进度条分母/标记线由构造参数带出；未注入时保持 0（前端据此不画进度条）。"""
+    """进度条分母/标记线由构造参数带出；**未注入时为 None**（前端据此不画，与"真实 0"区分）。"""
     g = CostBudgetGuard(max_usd=None, context_window=1_000_000, compact_threshold=563_000)
     g.should_halt(run_id="C", usage=StepUsage("qwen-plus", 438_000, 1_200, 400_000, 7))
     s = g.summary("C")
@@ -266,12 +266,12 @@ def test_summary_context_progress_fields_from_guard_config():
     assert s.context_window == 1_000_000
     assert s.compact_threshold == 563_000
 
-    # 未注入 → 0，但 last_input_tokens / step_count 仍照常记
+    # 未注入 → None（哨兵，与"真实 0"区分），但 last_input_tokens / step_count 仍照常记
     bare = CostBudgetGuard(max_usd=None)
     bare.should_halt(run_id="D", usage=StepUsage("qwen-plus", 500, 10, 0, 0))
     sb = bare.summary("D")
     assert sb is not None
-    assert (sb.context_window, sb.compact_threshold) == (0, 0)
+    assert (sb.context_window, sb.compact_threshold) == (None, None)
     assert sb.last_input_tokens == 500
 
 

@@ -174,6 +174,37 @@ class IpcMessageType:
     MCP_TOOLS_RESULT      = "MCP_TOOLS_RESULT"      # 出站：工具清单
     MCP_TEST_RESULT       = "MCP_TEST_RESULT"       # 出站：连接测试结果
 
+    # ── 知识库管理（全局级，scope=global）─────────────────
+    # 入站（前端 → Python）
+    KB_LIST               = "KB_LIST"               # 入站：请求知识库摘要列表
+    KB_GET                = "KB_GET"                # 入站：请求单库详情
+    KB_CREATE             = "KB_CREATE"             # 入站：创建知识库
+    KB_SAVE               = "KB_SAVE"               # 入站：更新知识库配置
+    KB_DELETE             = "KB_DELETE"             # 入站：删除知识库
+    KB_BUILD              = "KB_BUILD"              # 入站：触发建库
+    KB_BUILD_CANCEL       = "KB_BUILD_CANCEL"       # 入站：取消建库
+    KB_SEARCH             = "KB_SEARCH"             # 入站：独立检索
+    KB_DOCUMENT_UPLOAD    = "KB_DOCUMENT_UPLOAD"    # 入站：上传文档（本地路径）
+    KB_DOCUMENT_DELETE    = "KB_DOCUMENT_DELETE"    # 入站：删除文档
+    KB_SAVE_TEXT          = "KB_SAVE_TEXT"          # 入站：把文本存为库内文档（对话存为知识库）
+    KB_TREE_REQUEST       = "KB_TREE_REQUEST"       # 入站：请求文档树（全量）
+    KB_FOLDER_CREATE      = "KB_FOLDER_CREATE"      # 入站：新建文件夹
+    KB_FOLDER_RENAME      = "KB_FOLDER_RENAME"      # 入站：重命名文件夹
+    KB_FOLDER_DELETE      = "KB_FOLDER_DELETE"      # 入站：删除文件夹（递归）
+    KB_DOCUMENT_RENAME    = "KB_DOCUMENT_RENAME"    # 入站：重命名文档
+    KB_DOCUMENT_MOVE      = "KB_DOCUMENT_MOVE"      # 入站：移动文档/文件夹
+    # 出站（Python → 前端）
+    KB_LIST_RESULT        = "KB_LIST_RESULT"        # 出站：知识库摘要列表
+    KB_GET_RESULT         = "KB_GET_RESULT"         # 出站：单库详情
+    KB_SAVED              = "KB_SAVED"              # 出站：创建/更新成功确认
+    KB_DELETED            = "KB_DELETED"            # 出站：删除成功确认
+    KB_BUILD_PROGRESS     = "KB_BUILD_PROGRESS"     # 出站：建库进度
+    KB_BUILD_DONE         = "KB_BUILD_DONE"         # 出站：建库完成
+    KB_BUILD_FAILED       = "KB_BUILD_FAILED"       # 出站：建库失败/取消
+    KB_SEARCH_RESULT      = "KB_SEARCH_RESULT"      # 出站：检索结果
+    KB_DOCUMENTS_CHANGED  = "KB_DOCUMENTS_CHANGED"  # 出站：文档增删通知
+    KB_TREE_RESULT        = "KB_TREE_RESULT"        # 出站：文档树（全量）
+
     # ── 未识别事件兜底 ──────────────────────────────────────
     UNKNOWN               = "UNKNOWN"                # 出站：未知事件类型兜底
 

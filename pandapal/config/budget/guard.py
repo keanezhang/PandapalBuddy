@@ -61,8 +61,9 @@ class RunUsageSummary(NamedTuple):
     # 与 Claude Code / Cline 的 context 进度条同口径（最近一次 API 返回的输入侧）。
     last_input_tokens: int = 0   # 最后一步的单次输入（当前上下文占用）
     step_count: int = 0          # 本 run 的 LLM 调用步数
-    context_window: int = 0      # 分母：模型上下文上限（model_max_context）
-    compact_threshold: int = 0   # 标记线：自动压缩触发阈值
+    # 分母 / 标记线：None = **未注入**（前端不画进度条），与"真实 0"区分开（SPEC §6）。
+    context_window: int | None = None      # 分母：输入预算 CW（**不是**模型上限 M）
+    compact_threshold: int | None = None   # 标记线：自动压缩触发阈值（同一个预算对象）
     # 当前上下文被谁占了（最后一步的组成，四段之和 == last_input_tokens）：
     # {"system": .., "tools": .., "attachments": .., "history": ..}
     context_breakdown: dict[str, int] | None = None
@@ -149,8 +150,8 @@ class CostBudgetGuard:
         max_usd: float | None = None,
         *,
         ledger: "BudgetLedger | None" = None,
-        context_window: int = 0,
-        compact_threshold: int = 0,
+        context_window: int | None = None,
+        compact_threshold: int | None = None,
         context_quotas: dict[str, int] | None = None,
     ) -> None:
         self._max_usd = max_usd
@@ -158,7 +159,7 @@ class CostBudgetGuard:
         # 可选：按 (user,provider) 分账的预算账本。注入后本守卫每步把净费用委托给它
         # 累加并取超额裁决（PRD 预算分账）；未注入则退化为原「按 run 单一 max_usd」行为。
         self._ledger = ledger
-        # footer 上下文进度条的分母 / 标记线（应用层按模型解析后注入；0 = 前端不画进度条）。
+        # footer 进度条的分母（CW，不是模型上限）/ 标记线；None = 未注入 → 前端不画。
         self._context_window = context_window
         self._compact_threshold = compact_threshold
         # 各槽位配额（实占/配额对比）；None = 未注入，前端只显示实占。

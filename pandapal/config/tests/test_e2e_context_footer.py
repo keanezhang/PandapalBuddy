@@ -13,14 +13,16 @@ from pathlib import Path
 import pytest
 
 from pandapal.config.budget.guard import CostBudgetGuard
-from pandapal.config.llm.context_window_resolver import resolve_budget
+from pandapal.config.llm.context_budget import (
+    SYSTEM_PROMPT_CAP,
+    TOOL_SCHEMA_CAP,
+    compute_cw,
+)
+from pandaren.behavior.context_window_budget import ContextWindowBudget
 from pandaren.builder import AgentBuilder
 from pandaren.identity.models import TrustLevel
 from pandaren.llm.types import LLMResponse
-from pandaren.memory.constants import (
-    derive_compact_threshold,
-    derive_keep_window,
-)
+from pandaren.memory.constants import BALANCED
 from pandaren.memory.estimators import TiktokenEstimator
 
 VOCAB = Path(__file__).resolve().parents[2] / "resources" / "tokenizer" / "cl100k_base.tiktoken"
@@ -96,7 +98,24 @@ def _estimator():
     return TiktokenEstimator(vocab_path=VOCAB)
 
 
-def _build(llm, guard, **budget_kwargs):
+def _budget(
+    m: int,
+    *,
+    output_reserve: int = 8_000,
+    sys_measured: int = 19_203,
+) -> ContextWindowBudget:
+    """照 pandapal/local/run_local.py 的四步装配构造预算对象。"""
+    return ContextWindowBudget(
+        context_window=compute_cw(m),
+        sys_cap=SYSTEM_PROMPT_CAP,
+        tool_cap=TOOL_SCHEMA_CAP,
+        system_prompt_tokens=sys_measured,
+        output_tokens_reserve=output_reserve,
+        model_max_context=m,
+    )
+
+
+def _build(llm, guard, budget):
     """照 pandapal/local/run_local.py 的真实接法组装 Agent。"""
     return (
         AgentBuilder()
@@ -108,7 +127,7 @@ def _build(llm, guard, **budget_kwargs):
         .tools([])
         .behavior(max_steps=4, step_guard=guard)
         .system_prompt("You are a test agent.")
-        .context_budget(**budget_kwargs)
+        .context_budget(budget)
         .memory(token_estimator=_estimator())
         .build()
     )
@@ -119,20 +138,19 @@ def _build(llm, guard, **budget_kwargs):
 
 @pytest.mark.asyncio
 async def test_e2e_footer_payload_matches_frontend_contract():
-    resolved = resolve_budget(MODEL_ID)
-    assert resolved.tier == "huge", "1M 模型应落入 huge 档"
+    budget = _budget(1_000_000)
 
     guard = _CapturingGuard(
         max_usd=None,
-        context_window=resolved.model_max_context,
-        compact_threshold=derive_compact_threshold(resolved.conversation_tokens),
+        context_window=budget.context_window,
+        compact_threshold=budget.compact_threshold,
         context_quotas={
-            "system_prompt": resolved.system_prompt_tokens,
-            "tool_schema": resolved.tool_schema_tokens,
+            "system_prompt": budget.system_prompt_tokens,
+            "tool_schema": budget.tool_cap_tokens,
         },
     )
     llm = _ScriptedLLM()
-    built = _build(llm, guard, **resolved.to_builder_kwargs())
+    built = _build(llm, guard, budget)
 
     result = await built.run("hello", session_id="e2e-footer-1")
     assert result.success, f"意外终止: {result.terminal_reason} / {result.error}"
@@ -154,14 +172,12 @@ async def test_e2e_footer_payload_matches_frontend_contract():
     assert payload["last_input_tokens"] == STEP2_IN           # 最后一次调用 = 当前占用
     assert payload["step_count"] == 2
 
-    # ⑤ 进度条分母/标记线/配额来自 resolver，不是写死的
-    assert payload["context_window"] == 1_000_000
-    assert payload["compact_threshold"] == derive_compact_threshold(
-        resolved.conversation_tokens
-    )
+    # ⑤ 进度条分母 = CW（不是模型上限 M）；标记线 / 配额来自同一个预算对象
+    assert payload["context_window"] == 800_000
+    assert payload["compact_threshold"] == budget.compact_threshold
     assert payload["context_quotas"] == {
-        "system_prompt": resolved.system_prompt_tokens,
-        "tool_schema": resolved.tool_schema_tokens,
+        "system_prompt": budget.system_prompt_tokens,
+        "tool_schema": budget.tool_cap_tokens,
     }
 
     # ⑥ 组成明细：四段之和恒等于单次占用，且非负
@@ -181,19 +197,18 @@ async def test_e2e_footer_payload_matches_frontend_contract():
 @pytest.mark.asyncio
 async def test_e2e_resolver_budget_reaches_memory():
     """resolver 的档位必须真的落到 Memory（阈值/保留窗口/工具上限），而非停在配置层。"""
-    resolved = resolve_budget(MODEL_ID)
-    builder = AgentBuilder().context_budget(**resolved.to_builder_kwargs())
+    budget = _budget(1_000_000)
+    builder = AgentBuilder().context_budget(budget)
     mem = builder._build_memory_factory()()
 
-    threshold = derive_compact_threshold(resolved.conversation_tokens)
-    min_keep, max_keep = derive_keep_window(threshold)
+    threshold = budget.compact_threshold
     policy = mem._short_term._compaction_policy
 
     assert mem._compact_threshold == threshold
-    assert policy._min_tokens == min_keep
-    assert policy._max_tokens == max_keep
-    # huge 档下保留窗口必须显著大于旧硬编码的 8K/40K
-    assert min_keep > 8_000 and max_keep > 40_000
+    assert policy._min_tokens == BALANCED.min_keep_tokens(threshold)
+    assert policy._max_tokens == BALANCED.max_keep_tokens(threshold)
+    # 大窗口下保留窗口必须显著大于旧硬编码的 8K/40K
+    assert policy._min_tokens > 8_000 and policy._max_tokens > 40_000
 
 
 # ── E2E-2：压缩 + 回注 全路径（含组成明细对回注的计量）──────────────────
@@ -235,11 +250,9 @@ async def test_e2e_compaction_with_reinjection_does_not_self_halt():
         .tools([])
         .behavior(max_steps=4, step_guard=guard)
         .system_prompt("You are a test agent.")
-        # 小窗口：conversation = 20,000 − 2,000 − 1,000 = 17,000 → 阈值 12,750
-        .context_budget(
-            context_window=20_000, system_prompt_tokens_abs=2_000,
-            tool_schema_tokens_abs=1_000, recall_ratio=0.0,
-        )
+        # 小窗口：CW=20,000；熔断线 sys=min(24k, 5.2k)=5,200 / tool=min(8k, 2k)=2,000，
+        # 记账 sys 实占 2,000 → conv=16,000 → T=15,500
+        .context_budget(_budget(25_000, output_reserve=2_000, sys_measured=2_000))
         .memory(
             token_estimator=_estimator(),
             post_compact_sources=[reinject],

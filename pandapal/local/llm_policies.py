@@ -24,6 +24,14 @@ from pandaren.memory.models import MessageDict
 
 logger = logging.getLogger("pandapal.local.llm_policies")
 
+# 摘要调用的 API 输出硬限（token）。
+# 它是 ``Memory`` 的 ``RESERVED_SUMMARY_TOKENS`` 的**唯一事实来源**（见 SPEC §2.4）：
+# 提示词写的是"字"、API 限的是"token"，两者单位不同，必须显式对齐。
+DEFAULT_SUMMARY_MAX_OUTPUT_TOKENS: int = 1_000
+
+# 提示词里的字数软要求（中文约 1~2 token/字；400 字 ≲ 800 token，对 1,000 留出余量）
+SUMMARY_PROMPT_CHAR_HINT: int = 400
+
 
 # ═══════════════════════════════════════════════════════
 #  LLMDropSummarizer
@@ -44,7 +52,7 @@ class LLMDropSummarizer:
 
     Args:
         llm_client: LLM 客户端，用于生成摘要。
-        max_summary_tokens: 摘要最大 token 数提示（默认 300 字）。
+        max_output_tokens: 摘要调用的 API 输出硬限（token），默认 1,000。
         system_prompt: 生成摘要时使用的系统提示词。
     """
 
@@ -56,12 +64,17 @@ class LLMDropSummarizer:
     def __init__(
         self,
         llm_client: LLMClient,
-        max_summary_tokens: int = 500,
+        max_output_tokens: int = DEFAULT_SUMMARY_MAX_OUTPUT_TOKENS,
         system_prompt: str | None = None,
     ) -> None:
         self._llm_client = llm_client
-        self._max_summary_tokens = max_summary_tokens
+        self._max_output_tokens = max_output_tokens
         self._summary_prompt = system_prompt or self.DEFAULT_SUMMARY_PROMPT
+
+    @property
+    def max_output_tokens(self) -> int:
+        """摘要调用的输出上限（供 Memory 的 RESERVED_SUMMARY_TOKENS 同源读取）。"""
+        return self._max_output_tokens
 
     async def summarize(
         self,
@@ -109,7 +122,7 @@ class LLMDropSummarizer:
 
         prompt = (
             f"{self._summary_prompt}\n"
-            f"控制在 {self._max_summary_tokens} 字以内。\n\n"
+            f"控制在 {SUMMARY_PROMPT_CHAR_HINT} 字以内。\n\n"
             + "\n".join(conversation_lines)
         )
 
@@ -117,7 +130,7 @@ class LLMDropSummarizer:
             resp = await self._llm_client.call(
                 messages=[{"role": "user", "content": prompt}],
                 settings=ModelSettings(
-                    max_tokens=512,
+                    max_tokens=self._max_output_tokens,
                     temperature=0.3,
                 ),
             )

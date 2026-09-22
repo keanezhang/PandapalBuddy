@@ -1,0 +1,19 @@
+"""query/retrieval — 多路召回 + RRF 融合"""
+from .retriever import Retriever  # noqa: F401
+from .search_constants import (  # noqa: F401
+    MATCH_TYPE_BM25, MATCH_TYPE_VECTOR, MATCH_TYPE_GRAPH,
+    MATCH_TYPE_KEYWORD, MATCH_TYPE_HYBRID,
+    RETRIEVAL_SOURCE_VECTOR, RETRIEVAL_SOURCE_BM25, RETRIEVAL_SOURCE_GRAPH,
+)
+
+__all__ = [
+    "Retriever",
+    "MATCH_TYPE_BM25",
+    "MATCH_TYPE_VECTOR",
+    "MATCH_TYPE_GRAPH",
+    "MATCH_TYPE_KEYWORD",
+    "MATCH_TYPE_HYBRID",
+    "RETRIEVAL_SOURCE_VECTOR",
+    "RETRIEVAL_SOURCE_BM25",
+    "RETRIEVAL_SOURCE_GRAPH",
+]

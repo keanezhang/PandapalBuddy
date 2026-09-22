@@ -72,6 +72,23 @@ desktop = [
     "websockets>=12.0",
 ]
 
+# RAG 知识库（NexusRAG SDK）。
+# 仓库内包 pandapal.knowledge_base.rag（位于 pandapal/knowledge_base/rag/），
+# 无需安装，直接 import；此处仅声明其第三方依赖。
+rag = [
+    "chromadb>=0.4.0",
+    "numpy>=1.24.0",
+    "langchain-community>=0.2.0",
+    "langchain-text-splitters>=0.2.0",
+    "langchain-core>=0.2.0",
+    "requests>=2.28.0",
+    "rank-bm25>=0.2.2",
+    # 文档加载器运行时依赖：.docx 需要 docx2txt，.pdf 需要 pypdf。
+    # langchain-community 把这两者视为可选依赖，不会自动带入，必须显式声明。
+    "docx2txt>=0.17.0",
+    "pypdf>=4.0.0",
+]
+
 # 所有可选依赖（一键安装全功能）
 all = [
     "pdfplumber>=0.11.0",
@@ -83,6 +100,16 @@ all = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21",
     "ruff>=0.15",
+    # RAG 知识库（与 [rag] 同源；TOML 不支持 extra 间引用，故重复列出以纳入 all）
+    "chromadb>=0.4.0",
+    "numpy>=1.24.0",
+    "langchain-community>=0.2.0",
+    "langchain-text-splitters>=0.2.0",
+    "langchain-core>=0.2.0",
+    "requests>=2.28.0",
+    "rank-bm25>=0.2.2",
+    "docx2txt>=0.17.0",
+    "pypdf>=4.0.0",
 ]
 
 [tool.setuptools.packages.find]
